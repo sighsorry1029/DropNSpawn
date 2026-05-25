@@ -1,16 +1,16 @@
-﻿using System.Reflection;
+using System.Reflection;
 using System.Runtime.InteropServices;
-using ServerSyncModTemplate;
+using DropNSpawn;
 
 // General Information about an assembly is controlled through the following 
 // set of attributes. Change these attribute values to modify the information
 // associated with an assembly.
-[assembly: AssemblyTitle(ServerSyncModTemplatePlugin.ModName)]
+[assembly: AssemblyTitle(DropNSpawnPlugin.ModName)]
 [assembly: AssemblyDescription("")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany(ServerSyncModTemplatePlugin.Author)]
-[assembly: AssemblyProduct(ServerSyncModTemplatePlugin.ModName)]
-[assembly: AssemblyCopyright("Copyright ©  2021")]
+[assembly: AssemblyCompany(DropNSpawnPlugin.Author)]
+[assembly: AssemblyProduct(DropNSpawnPlugin.ModName)]
+[assembly: AssemblyCopyright("Copyright �  2021")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 
@@ -32,5 +32,5 @@ using ServerSyncModTemplate;
 // You can specify all the values or you can default the Build and Revision Numbers 
 // by using the '*' as shown below:
 // [assembly: AssemblyVersion("1.0.*")]
-[assembly: AssemblyVersion(ServerSyncModTemplatePlugin.ModVersion)]
-[assembly: AssemblyFileVersion(ServerSyncModTemplatePlugin.ModVersion)]
+[assembly: AssemblyVersion(DropNSpawnPlugin.ModVersion)]
+[assembly: AssemblyFileVersion(DropNSpawnPlugin.ModVersion)]

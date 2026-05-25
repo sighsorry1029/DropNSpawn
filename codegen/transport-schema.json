@@ -1,0 +1,273 @@
+{
+  "valueCodecs": [
+    {
+      "name": "ConditionsValueCodec",
+      "typeName": "ConditionsDefinition",
+      "signatureWriterExpression": "(builder, definition, context) => WriteConditionsDefinition(builder, definition, context.IncludeResolvedBiomeMask)",
+      "payloadWriterExpression": "WriteConditionsDefinition",
+      "payloadReaderExpression": "ReadConditionsDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneConditions(value)!"
+    },
+    {
+      "name": "CharacterDropValueCodec",
+      "typeName": "CharacterDropDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteCharacterDropDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteCharacterDropDefinition",
+      "payloadReaderExpression": "ReadCharacterDropDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneCharacterDropDefinition(value)!"
+    },
+    {
+      "name": "DespawnRefundValueCodec",
+      "typeName": "DespawnRefundEntryDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteDespawnRefundEntryDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteDespawnRefundEntryDefinition",
+      "payloadReaderExpression": "ReadDespawnRefundEntryDefinition",
+      "cloneExpression": "ConfigurationEntryCloneSupport.CloneDespawnRefundEntryDefinition"
+    },
+    {
+      "name": "DespawnValueCodec",
+      "typeName": "DespawnDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteDespawnDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteDespawnDefinition",
+      "payloadReaderExpression": "ReadDespawnDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneDespawnDefinition(value)!"
+    },
+    {
+      "name": "BossTamedPressureValueCodec",
+      "typeName": "BossTamedPressureDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteBossTamedPressureDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteBossTamedPressureDefinition",
+      "payloadReaderExpression": "ReadBossTamedPressureDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneBossTamedPressureDefinition(value)!"
+    },
+    {
+      "name": "DropTableValueCodec",
+      "typeName": "DropTableDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteDropTableDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteDropTableDefinition",
+      "payloadReaderExpression": "ReadDropTableDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneDropTableDefinition(value)!"
+    },
+    {
+      "name": "DamageableDropTableValueCodec",
+      "typeName": "DamageableDropTableDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteDamageableDropTableDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteDamageableDropTableDefinition",
+      "payloadReaderExpression": "ReadDamageableDropTableDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneDamageableDropTableDefinition(value)!"
+    },
+    {
+      "name": "PickableValueCodec",
+      "typeName": "PickableDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WritePickableDefinition(builder, definition)",
+      "payloadWriterExpression": "WritePickableDefinition",
+      "payloadReaderExpression": "ReadPickableDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.ClonePickableDefinition(value)!"
+    },
+    {
+      "name": "PickableItemValueCodec",
+      "typeName": "PickableItemDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WritePickableItemDefinition(builder, definition)",
+      "payloadWriterExpression": "WritePickableItemDefinition",
+      "payloadReaderExpression": "ReadPickableItemDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.ClonePickableItemDefinition(value)!"
+    },
+    {
+      "name": "FishValueCodec",
+      "typeName": "FishDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteFishDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteFishDefinition",
+      "payloadReaderExpression": "ReadFishDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneFishDefinition(value)!"
+    },
+    {
+      "name": "DestructibleValueCodec",
+      "typeName": "DestructibleDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteDestructibleDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteDestructibleDefinition",
+      "payloadReaderExpression": "ReadDestructibleDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneDestructibleDefinition(value)!"
+    },
+    {
+      "name": "SpawnAreaValueCodec",
+      "typeName": "SpawnAreaDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteSpawnerSyncSpawnAreaDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteSpawnerSyncSpawnAreaDefinition",
+      "payloadReaderExpression": "ReadSpawnerSyncSpawnAreaDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnAreaDefinition(value)!"
+    },
+    {
+      "name": "CreatureSpawnerValueCodec",
+      "typeName": "CreatureSpawnerDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteSpawnerSyncCreatureSpawnerDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteSpawnerSyncCreatureSpawnerDefinition",
+      "payloadReaderExpression": "ReadSpawnerSyncCreatureSpawnerDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneCreatureSpawnerDefinition(value)!"
+    },
+    {
+      "name": "OfferingBowlValueCodec",
+      "typeName": "LocationOfferingBowlDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteOfferingBowlDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteOfferingBowlDefinition",
+      "payloadReaderExpression": "ReadOfferingBowlDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneLocationOfferingBowlDefinition(value)!"
+    },
+    {
+      "name": "ItemStandValueCodec",
+      "typeName": "LocationItemStandDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteItemStandDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteItemStandDefinition",
+      "payloadReaderExpression": "ReadItemStandDefinition",
+      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationItemStandDefinition"
+    },
+    {
+      "name": "VegvisirValueCodec",
+      "typeName": "LocationVegvisirDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteVegvisirDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteVegvisirDefinition",
+      "payloadReaderExpression": "ReadVegvisirDefinition",
+      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationVegvisirDefinition"
+    },
+    {
+      "name": "RunestoneValueCodec",
+      "typeName": "LocationRunestoneDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteRunestoneDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteRunestoneDefinition",
+      "payloadReaderExpression": "ReadRunestoneDefinition",
+      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationRunestoneDefinition"
+    },
+    {
+      "name": "RunestoneGlobalPinsValueCodec",
+      "typeName": "LocationRunestoneGlobalPinsDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteRunestoneGlobalPinsDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteRunestoneGlobalPinsDefinition",
+      "payloadReaderExpression": "ReadRunestoneGlobalPinsDefinition",
+      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationRunestoneGlobalPinsDefinition"
+    },
+    {
+      "name": "SpawnSystemSpawnValueCodec",
+      "typeName": "SpawnSystemSpawnDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteSpawnSystemSpawnDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteSpawnSystemSpawnDefinition",
+      "payloadReaderExpression": "ReadSpawnSystemSpawnDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemSpawnDefinition(value)!"
+    },
+    {
+      "name": "SpawnSystemConditionsValueCodec",
+      "typeName": "SpawnSystemConditionsDefinition",
+      "signatureWriterExpression": "(builder, definition, context) => WriteSpawnSystemConditionsDefinition(builder, definition, context.IncludeResolvedBiomeMask)",
+      "payloadWriterExpression": "WriteSpawnSystemConditionsDefinition",
+      "payloadReaderExpression": "ReadSpawnSystemConditionsDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemConditionsDefinition(value)!"
+    },
+    {
+      "name": "SpawnSystemModifiersValueCodec",
+      "typeName": "SpawnSystemModifiersDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteSpawnSystemModifiersDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteSpawnSystemModifiersDefinition",
+      "payloadReaderExpression": "ReadSpawnSystemModifiersDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemModifiersDefinition(value)!"
+    }
+  ],
+  "entrySchemas": [
+    {
+      "methodName": "CreateObjectEntrySchema",
+      "entryTypeName": "PrefabConfigurationEntry",
+      "dtoVersionExpression": "ObjectDropManager.TransportMetadata.DtoVersion",
+      "createEntryExpression": "() => new PrefabConfigurationEntry()",
+      "fields": [
+        { "expression": "StringField<PrefabConfigurationEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId)" },
+        { "expression": "StringField<PrefabConfigurationEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
+        { "expression": "BoolField<PrefabConfigurationEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, DropTableDefinition>(entry => entry.DropOnDestroyed, (entry, value) => entry.DropOnDestroyed = value, DropTableValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, DamageableDropTableDefinition>(entry => entry.MineRock, (entry, value) => entry.MineRock = value, DamageableDropTableValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, DamageableDropTableDefinition>(entry => entry.MineRock5, (entry, value) => entry.MineRock5 = value, DamageableDropTableValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, DamageableDropTableDefinition>(entry => entry.TreeBase, (entry, value) => entry.TreeBase = value, DamageableDropTableValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, DamageableDropTableDefinition>(entry => entry.TreeLog, (entry, value) => entry.TreeLog = value, DamageableDropTableValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, DropTableDefinition>(entry => entry.Container, (entry, value) => entry.Container = value, DropTableValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, PickableDefinition>(entry => entry.Pickable, (entry, value) => entry.Pickable = value, PickableValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, PickableItemDefinition>(entry => entry.PickableItem, (entry, value) => entry.PickableItem = value, PickableItemValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, FishDefinition>(entry => entry.Fish, (entry, value) => entry.Fish = value, FishValueCodec)" },
+        { "expression": "OptionalField<PrefabConfigurationEntry, DestructibleDefinition>(entry => entry.Destructible, (entry, value) => entry.Destructible = value, DestructibleValueCodec)" },
+        { "expression": "CopyOnlyField<PrefabConfigurationEntry>((source, target) => target.SourcePath = source.SourcePath)" },
+        { "expression": "CopyOnlyField<PrefabConfigurationEntry>((source, target) => target.SourceLine = source.SourceLine)" },
+        { "expression": "CopyOnlyField<PrefabConfigurationEntry>((source, target) => target.SourceColumn = source.SourceColumn)" }
+      ]
+    },
+    {
+      "methodName": "CreateCharacterEntrySchema",
+      "entryTypeName": "CharacterDropPrefabEntry",
+      "dtoVersionExpression": "CharacterDropManager.TransportMetadata.DtoVersion",
+      "createEntryExpression": "() => new CharacterDropPrefabEntry()",
+      "fields": [
+        { "expression": "StringField<CharacterDropPrefabEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId)" },
+        { "expression": "StringField<CharacterDropPrefabEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
+        { "expression": "BoolField<CharacterDropPrefabEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
+        { "expression": "OptionalField<CharacterDropPrefabEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec)" },
+        { "expression": "OptionalField<CharacterDropPrefabEntry, CharacterDropDefinition>(entry => entry.CharacterDrop, (entry, value) => entry.CharacterDrop = value, CharacterDropValueCodec)" },
+        { "expression": "OptionalField<CharacterDropPrefabEntry, DespawnDefinition>(entry => entry.Despawn, (entry, value) => entry.Despawn = value, DespawnValueCodec)" },
+        { "expression": "OptionalField<CharacterDropPrefabEntry, BossTamedPressureDefinition>(entry => entry.BossTamedPressure, (entry, value) => entry.BossTamedPressure = value, BossTamedPressureValueCodec)" },
+        { "expression": "CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourcePath = source.SourcePath)" },
+        { "expression": "CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourceLine = source.SourceLine)" },
+        { "expression": "CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourceColumn = source.SourceColumn)" }
+      ]
+    },
+    {
+      "methodName": "CreateSpawnerEntrySchema",
+      "entryTypeName": "SpawnerConfigurationEntry",
+      "dtoVersionExpression": "SpawnerManager.TransportMetadata.DtoVersion",
+      "createEntryExpression": "() => new SpawnerConfigurationEntry()",
+      "fields": [
+        { "expression": "StringField<SpawnerConfigurationEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId)" },
+        { "expression": "StringField<SpawnerConfigurationEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
+        { "expression": "BoolField<SpawnerConfigurationEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
+        { "expression": "NullableStringField<SpawnerConfigurationEntry>(entry => entry.Location, (entry, value) => entry.Location = value)" },
+        { "expression": "OptionalField<SpawnerConfigurationEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec)" },
+        { "expression": "OptionalField<SpawnerConfigurationEntry, SpawnAreaDefinition>(entry => entry.SpawnArea, (entry, value) => entry.SpawnArea = value, SpawnAreaValueCodec)" },
+        { "expression": "OptionalField<SpawnerConfigurationEntry, CreatureSpawnerDefinition>(entry => entry.CreatureSpawner, (entry, value) => entry.CreatureSpawner = value, CreatureSpawnerValueCodec)" },
+        { "expression": "CopyOnlyField<SpawnerConfigurationEntry>((source, target) => target.SourcePath = source.SourcePath)" },
+        { "expression": "CopyOnlyField<SpawnerConfigurationEntry>((source, target) => target.SourceLine = source.SourceLine)" },
+        { "expression": "CopyOnlyField<SpawnerConfigurationEntry>((source, target) => target.SourceColumn = source.SourceColumn)" }
+      ]
+    },
+    {
+      "methodName": "CreateLocationEntrySchema",
+      "entryTypeName": "LocationConfigurationEntry",
+      "dtoVersionExpression": "LocationManager.TransportMetadata.DtoVersion",
+      "createEntryExpression": "() => new LocationConfigurationEntry()",
+      "fields": [
+        { "expression": "StringField<LocationConfigurationEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId)" },
+        { "expression": "StringField<LocationConfigurationEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
+        { "expression": "BoolField<LocationConfigurationEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
+        { "expression": "OptionalField<LocationConfigurationEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec)" },
+        { "expression": "OptionalField<LocationConfigurationEntry, LocationOfferingBowlDefinition>(entry => entry.OfferingBowl, (entry, value) => entry.OfferingBowl = value, OfferingBowlValueCodec)" },
+        { "expression": "ListField<LocationConfigurationEntry, LocationItemStandDefinition>(entry => entry.ItemStands, (entry, value) => entry.ItemStands = value, ItemStandValueCodec)" },
+        { "expression": "ListField<LocationConfigurationEntry, LocationVegvisirDefinition>(entry => entry.Vegvisirs, (entry, value) => entry.Vegvisirs = value, VegvisirValueCodec)" },
+        { "expression": "ListField<LocationConfigurationEntry, LocationRunestoneDefinition>(entry => entry.Runestones, (entry, value) => entry.Runestones = value, RunestoneValueCodec)" },
+        { "expression": "OptionalField<LocationConfigurationEntry, LocationRunestoneGlobalPinsDefinition>(entry => entry.RunestoneGlobalPins, (entry, value) => entry.RunestoneGlobalPins = value, RunestoneGlobalPinsValueCodec)" },
+        { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourcePath = source.SourcePath)" },
+        { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourceLine = source.SourceLine)" },
+        { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourceColumn = source.SourceColumn)" }
+      ]
+    },
+    {
+      "methodName": "CreateSpawnSystemEntrySchema",
+      "entryTypeName": "CanonicalSpawnSystemEntry",
+      "dtoVersionExpression": "SpawnSystemManager.TransportMetadata.DtoVersion",
+      "createEntryExpression": "() => new CanonicalSpawnSystemEntry()",
+      "fields": [
+        { "expression": "StringField<CanonicalSpawnSystemEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId)" },
+        { "expression": "StringField<CanonicalSpawnSystemEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
+        { "expression": "BoolField<CanonicalSpawnSystemEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
+        { "expression": "OptionalField<CanonicalSpawnSystemEntry, SpawnSystemSpawnDefinition>(entry => entry.Spawn, (entry, value) => entry.Spawn = value, SpawnSystemSpawnValueCodec)" },
+        { "expression": "OptionalField<CanonicalSpawnSystemEntry, SpawnSystemConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, SpawnSystemConditionsValueCodec)" },
+        { "expression": "OptionalField<CanonicalSpawnSystemEntry, SpawnSystemModifiersDefinition>(entry => entry.Modifiers, (entry, value) => entry.Modifiers = value, SpawnSystemModifiersValueCodec)" },
+        { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourcePath = source.SourcePath)" },
+        { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceLine = source.SourceLine)" },
+        { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceColumn = source.SourceColumn)" },
+        { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.ReferenceOwnerName = source.ReferenceOwnerName)" }
+      ]
+    }
+  ]
+}

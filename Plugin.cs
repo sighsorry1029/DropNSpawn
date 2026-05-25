@@ -1,8 +1,11 @@
-﻿using System;
+using System;
+using System.Collections;
+using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Reflection;
-using System.Timers;
+using System.Text;
 using BepInEx;
 using BepInEx.Configuration;
 using BepInEx.Logging;
@@ -11,25 +14,66 @@ using JetBrains.Annotations;
 using ServerSync;
 using UnityEngine;
 
-namespace ServerSyncModTemplate;
+namespace DropNSpawn;
 
 [BepInPlugin(ModGUID, ModName, ModVersion)]
-public class ServerSyncModTemplatePlugin : BaseUnityPlugin
+[BepInDependency("expand_world_data")]
+/// <summary>
+/// Unity entrypoint and top-level wiring for the runtime platform.
+/// Owns lifecycle delegation only; coordinators and domain runtimes own the actual mutable platform state.
+/// </summary>
+public class DropNSpawnPlugin : BaseUnityPlugin
 {
-    internal const string ModName = "ServerSyncModTemplate";
-    internal const string ModVersion = "1.0.0";
-    internal const string Author = "{Azumatt}";
+    [Flags]
+    internal enum ReloadDomain
+    {
+        None = 0,
+        Object = 1 << 0,
+        Character = 1 << 1,
+        Spawner = 1 << 2,
+        Location = 1 << 3,
+        SpawnSystem = 1 << 4,
+        All = Object | Character | Spawner | Location | SpawnSystem
+    }
+
+    internal readonly struct DomainToggleState
+    {
+        internal DomainToggleState(Toggle @object, Toggle character, Toggle spawner, Toggle location, Toggle spawnSystem)
+        {
+            Object = @object;
+            Character = character;
+            Spawner = spawner;
+            Location = location;
+            SpawnSystem = spawnSystem;
+        }
+
+        internal Toggle Object { get; }
+        internal Toggle Character { get; }
+        internal Toggle Spawner { get; }
+        internal Toggle Location { get; }
+        internal Toggle SpawnSystem { get; }
+    }
+
+    internal const string ModName = "DropNSpawn";
+    internal const string YamlFilePrefix = "DNS";
+    internal const string ModVersion = "1.2.2";
+    internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
+    internal static readonly string RuntimeBuildStamp = BuildRuntimeBuildStamp();
     private static string ConfigFileName = $"{ModGUID}.cfg";
     private static string ConfigFileFullPath = Paths.ConfigPath + Path.DirectorySeparatorChar + ConfigFileName;
+    internal static string YamlConfigDirectoryPath => Path.Combine(Paths.ConfigPath, ModName);
+    internal static string YamlRulesWatcherPattern => $"{YamlFilePrefix}_*.*";
+    internal static string CurrentConfigFileName => ConfigFileName;
+    internal static string CurrentConfigFileFullPath => ConfigFileFullPath;
     internal static string ConnectionError = "";
+    internal static DropNSpawnPlugin? Instance { get; private set; }
     private readonly Harmony _harmony = new(ModGUID);
-    public static readonly ManualLogSource ServerSyncModTemplateLogger = BepInEx.Logging.Logger.CreateLogSource(ModName);
-    private static readonly ConfigSync ConfigSync = new(ModGUID) { DisplayName = ModName, CurrentVersion = ModVersion, MinimumRequiredVersion = ModVersion };
-    private FileSystemWatcher _watcher;
-    private readonly object _reloadLock = new();
-    private DateTime _lastConfigReloadTime;
-    private const long RELOAD_DELAY = 10000000; // One second
+    public static readonly ManualLogSource DropNSpawnLogger = BepInEx.Logging.Logger.CreateLogSource(ModName);
+    private static ConfigSync? _configSync;
+    internal static ConfigSync ConfigSync => _configSync ?? throw new InvalidOperationException("ServerSync has not been initialized yet.");
+    private PluginReloadCoordinator? _reloadCoordinator;
+    private PluginRuntimeWorkCoordinator? _runtimeWorkCoordinator;
 
     public enum Toggle
     {
@@ -37,87 +81,109 @@ public class ServerSyncModTemplatePlugin : BaseUnityPlugin
         Off = 0
     }
 
+    public enum ReferenceUpdateMode
+    {
+        AutoUpdate = 0,
+        ManualUpdate = 1
+    }
+
     public void Awake()
     {
-        bool saveOnSet = Config.SaveOnConfigSet;
-        Config.SaveOnConfigSet = false;
+        EnsureServerSyncInitialized();
+        Instance = this;
+        new PluginBootstrapCoordinator(this).Run();
+    }
 
-        // Uncomment the line below to use the LocalizationManager for localizing your mod.
-        // Make sure to populate the English.yml file in the translation folder with your keys to be localized and the values associated before uncommenting!.
-        //Localizer.Load(); // Use this to initialize the LocalizationManager (for more information on LocalizationManager, see the LocalizationManager documentation https://github.com/blaxxun-boop/LocalizationManager#example-project).
+    private void Update()
+    {
+        _runtimeWorkCoordinator?.ProcessUpdateFrame();
+    }
 
-        _serverConfigLocked = config("1 - General", "Lock Configuration", Toggle.On, "If on, the configuration is locked and can be changed by server admins only.");
-        _ = ConfigSync.AddLockingConfigEntry(_serverConfigLocked);
-
-
-        Assembly assembly = Assembly.GetExecutingAssembly();
-        _harmony.PatchAll(assembly);
-        SetupWatcher();
-
-        Config.Save();
-        if (saveOnSet)
+    private static string BuildRuntimeBuildStamp()
+    {
+        try
         {
-            Config.SaveOnConfigSet = saveOnSet;
+            Assembly assembly = typeof(DropNSpawnPlugin).Assembly;
+            string moduleVersionId = assembly.ManifestModule.ModuleVersionId.ToString("N");
+            return $"{ModVersion}+{moduleVersionId.Substring(0, 8)}";
+        }
+        catch
+        {
+            return ModVersion;
         }
     }
 
+
     private void OnDestroy()
     {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+
         SaveWithRespectToConfigSet();
-        _watcher?.Dispose();
+        if (_configSync != null && _reloadCoordinator != null)
+        {
+            _configSync.SourceOfTruthChanged -= _reloadCoordinator.HandleSourceOfTruthChanged;
+        }
+        if (_reloadCoordinator != null)
+        {
+            PluginBoundSettings.EnableObjectOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableCharacterOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableSpawnerOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableLocationOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableSpawnSystemOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
+        }
+        PluginManifestCoordinator.DetachRuntimeDomainHandlers();
+        _runtimeWorkCoordinator?.Dispose();
+        _runtimeWorkCoordinator = null;
+        _reloadCoordinator?.Dispose();
+        _reloadCoordinator = null;
+        PluginBoundSettings.Clear();
+
+        NetworkPayloadSyncSupport.Shutdown();
+        BossStonePerPlayerRuntime.Shutdown();
     }
 
-    private void SetupWatcher()
+    private static void EnsureServerSyncInitialized()
     {
-        _watcher = new FileSystemWatcher(Paths.ConfigPath, ConfigFileName);
-        _watcher.Changed += ReadConfigValues;
-        _watcher.Created += ReadConfigValues;
-        _watcher.Renamed += ReadConfigValues;
-        _watcher.IncludeSubdirectories = true;
-        _watcher.SynchronizingObject = ThreadingHelper.SynchronizingObject;
-        _watcher.EnableRaisingEvents = true;
-    }
-
-    private void ReadConfigValues(object sender, FileSystemEventArgs e)
-    {
-        DateTime now = DateTime.Now;
-        long time = now.Ticks - _lastConfigReloadTime.Ticks;
-        if (time < RELOAD_DELAY)
+        if (_configSync != null)
         {
             return;
         }
 
-        lock (_reloadLock)
+        ConfigSync configSync = new(ModGUID)
         {
-            if (!File.Exists(ConfigFileFullPath))
-            {
-                ServerSyncModTemplateLogger.LogWarning("Config file does not exist. Skipping reload.");
-                return;
-            }
+            DisplayName = ModName,
+            CurrentVersion = ModVersion,
+            MinimumRequiredVersion = ModVersion
+        };
 
-            try
-            {
-                ServerSyncModTemplateLogger.LogDebug("Reloading configuration...");
-                SaveWithRespectToConfigSet(true);
-                ServerSyncModTemplateLogger.LogInfo("Configuration reload complete.");
-            }
-            catch (Exception ex)
-            {
-                ServerSyncModTemplateLogger.LogError($"Error reloading configuration: {ex.Message}");
-            }
-        }
-
-        _lastConfigReloadTime = now;
+        _configSync = configSync;
     }
 
-    private void SaveWithRespectToConfigSet(bool reload = false)
+    internal static string GetSyncedManifestValue(DomainDescriptor domain)
+    {
+        return PluginManifestCoordinator.GetSyncedManifestValue(domain);
+    }
+
+    internal void SaveWithRespectToConfigSet(bool reload = false, bool save = true)
     {
         bool originalSaveOnSet = Config.SaveOnConfigSet;
         Config.SaveOnConfigSet = false;
-        if (reload)
-            Config.Reload();
-        Config.Save();
-        if (originalSaveOnSet)
+        try
+        {
+            if (reload)
+            {
+                Config.Reload();
+            }
+
+            if (save)
+            {
+                Config.Save();
+            }
+        }
+        finally
         {
             Config.SaveOnConfigSet = originalSaveOnSet;
         }
@@ -130,14 +196,61 @@ public class ServerSyncModTemplatePlugin : BaseUnityPlugin
         };*/
     }
 
+    internal static bool IsSourceOfTruth => ConfigSync.IsSourceOfTruth;
+
+    internal static bool IsRuntimeServer()
+    {
+        return ZNet.instance != null && ZNet.instance.IsServer();
+    }
+
+    internal static void QueueGameDataRefresh(ReloadDomain domains, string source)
+    {
+        Instance?._runtimeWorkCoordinator?.QueueGameDataRefresh(domains, source);
+    }
+
+    internal static bool IsGameDataRefreshDeferred(ReloadDomain domain)
+    {
+        return Instance?._runtimeWorkCoordinator?.IsGameDataRefreshDeferred(domain) == true;
+    }
+
+    internal Harmony HarmonyInstance => _harmony;
+
+    internal PluginReloadCoordinator? ReloadCoordinator
+    {
+        get => _reloadCoordinator;
+        set => _reloadCoordinator = value;
+    }
+
+    internal PluginRuntimeWorkCoordinator? RuntimeWorkCoordinator
+    {
+        get => _runtimeWorkCoordinator;
+        set => _runtimeWorkCoordinator = value;
+    }
+
+    internal static bool TryGetSyncedEntries<TEntry>(
+        DomainDescriptor<TEntry> domain,
+        out List<TEntry> entries,
+        out string payloadToken)
+    {
+        return PluginManifestCoordinator.TryGetSyncedEntries(domain, out entries, out payloadToken);
+    }
+
+    internal static void PublishSyncedPayload<TEntry>(
+        DomainDescriptor<TEntry> domain,
+        List<TEntry> entries,
+        string? knownSignature)
+    {
+        PluginManifestCoordinator.PublishSyncedPayload(domain, entries, knownSignature);
+    }
 
     #region ConfigOptions
 
-    private static ConfigEntry<Toggle> _serverConfigLocked = null!;
-
-    private ConfigEntry<T> config<T>(string group, string name, T value, ConfigDescription description, bool synchronizedSetting = true)
+    internal ConfigEntry<T> BindConfigEntry<T>(string group, string name, T value, ConfigDescription description, bool synchronizedSetting = true, int? configManagerOrder = null)
     {
-        ConfigDescription extendedDescription = new(description.Description + (synchronizedSetting ? " [Synced with Server]" : " [Not Synced with Server]"), description.AcceptableValues, description.Tags);
+        ConfigDescription extendedDescription = new(
+            description.Description + (synchronizedSetting ? " [Synced with Server]" : " [Not Synced with Server]"),
+            description.AcceptableValues,
+            BuildConfigDescriptionTags(description.Tags, configManagerOrder));
         ConfigEntry<T> configEntry = Config.Bind(group, name, value, extendedDescription);
         //var configEntry = Config.Bind(group, name, value, description);
 
@@ -147,9 +260,19 @@ public class ServerSyncModTemplatePlugin : BaseUnityPlugin
         return configEntry;
     }
 
+    private ConfigEntry<T> config<T>(string group, string name, T value, ConfigDescription description, bool synchronizedSetting = true)
+    {
+        return BindConfigEntry(group, name, value, description, synchronizedSetting);
+    }
+
+    internal ConfigEntry<T> BindConfigEntry<T>(string group, string name, T value, string description, bool synchronizedSetting = true, int? configManagerOrder = null)
+    {
+        return BindConfigEntry(group, name, value, new ConfigDescription(description), synchronizedSetting, configManagerOrder);
+    }
+
     private ConfigEntry<T> config<T>(string group, string name, T value, string description, bool synchronizedSetting = true)
     {
-        return config(group, name, value, new ConfigDescription(description), synchronizedSetting);
+        return BindConfigEntry(group, name, value, description, synchronizedSetting);
     }
 
     private class ConfigurationManagerAttributes
@@ -160,7 +283,25 @@ public class ServerSyncModTemplatePlugin : BaseUnityPlugin
         [UsedImplicitly] public Action<ConfigEntryBase>? CustomDrawer = null!;
     }
 
-    class AcceptableShortcuts() : AcceptableValueBase(typeof(KeyboardShortcut))
+    private static object[] BuildConfigDescriptionTags(object[]? existingTags, int? configManagerOrder)
+    {
+        if (!configManagerOrder.HasValue)
+        {
+            return existingTags ?? Array.Empty<object>();
+        }
+
+        return (existingTags ?? Array.Empty<object>())
+            .Concat(new object[]
+            {
+                new ConfigurationManagerAttributes
+                {
+                    Order = configManagerOrder.Value
+                }
+            })
+            .ToArray();
+    }
+
+    internal class AcceptableShortcuts() : AcceptableValueBase(typeof(KeyboardShortcut))
     {
         public override object Clamp(object value) => value;
         public override bool IsValid(object value) => true;
@@ -189,16 +330,16 @@ public static class KeyboardExtensions
 
 public static class ToggleExtentions
 {
-    extension(ServerSyncModTemplatePlugin.Toggle value)
+    extension(DropNSpawnPlugin.Toggle value)
     {
         public bool IsOn()
         {
-            return value == ServerSyncModTemplatePlugin.Toggle.On;
+            return value == DropNSpawnPlugin.Toggle.On;
         }
 
         public bool IsOff()
         {
-            return value == ServerSyncModTemplatePlugin.Toggle.Off;
+            return value == DropNSpawnPlugin.Toggle.Off;
         }
     }
 }

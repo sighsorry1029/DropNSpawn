@@ -1,9 +1,10 @@
 {
-  "name": "ServerSyncModTemplate",
-  "version_number": "1.0.0",
-  "website_url": "https://discord.gg/pdHgy6Bsng",
-  "description": "Your mod description goes here. Do not forget to replace the icon.png file with your own. Must be 256x256. Your Readme.md file will be copied from the one in your project folder.",
+  "name": "DropNSpawn",
+  "version_number": "1.2.2",
+  "website_url": "https://discord.com/invite/VFRJcPwUdm",
+  "description": "Configure all drops, spawns and boss locations. Remote selection of forsaken powers. Hover an altar to see the offering and summonable boss. Boss despawn rules. RuneStones can work like Vegvisirs. Vegvisir supports weighted random location pinning.",
   "dependencies": [
-    "denikson-BepInExPack_Valheim-5.4.2202"
+    "denikson-BepInExPack_Valheim-5.4.2333",
+    "JereKuusela-Expand_World_Data-1.63.0"
   ]
 }

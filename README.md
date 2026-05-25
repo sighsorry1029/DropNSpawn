@@ -1,88 +1,160 @@
-# Server Sync Mod Template
+# DropNSpawn
 
-Can be used to already have your project set up and ready to go with ServerSync and basic version checking. Please see the [Original Repository](https://github.com/blaxxun-boop/ServerSync) if you have to update, or have further questions this template might not answer.
+Configure Valheim drops, spawns, and boss-location behavior with server-synced YAML.
 
-Thank you Blaxxun for ServerSync!
+DropNSpawn is split into five domains. Each domain can be enabled or disabled separately, which makes it easier to coexist with other mods that own the same runtime systems.
 
-ServerSync
-==========
+## Domains
 
-Bundling the dll
-----------------
+| Domain | What it controls |
+| --- | --- |
+| `location` | Boss altars, altar item stands, Vegvisirs, RuneStones, and RuneStone global pins |
+| `character` | `CharacterDrop` loot, one-per-player drop counting, drop-in-stack, despawn rules, and boss-tamed pressure |
+| `object` | Containers, pickables, pickable items, fish, destructibles, mine rocks, trees, and object drop tables |
+| `spawner` | `SpawnArea` and `CreatureSpawner` tables, intervals, caps, level ranges, and location-scoped spawner rules |
+| `spawnsystem` | World `SpawnSystem` rows, biome rules, time-of-day rules, global-key gates, and extended spawn data |
 
-You need to ensure the dll is available to your mod.
+`spawnsystem` is a full replacement domain: the loaded rows become the live world spawn table. Keep every spawn row you still want.
 
-Including the dll is best done via ILRepack (https://github.com/ravibpatel/ILRepack.Lib.MSBuild.Task). You can load this package (ILRepack.Lib.MSBuild.Task) from NuGet.
+## Location
+![](https://i.ibb.co/FLPN5q68/altar.png)  
+Specific for boss-related locations
 
-Then create a file ILRepack.targets in your project folder. File content:
-```
-<?xml version="1.0" encoding="utf-8"?>
-<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-    <Target Name="ILRepacker" AfterTargets="Build">
-        <ItemGroup>
-            <InputAssemblies Include="$(TargetPath)" />
-            <InputAssemblies Include="$(OutputPath)\ServerSync.dll" />
-        </ItemGroup>
-        <ILRepack Parallel="true" DebugInfo="true" Internalize="true" InputAssemblies="@(InputAssemblies)" OutputFile="$(TargetPath)" TargetKind="SameAsPrimaryAssembly" LibraryPath="$(OutputPath)" />
-    </Target>
-</Project>
-```
+- boss altar behavior (Harder boss at night, boss respawn cooldown and so on)
+- slot-specific `ItemStand` restrictions (Change offerings)
+- Vegvisir target or presentation changes (change icon and the location it points to)
+- Hover on altar to see the offerings and boss. (serversync)
 
-Using the ServerSync
---------------------
+## Character
+![](https://i.ibb.co/nMZ7gcZR/characterdrop.png)
 
-Declare a variable:
+- Configure creature loot to your liking
+- merge multiple conditional loot rows for the same creature (VNEI compatible)
+- Check various conditioned examples on the config/DropNSpawn/examples
+- Mobs can drop loots in one stack.
+- `Loot per person` checks configured range instead of whole world.
+## Object
+![](https://i.ibb.co/yFhNTP60/objectdrop.png)
 
-`ServerSync.ConfigSync configSync = new ServerSync.ConfigSync("my.mod.guid") { DisplayName = "My Mod Name", CurrentVersion = "1.2.3", MinimumRequiredVersion = "1.2.0" };`
+- chest loot replacement
+- tooltier, health change for trees and rocks
+- tree or rock drop changes
+- pickable loot changes (bonefiles, fish, berries)
+- destructible health and spawn-on-destroy changes
+- `DNS_object.locations.reference.yml` exists because many objects are dependent on locations
 
-All of DisplayName, CurrentVersion and MinimumRequiredVersion are optional.
-If CurrentVersion is specified, then the user will see a warning in their BepInEx log if the server version does not match the client version.
-If also MinimumRequiredVersion is specified and the client has an older version than the servers MinimumRequiredVersion, the client will be immediately disconnected and see an error message, explaining why.
-To display a friendly name for your mod in the error messages, specify DisplayName, otherwise the primary identifier will be used.
-Also note that the primary identifier (I propose using the GUID, "my.mod.guid") should never be changed (changing it will break backwards compatibility completely).
+## Spawner
+![](https://i.ibb.co/GQ9bPWb7/spawns.png)
 
-There are two public methods on the ServerSync.ConfigSync class:
+- change spawn tables
+- change spawn intervals, trigger distance, caps, level range, respawn time
+- apply location-scoped spawner overrides with top-level `location`
+- ExpandWorldData compatible
+- `DNS_spawner.locations.reference.yml` exists because many spawners are dependent on locations
 
-- `AddConfigEntry<T>(ConfigEntry<T> configEntry)`
+## SpawnSystem
+You can see many vertical lines on above image. Those are SpawnSystems
+- biome/world spawn rules
+- global-key-gated spawning
+- time-of-day spawn rules
+- world-level conditional behavior
+- ExpandWorldData compatible (Same system with ExpandWorldSpawn just that format is different)
+- This domain is authoritative and replaces the live `SpawnSystem` table with the rows you define.
+  ![](https://i.ibb.co/wZ4BfJF1/spawnsystem.png)
+- Above image is explanation of how spawnsystem works in valheim
 
-  Registers a BepInEx ConfigEntry to be synchronized.
+## Workflow
 
-- `AddLockingConfigEntry<T>(ConfigEntry<T> lockingConfig) where T : IConvertible`
+1. Open `BepInEx/config/DropNSpawn/`.
+2. Use the generated `.reference.yml` files to find real prefab names and current values.
+3. Copy only the rows you want to change into `DNS_<domain>.yml` or `DNS_<domain>_*.yml`.
+4. Save the YAML file. DropNSpawn reloads loaded YAML at runtime.
 
-  Registers a BepInEx ConfigEntry to be synchronized, whose value determines whether the config is locked. If the value is zero when converted to integer, the config is not locked. Otherwise it is locked.
-  This method must be called at most once. If not called at all, the config will never be locked.
+Generated samples live in `BepInEx/config/DropNSpawn/examples/`. They are safe examples until you copy them into an active override file or rename them to a loaded `DNS_<domain>_*.yml` file.
 
-Useful properties:
+## YAML Files
 
-- `static bool ProcessingServerUpdate`
+Loaded override files:
 
-  The mod is receiving and applying configs from the server. Used internally to avoid config writing loops.
+- `DNS_<domain>.yml`
+- `DNS_<domain>.yaml`
+- `DNS_<domain>_*.yml`
+- `DNS_<domain>_*.yaml`
 
-- `bool IsSourceOfTruth`
+Generated helper files:
 
-  Whether the local config is currently being used. False if a remote config is currently applied.
+- `DNS_<domain>.reference.yml` shows current game data and prefab names.
+- `DNS_object.locations.reference.yml` shows which location roots contain object prefabs.
+- `DNS_spawner.locations.reference.yml` shows location context for spawner rules.
+- `DNS_<domain>.full.yml` is an exhaustive scaffold written by `dns:full`; it is not loaded.
 
-Additionally, there is a class `ServerSync.CustomSyncedValue<T>(ConfigSync, string Identifier, T value = default)` to synchronize arbitrary data (more precisely: all data which Valheims native serialization supports).
-This class registers itself to the passed ConfigSync instance upon instantiation.
-It provides a Value property and a ValueChanged event handler.
-The Identifier must be unique for the given ConfigSync instance.
+Use one primary file per domain when possible. Supplemental files are useful for splitting large configs by biome, progression tier, or feature.
 
+## Reference Updates
 
-Handy config function
----------------------
+`Reference Update Mode` controls generated reference files.
 
-To avoid manually adding each config entry to the ConfigSync instance, I propose to add a simple wrapper `config()` (with the same signature as `Config.Bind()`) to your UnityBasePlugin class:
+- `AutoUpdate`: creates missing reference files and updates most existing reference files automatically.
+- `ManualUpdate`: creates missing reference files, but updates existing reference files only when you run `dns:reference`.
 
-```
-ConfigEntry<T> config<T>(string group, string name, T value, ConfigDescription description, bool synchronizedSetting = true)
-{
-    ConfigEntry<T> configEntry = Config.Bind(group, name, value, description);
+Notes:
 
-    SyncedConfigEntry<T> syncedConfigEntry = configSync.AddConfigEntry(configEntry);
-    syncedConfigEntry.SynchronizedConfig = synchronizedSetting;
+- `DNS_spawnsystem.reference.yml` is manual only. Run `dns:reference spawnsystem`.
+- `DNS_spawner.locations.reference.yml` is auto-created when missing, but not auto-updated afterward.
 
-    return configEntry;
-}
+## Console Commands
 
-ConfigEntry<T> config<T>(string group, string name, T value, string description, bool synchronizedSetting = true) => config(group, name, value, new ConfigDescription(description), synchronizedSetting);
-```
+- `dns:reference [object|character|spawner|location|spawnsystem|all]`
+  Regenerates reference files.
+- `dns:full [object|character|spawner|location|spawnsystem|all]`
+  Writes non-loaded full scaffold files.
+- `dns:inspect spawner`
+  Shows the current or nearest spawner target and resolved location selector context.
+- `dns:inspect bossstone`
+  Shows per-player boss stone state for the aimed target.
+- `dns:bossstone reset <exactPlayerName>`
+  Admin command that resets per-player boss stone state for one player.
+
+## Useful Config
+
+Most server-facing settings are synced from the server.
+
+- `Enable Object Overrides`
+- `Enable Character Overrides`
+- `Enable Spawner Overrides`
+- `Enable Location Overrides`
+- `Enable SpawnSystem Overrides`
+- `Default SpawnArea Max Total Spawns`
+- `Afternoon Start Fraction`
+- `Enable Runestone Global Pins`
+- `Show LocationProxy Offering Bowl Hover Info`
+- `Per Player Boss Stones`
+- `Remote Forsaken Power Selection`
+- `Enable Boss Tamed Pressure`
+- `Enable Same Boss Duplicate Block`
+- `Default Despawn Range`
+- `Default Despawn Delay Seconds`
+- `Global Drop In Stack`
+- `Drop In Stack Blacklist`
+- `One Per Player Nearby Range`
+- `One Per Player Nearby Range Living Players Only`
+
+Client-only settings include `Reference Update Mode`, diagnostics toggles, and `Rotate Forsaken Power Shortcut`.
+
+## Compatibility
+
+If another mod fully owns the same system, disable the overlapping DropNSpawn domain instead of stacking both.
+
+- `VNEI`: DropNSpawn character drops are exposed for normal lookup.
+- `CLLC`: CLLC effects can be used in supported character and spawn conditions/modifiers.
+- `MonsterDB`: overlaps with `character` and `spawnsystem`.
+- `Drop That!`: overlaps with `object` and `character`.
+- `Spawn That!`: overlaps with `spawner` and `spawnsystem`.
+- `Expand World Spawns`: overlaps with `spawnsystem`.
+- `Spawner Tweaks`: usually compatible, but disable overlapping DropNSpawn domains or Spawner Tweaks features when both edit the same object, altar, item stand, spawn point, or spawner.
+
+## Helpful Mods
+
+- `ESP` for spawners, spawn points, and object info
+- `XRayVision` for object components
+- `Infinity Hammer` for placing and removing test objects

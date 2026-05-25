@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <OutputType>Library</OutputType>
+    <AssemblyName>MonstrumLocationManagerFix</AssemblyName>
+    <RootNamespace>MonstrumLocationManagerFix</RootNamespace>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <PackageId>MonstrumLocationManagerFix</PackageId>
+    <Authors>sighsorry</Authors>
+    <Company>sighsorry</Company>
+    <Product>MonstrumLocationManagerFix</Product>
+    <Description>Applies runtime compatibility fixes for Therzie Monstrum location registration and Expand World Data ghost cleanup.</Description>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <ValheimRoot Condition="'$(ValheimRoot)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Valheim</ValheimRoot>
+    <BepInExCorePath>$(ValheimRoot)\BepInEx\core</BepInExCorePath>
+    <ValheimManagedPath>$(ValheimRoot)\valheim_Data\Managed</ValheimManagedPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="0Harmony">
+      <HintPath>$(BepInExCorePath)\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="BepInEx">
+      <HintPath>$(BepInExCorePath)\BepInEx.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine">
+      <HintPath>$(ValheimManagedPath)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.CoreModule">
+      <HintPath>$(ValheimManagedPath)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+</Project>

@@ -1,0 +1,256 @@
+using System.Text;
+using System.Text.Json;
+
+namespace DropNSpawn.CodeGen;
+
+internal static class Program
+{
+    private static int Main(string[] args)
+    {
+        try
+        {
+            CodeGenArguments options = CodeGenArguments.Parse(args);
+            string projectDir = Path.GetFullPath(options.ProjectDir);
+            string specPath = Path.Combine(projectDir, "codegen", "transport-schema.json");
+            if (!File.Exists(specPath))
+            {
+                throw new FileNotFoundException("Transport schema spec was not found.", specPath);
+            }
+
+            TransportSpec spec = LoadSpec(specPath);
+            Dictionary<string, string> outputs = new(StringComparer.OrdinalIgnoreCase)
+            {
+                [Path.Combine(projectDir, "Generated", "Transport", "GeneratedValueCodecs.generated.cs")] = RenderValueCodecs(spec),
+                [Path.Combine(projectDir, "Generated", "Transport", "GeneratedEntrySchemas.generated.cs")] = RenderEntrySchemas(spec)
+            };
+
+            bool hasChanges = false;
+            foreach ((string path, string content) in outputs)
+            {
+                bool changed = options.Mode == CodeGenMode.Verify
+                    ? VerifyFileContent(path, content)
+                    : WriteFileIfChanged(path, content);
+                hasChanges |= changed;
+            }
+
+            if (options.Mode == CodeGenMode.Verify && hasChanges)
+            {
+                Console.Error.WriteLine("Generated transport files are out of date. Run the generator in Generate mode.");
+                return 1;
+            }
+
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex.ToString());
+            return 1;
+        }
+    }
+
+    private static TransportSpec LoadSpec(string specPath)
+    {
+        JsonSerializerOptions options = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
+
+        using FileStream stream = File.OpenRead(specPath);
+        return JsonSerializer.Deserialize<TransportSpec>(stream, options)
+               ?? throw new InvalidOperationException("Failed to deserialize transport schema spec.");
+    }
+
+    private static string RenderValueCodecs(TransportSpec spec)
+    {
+        StringBuilder builder = CreateFileBuilder("Generated value codecs");
+        builder.AppendLine("namespace DropNSpawn;");
+        builder.AppendLine();
+        builder.AppendLine("internal static partial class NetworkPayloadSyncSupport");
+        builder.AppendLine("{");
+        foreach (ValueCodecSpec codec in spec.ValueCodecs)
+        {
+            string backingFieldName = CreateBackingFieldName(codec.Name);
+            builder.AppendLine($"    private static ValueCodec<{codec.TypeName}> {backingFieldName};");
+            builder.AppendLine($"    private static ValueCodec<{codec.TypeName}> {codec.Name} =>");
+            builder.AppendLine($"        {backingFieldName} ??=");
+            builder.AppendLine("            new(");
+            builder.AppendLine($"                {codec.SignatureWriterExpression},");
+            builder.AppendLine($"                {codec.PayloadWriterExpression},");
+            builder.AppendLine($"                {codec.PayloadReaderExpression},");
+            builder.AppendLine($"                {codec.CloneExpression});");
+            builder.AppendLine();
+        }
+
+        builder.AppendLine("}");
+        return builder.ToString();
+    }
+
+    private static string RenderEntrySchemas(TransportSpec spec)
+    {
+        StringBuilder builder = CreateFileBuilder("Generated entry transport schemas");
+        builder.AppendLine("namespace DropNSpawn;");
+        builder.AppendLine();
+        builder.AppendLine("internal static partial class NetworkPayloadSyncSupport");
+        builder.AppendLine("{");
+        foreach (EntrySchemaSpec schema in spec.EntrySchemas)
+        {
+            builder.AppendLine($"    private static EntryTransportSchema<{schema.EntryTypeName}> {schema.MethodName}()");
+            builder.AppendLine("    {");
+            builder.AppendLine("        return new(");
+            builder.AppendLine($"            {schema.DtoVersionExpression},");
+            builder.AppendLine($"            {schema.CreateEntryExpression},");
+            for (int index = 0; index < schema.Fields.Count; index++)
+            {
+                string suffix = index == schema.Fields.Count - 1 ? string.Empty : ",";
+                builder.AppendLine($"            {schema.Fields[index].Expression}{suffix}");
+            }
+
+            builder.AppendLine("        );");
+            builder.AppendLine("    }");
+            builder.AppendLine();
+        }
+
+        builder.AppendLine("}");
+        return builder.ToString();
+    }
+
+    private static StringBuilder CreateFileBuilder(string description)
+    {
+        StringBuilder builder = new();
+        builder.AppendLine("// <auto-generated />");
+        builder.AppendLine($"// {description}. Do not edit by hand.");
+        builder.AppendLine();
+        return builder;
+    }
+
+    private static string CreateBackingFieldName(string propertyName)
+    {
+        if (string.IsNullOrEmpty(propertyName))
+        {
+            throw new ArgumentException("Value codec name must not be empty.", nameof(propertyName));
+        }
+
+        return "_" + char.ToLowerInvariant(propertyName[0]) + propertyName[1..];
+    }
+
+    private static bool WriteFileIfChanged(string path, string content)
+    {
+        string normalizedContent = NormalizeContent(content);
+        string directoryPath = Path.GetDirectoryName(path)
+                               ?? throw new InvalidOperationException($"Generated output path '{path}' does not have a directory.");
+        Directory.CreateDirectory(directoryPath);
+
+        if (File.Exists(path))
+        {
+            string existingContent = NormalizeContent(File.ReadAllText(path));
+            if (string.Equals(existingContent, normalizedContent, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        File.WriteAllText(path, normalizedContent, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+        return true;
+    }
+
+    private static bool VerifyFileContent(string path, string content)
+    {
+        if (!File.Exists(path))
+        {
+            return true;
+        }
+
+        string existingContent = NormalizeContent(File.ReadAllText(path));
+        string expectedContent = NormalizeContent(content);
+        return !string.Equals(existingContent, expectedContent, StringComparison.Ordinal);
+    }
+
+    private static string NormalizeContent(string content)
+    {
+        string normalized = content.Replace("\r\n", "\n");
+        if (!normalized.EndsWith("\n", StringComparison.Ordinal))
+        {
+            normalized += "\n";
+        }
+
+        return normalized.Replace("\n", Environment.NewLine);
+    }
+
+    private sealed class CodeGenArguments
+    {
+        public string ProjectDir { get; private set; } = ".";
+        public CodeGenMode Mode { get; private set; } = CodeGenMode.Generate;
+
+        public static CodeGenArguments Parse(string[] args)
+        {
+            CodeGenArguments parsed = new();
+            for (int index = 0; index < args.Length; index++)
+            {
+                string argument = args[index];
+                switch (argument)
+                {
+                    case "--project-dir":
+                        parsed.ProjectDir = RequireValue(args, ref index, argument);
+                        break;
+                    case "--mode":
+                        string modeValue = RequireValue(args, ref index, argument);
+                        parsed.Mode = Enum.TryParse<CodeGenMode>(modeValue, ignoreCase: true, out CodeGenMode mode)
+                            ? mode
+                            : throw new ArgumentOutOfRangeException(nameof(args), modeValue, "Unsupported code generation mode.");
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(args), argument, "Unsupported argument.");
+                }
+            }
+
+            return parsed;
+        }
+
+        private static string RequireValue(string[] args, ref int index, string argumentName)
+        {
+            if (index + 1 >= args.Length)
+            {
+                throw new ArgumentException($"Argument '{argumentName}' requires a value.", nameof(args));
+            }
+
+            index++;
+            return args[index];
+        }
+    }
+
+    private enum CodeGenMode
+    {
+        Generate,
+        Verify
+    }
+
+    private sealed class TransportSpec
+    {
+        public List<ValueCodecSpec> ValueCodecs { get; set; } = new();
+        public List<EntrySchemaSpec> EntrySchemas { get; set; } = new();
+    }
+
+    private sealed class ValueCodecSpec
+    {
+        public string Name { get; set; } = "";
+        public string TypeName { get; set; } = "";
+        public string SignatureWriterExpression { get; set; } = "";
+        public string PayloadWriterExpression { get; set; } = "";
+        public string PayloadReaderExpression { get; set; } = "";
+        public string CloneExpression { get; set; } = "";
+    }
+
+    private sealed class EntrySchemaSpec
+    {
+        public string MethodName { get; set; } = "";
+        public string EntryTypeName { get; set; } = "";
+        public string DtoVersionExpression { get; set; } = "";
+        public string CreateEntryExpression { get; set; } = "";
+        public List<EntryFieldSpec> Fields { get; set; } = new();
+    }
+
+    private sealed class EntryFieldSpec
+    {
+        public string Expression { get; set; } = "";
+    }
+}
