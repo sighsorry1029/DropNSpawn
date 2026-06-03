@@ -33,7 +33,7 @@ internal static partial class SpawnSystemManager
         yield return "    distanceFromCenter: 0~0 # ex) 0~10000 # Range in meters from the world center # 0~0 leaves the native distance check effectively unconstrained";
         yield return "    biomes: [Meadows] # Allowed spawn biomes # Expand World Data custom biome names and numeric biome masks also work when EWD is installed";
         yield return "    biomeAreas: [Everything] # Allowed values: Edge, Median, Everything # Edge = biome border band # Median = biome interior # Everything = both";
-        yield return "    timeOfDay: null # ex) [day, night] # [day, afternoon, night] # day contains afternoon";
+        yield return "    timeOfDay: null # ex) [day, night]";
         yield return "    requiredEnvironments: [] # ex) [Rain, Clear] # Allowed environment names";
         yield return "    requiredGlobalKey: '' # ex) defeated_gdking # Native default is '' # Supports 'key 10' numeric syntax too";
         yield return "    inLava: false # True = lava only # False = outside lava only";
@@ -123,7 +123,7 @@ internal static partial class SpawnSystemManager
         AppendTemplateComment(builder, "enabled controls the native SpawnSystem enabled flag on that row. Delete a row from this file to remove it from the final authoritative table.");
         AppendTemplateComment(builder, "Rows use grouped blocks: spawnSystem = native spawn rule, conditions = selectors and limits, modifiers = post-spawn effects.");
         AppendTemplateComment(builder, "conditions.biomes also accepts Expand World Data custom biome names and numeric biome masks when Expand World Data is installed.");
-        AppendTemplateComment(builder, "timeOfDay uses list syntax such as [day], [afternoon], [night], or [day, night].");
+        AppendTemplateComment(builder, "timeOfDay uses list syntax such as [day], [night], or [day, night].");
         AppendTemplateComment(builder, "requiredGlobalKey also supports 'key 10' to require at least that numeric value and consume it after each successful spawn.");
         AppendTemplateComment(builder, "modifiers.data, modifiers.faction, modifiers.fields, and modifiers.objects require Expand World Data. modifiers.data references an Expand World Data data entry name.");
         AppendTemplateComment(builder, "objects entries use the upstream format Prefab,posX,posZ,posY,chance,data.");

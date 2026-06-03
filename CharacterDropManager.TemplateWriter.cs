@@ -22,7 +22,7 @@ internal static partial class CharacterDropManager
         AppendTemplateLine(builder, 2, "distanceFromCenter: null # ex) 0~10000 # Range in meters from the world center");
         AppendTemplateLine(builder, 2, "biomes: [] # ex) [BlackForest, Mistlands]");
         AppendTemplateLine(builder, 2, "locations: [] # ex) [Hildir_camp]");
-        AppendTemplateLine(builder, 2, "timeOfDay: null # ex) [day, afternoon, night] # day contains afternoon");
+        AppendTemplateLine(builder, 2, "timeOfDay: null # ex) [day, night]");
         AppendTemplateLine(builder, 2, "requiredEnvironments: [] # ex) [Clear, Rain]");
         AppendTemplateLine(builder, 2, "requiredGlobalKeys: [] # ex) [defeated_eikthyr, defeated_gdking]");
         AppendTemplateLine(builder, 2, "forbiddenGlobalKeys: [] # ex) [nomap, defeated_bonemass]");

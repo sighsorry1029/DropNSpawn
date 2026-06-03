@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using HarmonyLib;
 using UnityEngine;
 
@@ -35,25 +34,12 @@ internal static class LocationOnDestroyPatch
 internal static class LocationProxySpawnLocationPatch
 {
     private static readonly AccessTools.FieldRef<LocationProxy, GameObject> InstanceRef = AccessTools.FieldRefAccess<LocationProxy, GameObject>("m_instance");
-    private static readonly Dictionary<int, int> SpawnCountsByProxy = new();
 
     private static void Postfix(LocationProxy __instance, bool __result)
     {
         if (!__result)
         {
             return;
-        }
-
-        int spawnCount = 1;
-        if (PluginSettingsFacade.IsOfferingBowlDiagnosticsEnabled() && __instance != null)
-        {
-            int proxyId = __instance.GetInstanceID();
-            if (SpawnCountsByProxy.TryGetValue(proxyId, out int previousCount))
-            {
-                spawnCount = previousCount + 1;
-            }
-
-            SpawnCountsByProxy[proxyId] = spawnCount;
         }
 
         if (__instance != null &&
@@ -75,10 +61,6 @@ internal static class LocationProxySpawnLocationPatch
         }
 
         GameObject? instance = __instance != null ? InstanceRef(__instance) : null;
-        if (PluginSettingsFacade.IsOfferingBowlDiagnosticsEnabled())
-        {
-            LocationManager.LogLocationProxySpawnDiagnostics(__instance, instance, spawnCount, __result);
-        }
 
         if (spawnerDomainEnabled)
         {
@@ -189,7 +171,6 @@ internal static class OfferingBowlAwakeRegistryPatch
     private static void Postfix(OfferingBowl __instance)
     {
         OfferingBowlHoverInfoFormatter.RegisterOfferingBowl(__instance);
-        LocationManager.LogOfferingBowlDiagnostics(__instance, "awake");
         if (!PluginSettingsFacade.IsLocationDomainEnabled() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
         {
             return;
@@ -199,30 +180,6 @@ internal static class OfferingBowlAwakeRegistryPatch
         {
             LocationManager.QueueLooseOfferingBowlOverride(__instance);
         }
-    }
-}
-
-[HarmonyPatch(typeof(OfferingBowl), "Start")]
-internal static class OfferingBowlStartDiagnosticsPatch
-{
-    private static readonly Dictionary<int, int> StartCountsByOfferingBowl = new();
-
-    private static void Prefix(OfferingBowl __instance)
-    {
-        if (!PluginSettingsFacade.IsOfferingBowlDiagnosticsEnabled() || __instance == null)
-        {
-            return;
-        }
-
-        int instanceId = __instance.GetInstanceID();
-        int nextCount = 1;
-        if (StartCountsByOfferingBowl.TryGetValue(instanceId, out int previousCount))
-        {
-            nextCount = previousCount + 1;
-        }
-
-        StartCountsByOfferingBowl[instanceId] = nextCount;
-        LocationManager.LogOfferingBowlDiagnostics(__instance, $"start#{nextCount.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
     }
 }
 
@@ -265,9 +222,8 @@ internal static class OfferingBowlInteractRespawnPatch
 [HarmonyPatch(typeof(OfferingBowl), nameof(OfferingBowl.UseItem))]
 internal static class OfferingBowlUseItemRespawnPatch
 {
-    private static bool Prefix(OfferingBowl __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result, ref int __state)
+    private static bool Prefix(OfferingBowl __instance, Humanoid user, ItemDrop.ItemData item, ref bool __result)
     {
-        __state = -1;
         if (!PluginSettingsFacade.IsLocationDomainEnabled())
         {
             return true;
@@ -276,15 +232,6 @@ internal static class OfferingBowlUseItemRespawnPatch
         if (__instance.m_useItemStands)
         {
             return true;
-        }
-
-        if (PluginSettingsFacade.IsOfferingBowlDiagnosticsEnabled() &&
-            user != null &&
-            item != null &&
-            !string.IsNullOrEmpty(item.m_shared?.m_name))
-        {
-            string itemName = item.m_shared!.m_name;
-            __state = user.GetInventory().CountItems(itemName);
         }
 
         if (LocationManager.HasRuntimeLocationAliasDemand())
@@ -301,30 +248,6 @@ internal static class OfferingBowlUseItemRespawnPatch
         __result = true;
         LocationManager.NotifyOfferingBowlBlocked(__instance, user, blockResult);
         return false;
-    }
-
-    private static void Postfix(OfferingBowl __instance, Humanoid user, ItemDrop.ItemData item, bool __result, int __state)
-    {
-        if (!PluginSettingsFacade.IsOfferingBowlDiagnosticsEnabled() ||
-            __instance == null ||
-            __instance.m_useItemStands ||
-            user == null ||
-            item == null ||
-            string.IsNullOrEmpty(item.m_shared?.m_name))
-        {
-            return;
-        }
-
-        string itemName = item.m_shared!.m_name;
-        int countAfter = user.GetInventory().CountItems(itemName);
-        LocationManager.LogOfferingBowlItemFlowDiagnostics(
-            __instance,
-            user,
-            item,
-            "UseItem",
-            __state,
-            countAfter,
-            __result);
     }
 }
 
@@ -458,26 +381,9 @@ internal static class OfferingBowlRemoveBossSpawnInventoryItemsRpcPatch
 
         ItemDrop.ItemData? usedSpawnItem = UsedSpawnItemRef(__instance) ?? __instance.m_bossItem?.m_itemData;
         string? itemName = usedSpawnItem?.m_shared?.m_name;
-        int countBefore = -1;
         if (!string.IsNullOrEmpty(itemName))
         {
-            countBefore = interactUser.GetInventory().CountItems(itemName);
             interactUser.GetInventory().RemoveItem(itemName, __instance.m_bossItems);
-        }
-
-        int countAfter = !string.IsNullOrEmpty(itemName)
-            ? interactUser.GetInventory().CountItems(itemName)
-            : -1;
-
-        if (PluginSettingsFacade.IsOfferingBowlDiagnosticsEnabled())
-        {
-            LocationManager.LogOfferingBowlItemFlowDiagnostics(
-                __instance,
-                interactUser,
-                usedSpawnItem,
-                "RPC_RemoveBossSpawnInventoryItems",
-                countBefore,
-                countAfter);
         }
 
         if (usedSpawnItem != null)

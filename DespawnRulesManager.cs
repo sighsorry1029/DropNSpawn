@@ -27,7 +27,6 @@ internal static class DespawnRulesManager
     private const float DespawnCountdownCheckIntervalSeconds = 0.5f;
     private const float DespawnIdleCheckIntervalSeconds = 1f;
     private const float DespawnTrackingRefreshIntervalSeconds = 1f;
-    private const float DespawnIneligibleProducerSummaryIntervalSeconds = 5f;
     private const int DespawnFinalCountdownSeconds = 5;
     private const int DespawnReminderIntervalSeconds = 5;
     private static readonly Dictionary<ZDOID, TrackedDespawnState> TrackedDespawnTargets = new();
@@ -40,37 +39,13 @@ internal static class DespawnRulesManager
     private static readonly List<ZDOID> PendingDespawnDetachPersistRemovals = new();
     private static readonly List<ZDO> BootstrapScanBuffer = new();
     private static float _nextDespawnTrackingRefreshAt;
-    private static float _nextIneligibleProducerSummaryAt;
-    private static bool _loggedServerTickActivation;
     private static bool _pendingBootstrapScan = true;
-    private static int _createdZdoProducerQueuedCount;
-    private static int _createdZdoProducerDeferredCount;
-    private static int _createdZdoProducerDeferredExpiredCount;
-    private static int _skippedCreatedZdoProducerCount;
-    private static int _skippedLoadedCharacterProducerCount;
-    private static int _skippedDetachPersistProducerCount;
-    private static int _loadedCharacterProducerAttemptCount;
-    private static int _loadedCharacterProducerQueuedCount;
-    private static int _loadedCharacterProducerMissingCharacterCount;
-    private static int _loadedCharacterProducerDeadCharacterCount;
-    private static int _loadedCharacterProducerMissingNviewCount;
-    private static int _loadedCharacterProducerInvalidNviewCount;
-    private static int _loadedCharacterProducerMissingZdoCount;
-    private static int _loadedCharacterProducerDeadZdoCount;
-    private static int _loadedCharacterProducerMissingPrefabNameCount;
 
     private enum DespawnObservationSource
     {
         BootstrapScan = 0,
         CreatedZdo = 1,
         LoadedCharacter = 2
-    }
-
-    private enum DespawnProducerSkipSource
-    {
-        CreatedZdo = 0,
-        LoadedCharacter = 1,
-        DetachPersist = 2
     }
 
     private enum CreatedZdoObservationDecision
@@ -243,20 +218,10 @@ internal static class DespawnRulesManager
             }
 
             _nextDespawnTrackingRefreshAt = 0f;
-            ResetSkippedIneligibleProducerDiagnostics();
-            _loggedServerTickActivation = false;
             _pendingBootstrapScan = true;
             return;
         }
 
-        if (!_loggedServerTickActivation)
-        {
-            LogDiagnostics(
-                $"Despawn server tick active. players={Player.GetAllPlayers().Count} characterDomainEnabled={PluginSettingsFacade.IsCharacterDomainEnabled()} trackedCharacters={TrackedDespawnTargets.Count}.");
-            _loggedServerTickActivation = true;
-        }
-
-        ProcessSkippedIneligibleProducerDiagnostics(Time.time);
         ApplyPendingDespawnObservations();
 
         float nowRealtime = Time.time;
@@ -360,10 +325,6 @@ internal static class DespawnRulesManager
     internal static void MarkBootstrapScanDirty(string reason)
     {
         _pendingBootstrapScan = true;
-        if (!string.IsNullOrWhiteSpace(reason))
-        {
-            LogDiagnostics($"Marked despawn bootstrap scan dirty. reason={reason}.");
-        }
     }
 
     private static bool RunPendingBootstrapScan()
@@ -379,7 +340,6 @@ internal static class DespawnRulesManager
             return true;
         }
 
-        LogDiagnostics($"Running despawn bootstrap scan for {prefabs.Count} prefab(s).");
         foreach (string prefabName in prefabs)
         {
             QueueBootstrapScanDespawnObservations(prefabName);
@@ -407,7 +367,6 @@ internal static class DespawnRulesManager
         CreatedZdoObservationDecision queueDecision = GetCreatedZdoObservationDecision(authoritativePrefabHash, prefabHashHint);
         if (queueDecision == CreatedZdoObservationDecision.Ineligible)
         {
-            RecordSkippedIneligibleProducer(DespawnProducerSkipSource.CreatedZdo);
             return;
         }
 
@@ -417,7 +376,6 @@ internal static class DespawnRulesManager
                 prefabHash,
                 "",
                 DespawnObservationSource.CreatedZdo));
-        _createdZdoProducerQueuedCount++;
     }
 
     private static void ApplyPendingDespawnObservations()
@@ -528,7 +486,6 @@ internal static class DespawnRulesManager
 
         if (!ShouldQueueDespawnObservation(zdo.GetPrefab(), Utils.GetPrefabName(character.gameObject)))
         {
-            RecordSkippedIneligibleProducer(DespawnProducerSkipSource.DetachPersist);
             return;
         }
 
@@ -547,16 +504,13 @@ internal static class DespawnRulesManager
             return;
         }
 
-        _loadedCharacterProducerAttemptCount++;
         if (character == null || character.gameObject == null)
         {
-            _loadedCharacterProducerMissingCharacterCount++;
             return;
         }
 
         if (character.IsDead())
         {
-            _loadedCharacterProducerDeadCharacterCount++;
             return;
         }
 
@@ -564,38 +518,32 @@ internal static class DespawnRulesManager
         string prefabName = Utils.GetPrefabName(character.gameObject);
         if (nview == null)
         {
-            _loadedCharacterProducerMissingNviewCount++;
             return;
         }
 
         if (!nview.IsValid())
         {
-            _loadedCharacterProducerInvalidNviewCount++;
             return;
         }
 
         ZDO? zdo = nview.GetZDO();
         if (zdo == null)
         {
-            _loadedCharacterProducerMissingZdoCount++;
             return;
         }
 
         if (IsDeadZdo(zdo.m_uid))
         {
-            _loadedCharacterProducerDeadZdoCount++;
             return;
         }
 
         if (string.IsNullOrWhiteSpace(prefabName))
         {
-            _loadedCharacterProducerMissingPrefabNameCount++;
             return;
         }
 
         if (!ShouldQueueDespawnObservation(zdo.GetPrefab(), prefabName))
         {
-            RecordSkippedIneligibleProducer(DespawnProducerSkipSource.LoadedCharacter);
             return;
         }
 
@@ -605,8 +553,6 @@ internal static class DespawnRulesManager
                 zdo.GetPrefab(),
                 prefabName,
                 DespawnObservationSource.LoadedCharacter));
-        _loadedCharacterProducerQueuedCount++;
-        LogDiagnostics($"Queued loaded character observation for despawn tracking zdo={zdo.m_uid} prefab={prefabName} prefabHash={zdo.GetPrefab()}.");
     }
 
     private static void ProcessTrackedDespawnTarget(
@@ -618,7 +564,6 @@ internal static class DespawnRulesManager
         Character? loadedCharacter = TryGetLoadedTrackedCharacter(zdo);
         if (loadedCharacter != null && loadedCharacter.GetHealth() <= 0f)
         {
-            LogDiagnostics($"Dropping tracked despawn target zdo={zdoId} because loaded character is already dead.");
             PendingDespawnRemovals.Add(zdoId);
             return;
         }
@@ -650,8 +595,6 @@ internal static class DespawnRulesManager
                 }
 
                 SendDespawnMessage(cancelRecipientId, BuildDespawnCanceledMessage(state.DisplayName));
-                LogDiagnostics(
-                    $"Canceled despawn countdown zdo={zdoId} name={state.DisplayName} recipient={cancelRecipientId} position={FormatPosition(probePoint)}.");
             }
 
             state.ResetCountdown();
@@ -662,20 +605,12 @@ internal static class DespawnRulesManager
         if (state.NoPlayerSince < 0d)
         {
             StartDespawnCountdown(state, nowSeconds, despawnDelaySeconds);
-            LogDiagnostics(
-                $"Started despawn countdown zdo={zdoId} name={state.DisplayName} delay={despawnDelaySeconds:0.##} loaded={loadedCharacter != null} position={FormatPosition(probePoint)}.");
         }
 
         double elapsedSeconds = nowSeconds - state.NoPlayerSince;
         if (elapsedSeconds >= despawnDelaySeconds)
         {
-            LogDiagnostics(
-                $"Expiring despawn countdown zdo={zdoId} name={state.DisplayName} elapsed={elapsedSeconds:0.##} delay={despawnDelaySeconds:0.##} loaded={loadedCharacter != null} refunds={state.Refunds.Count} position={FormatPosition(probePoint)}.");
-            if (!CharacterDropManager.TryExecuteConfiguredDespawnRefunds(probePoint, state.Refunds) &&
-                PluginSettingsFacade.IsDespawnDiagnosticsEnabled())
-            {
-                LogDiagnostics($"Configured despawn refund execution failed zdo={zdoId} name={state.DisplayName} position={probePoint.x:F1},{probePoint.y:F1},{probePoint.z:F1} refunds={state.Refunds.Count}.");
-            }
+            _ = CharacterDropManager.TryExecuteConfiguredDespawnRefunds(probePoint, state.Refunds);
             DespawnCleanupSupport.ApplyBeforeDestroy(zdo);
             zdo.SetOwner(ZDOMan.instance.m_sessionID);
             ZDOMan.instance.DestroyZDO(zdo);
@@ -719,8 +654,6 @@ internal static class DespawnRulesManager
             }
 
             PendingDespawnRemovals.Add(zdoId);
-            LogDiagnostics(
-                $"Stopped tracking despawn target because prefab '{state.PrefabName}' is no longer eligible under current despawn config zdo={zdoId}.");
         }
 
         FlushPendingDespawnRemovals();
@@ -813,16 +746,6 @@ internal static class DespawnRulesManager
         };
     }
 
-    private static string DescribeObservationSource(DespawnObservationSource source)
-    {
-        return source switch
-        {
-            DespawnObservationSource.LoadedCharacter => "loaded character",
-            DespawnObservationSource.CreatedZdo => "created ZDO",
-            _ => "bootstrap scan"
-        };
-    }
-
     private static ObservationApplicationResult ApplyQueuedObservation(
         PendingDespawnObservation observation,
         ZDO zdo,
@@ -848,15 +771,13 @@ internal static class DespawnRulesManager
         return ApplyObservation(
             zdo,
             observation.PrefabHashHint,
-            observation.PrefabNameHint,
-            DescribeObservationSource(observation.Source));
+            observation.PrefabNameHint);
     }
 
     private static TrackedDespawnState? ApplyObservation(
         ZDO zdo,
         int prefabHashHint,
-        string prefabNameHint,
-        string source)
+        string prefabNameHint)
     {
         if (!TryResolveObservationConfig(
                 zdo,
@@ -875,8 +796,7 @@ internal static class DespawnRulesManager
             zdo,
             rangeOverride,
             delayOverride,
-            refunds,
-            source);
+            refunds);
     }
 
     private static bool TryResolveObservationConfig(
@@ -922,10 +842,8 @@ internal static class DespawnRulesManager
         ZDO zdo,
         float? rangeOverride,
         float? delayOverride,
-        IReadOnlyCollection<DespawnRefundDrop> refunds,
-        string source)
+        IReadOnlyCollection<DespawnRefundDrop> refunds)
     {
-        bool wasTracked = TrackedDespawnTargets.ContainsKey(zdo.m_uid);
         TrackedDespawnState state = GetOrCreateTrackedDespawnState(zdo.m_uid);
         Character? loadedCharacter = TryGetLoadedTrackedCharacter(zdo);
         if (loadedCharacter != null)
@@ -937,12 +855,6 @@ internal static class DespawnRulesManager
         {
             state.UpdateFromZdoPrefab(prefabName, rangeOverride, delayOverride, refunds);
             PrimeTrackedDespawnInterestIfNeeded(state, zdo.GetPosition());
-        }
-
-        if (!wasTracked)
-        {
-            LogDiagnostics(
-                $"Tracking despawn target from {source} zdo={zdo.m_uid} name={state.DisplayName} prefab={prefabName} loaded={loadedCharacter != null} refunds={state.Refunds.Count} position={FormatPosition(zdo.GetPosition())}.");
         }
 
         ScheduleTrackedDespawnCheck(zdo.m_uid, state, GetCurrentDespawnClockSeconds());
@@ -982,8 +894,6 @@ internal static class DespawnRulesManager
         float despawnDelaySeconds = state.GetEffectiveDelaySeconds();
         StartDespawnCountdown(state, nowSeconds, despawnDelaySeconds);
         ScheduleTrackedDespawnCheck(persist.ZdoId, state, nowSeconds);
-        LogDiagnostics(
-            $"Started despawn countdown from ResetZDO path zdo={persist.ZdoId} name={state.DisplayName} range={despawnRange:0.##} delay={despawnDelaySeconds:0.##} position={FormatPosition(persist.ProbePoint)}.");
     }
 
     private static void StartDespawnCountdown(TrackedDespawnState state, double nowSeconds, float despawnDelaySeconds)
@@ -991,10 +901,6 @@ internal static class DespawnRulesManager
         state.NoPlayerSince = nowSeconds;
         state.CountdownRecipientPlayerId = GetCountdownRecipientPlayerId(state);
         state.LastAnnouncedRemainingSeconds = GetRemainingSeconds(despawnDelaySeconds, 0d);
-        if (state.CountdownRecipientPlayerId == 0L)
-        {
-            LogDiagnostics($"Started despawn countdown without message recipients name={state.DisplayName} prefab={state.PrefabName} delay={despawnDelaySeconds:0.##}.");
-        }
 
         if (despawnDelaySeconds > 0f && state.CountdownRecipientPlayerId != 0L)
         {
@@ -1021,8 +927,6 @@ internal static class DespawnRulesManager
         }
 
         state.LastInterestedPlayerId = interestedPlayerId;
-        LogDiagnostics(
-            $"Primed despawn message recipient name={state.DisplayName} recipient={interestedPlayerId} position={FormatPosition(point)}.");
     }
 
     private static long GetCountdownRecipientPlayerId(TrackedDespawnState state)
@@ -1159,7 +1063,6 @@ internal static class DespawnRulesManager
             : nowRealtime + CreatedZdoObservationRetryTimeoutSeconds;
         if (nowRealtime >= expireAt)
         {
-            _createdZdoProducerDeferredExpiredCount++;
             return false;
         }
 
@@ -1171,106 +1074,7 @@ internal static class DespawnRulesManager
             nowRealtime + CreatedZdoObservationRetryIntervalSeconds,
             expireAt,
             observation.RetryCount + 1);
-        if (observation.RetryCount == 0)
-        {
-            _createdZdoProducerDeferredCount++;
-        }
-
         return true;
-    }
-
-    private static void RecordSkippedIneligibleProducer(DespawnProducerSkipSource source)
-    {
-        switch (source)
-        {
-            case DespawnProducerSkipSource.CreatedZdo:
-                _skippedCreatedZdoProducerCount++;
-                break;
-            case DespawnProducerSkipSource.LoadedCharacter:
-                _skippedLoadedCharacterProducerCount++;
-                break;
-            case DespawnProducerSkipSource.DetachPersist:
-                _skippedDetachPersistProducerCount++;
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(source), source, null);
-        }
-    }
-
-    private static void ProcessSkippedIneligibleProducerDiagnostics(float nowRealtime)
-    {
-        if (!PluginSettingsFacade.IsDespawnDiagnosticsEnabled())
-        {
-            ResetSkippedIneligibleProducerDiagnostics();
-            _nextIneligibleProducerSummaryAt = nowRealtime + DespawnIneligibleProducerSummaryIntervalSeconds;
-            return;
-        }
-
-        if (_nextIneligibleProducerSummaryAt <= 0f)
-        {
-            _nextIneligibleProducerSummaryAt = nowRealtime + DespawnIneligibleProducerSummaryIntervalSeconds;
-            return;
-        }
-
-        if (_nextIneligibleProducerSummaryAt > nowRealtime)
-        {
-            return;
-        }
-
-        _nextIneligibleProducerSummaryAt = nowRealtime + DespawnIneligibleProducerSummaryIntervalSeconds;
-        int totalSkipped = _skippedCreatedZdoProducerCount + _skippedLoadedCharacterProducerCount + _skippedDetachPersistProducerCount;
-        bool hasCreatedZdoSummary =
-            _createdZdoProducerQueuedCount > 0 ||
-            _createdZdoProducerDeferredCount > 0 ||
-            _createdZdoProducerDeferredExpiredCount > 0;
-        if (totalSkipped <= 0)
-        {
-            if (!hasCreatedZdoSummary &&
-                _loadedCharacterProducerAttemptCount <= 0)
-            {
-                return;
-            }
-        }
-
-        if (hasCreatedZdoSummary)
-        {
-            LogDiagnostics(
-                $"Created-ZDO despawn producer over the last {DespawnIneligibleProducerSummaryIntervalSeconds:0.#}s: queued={_createdZdoProducerQueuedCount} deferred={_createdZdoProducerDeferredCount} expired={_createdZdoProducerDeferredExpiredCount} ineligible={_skippedCreatedZdoProducerCount}.");
-        }
-
-        if (totalSkipped > 0)
-        {
-            LogDiagnostics(
-                $"Skipped ineligible despawn producer candidates over the last {DespawnIneligibleProducerSummaryIntervalSeconds:0.#}s: createdZdo={_skippedCreatedZdoProducerCount} loadedCharacter={_skippedLoadedCharacterProducerCount} resetZdo={_skippedDetachPersistProducerCount}.");
-        }
-
-        if (_loadedCharacterProducerAttemptCount > 0)
-        {
-            LogDiagnostics(
-                $"Loaded-character despawn producer over the last {DespawnIneligibleProducerSummaryIntervalSeconds:0.#}s: attempts={_loadedCharacterProducerAttemptCount} queued={_loadedCharacterProducerQueuedCount} missingCharacter={_loadedCharacterProducerMissingCharacterCount} deadCharacter={_loadedCharacterProducerDeadCharacterCount} nviewMissing={_loadedCharacterProducerMissingNviewCount} nviewInvalid={_loadedCharacterProducerInvalidNviewCount} zdoMissing={_loadedCharacterProducerMissingZdoCount} deadZdo={_loadedCharacterProducerDeadZdoCount} prefabMissing={_loadedCharacterProducerMissingPrefabNameCount} ineligible={_skippedLoadedCharacterProducerCount}.");
-        }
-
-        ResetSkippedIneligibleProducerDiagnostics();
-    }
-
-    private static void ResetSkippedIneligibleProducerDiagnostics()
-    {
-        _nextIneligibleProducerSummaryAt = 0f;
-        _createdZdoProducerQueuedCount = 0;
-        _createdZdoProducerDeferredCount = 0;
-        _createdZdoProducerDeferredExpiredCount = 0;
-        _skippedCreatedZdoProducerCount = 0;
-        _skippedLoadedCharacterProducerCount = 0;
-        _skippedDetachPersistProducerCount = 0;
-        _loadedCharacterProducerAttemptCount = 0;
-        _loadedCharacterProducerQueuedCount = 0;
-        _loadedCharacterProducerMissingCharacterCount = 0;
-        _loadedCharacterProducerDeadCharacterCount = 0;
-        _loadedCharacterProducerMissingNviewCount = 0;
-        _loadedCharacterProducerInvalidNviewCount = 0;
-        _loadedCharacterProducerMissingZdoCount = 0;
-        _loadedCharacterProducerDeadZdoCount = 0;
-        _loadedCharacterProducerMissingPrefabNameCount = 0;
     }
 
     private static long QuantizeScheduledCheck(double scheduledTime)
@@ -1325,12 +1129,9 @@ internal static class DespawnRulesManager
             Player? fallbackPlayer = Player.GetPlayer(playerId);
             if (fallbackPlayer == null)
             {
-                LogDiagnostics($"Message skipped because server recipient could not be resolved. recipientId={playerId} message='{message}'.");
                 return;
             }
 
-            LogDiagnostics(
-                $"Message server fallback delivered locally. recipientId={playerId} name='{fallbackPlayer.GetPlayerName()}' characterId={fallbackPlayer.GetZDOID()} message='{message}'.");
             fallbackPlayer.Message(MessageHud.MessageType.TopLeft, message);
             return;
         }
@@ -1338,19 +1139,14 @@ internal static class DespawnRulesManager
         Player? player = Player.GetPlayer(playerId);
         if (player == null)
         {
-            LogDiagnostics($"Message skipped because recipient player could not be resolved. playerId={playerId} message='{message}'.");
             return;
         }
 
         if (player.gameObject == null || player.IsDead())
         {
-            LogDiagnostics(
-                $"Message skipped because recipient player is unavailable. playerId={playerId} name='{player.GetPlayerName()}' dead={player.IsDead()} message='{message}'.");
             return;
         }
 
-        LogDiagnostics(
-            $"Message delivered locally. playerId={playerId} name='{player.GetPlayerName()}' characterId={player.GetZDOID()} message='{message}'.");
         player.Message(MessageHud.MessageType.TopLeft, message);
     }
 
@@ -1388,10 +1184,6 @@ internal static class DespawnRulesManager
 
         if (IsValidMessageTargetPeerId(recipientId))
         {
-            string recipientName = ResolveRecipientName(recipientId);
-            bool peerReady = recipientId == ZNet.GetUID() || ZNet.instance?.GetPeer(recipientId)?.IsReady() == true;
-            LogDiagnostics(
-                $"Sending ShowMessage RPC. recipientId={recipientId} name='{recipientName}' peerReady={peerReady} via=recipientId message='{message}'.");
             ZRoutedRpc.instance.InvokeRoutedRPC(
                 recipientId,
                 "ShowMessage",
@@ -1402,11 +1194,8 @@ internal static class DespawnRulesManager
 
         Player? player = Player.GetPlayer(recipientId);
         if (player != null &&
-            TryResolveMessageTargetPeerId(player, out long targetPeerId, out string resolutionSource))
+            TryResolveMessageTargetPeerId(player, out long targetPeerId, out _))
         {
-            bool peerReady = targetPeerId == ZNet.GetUID() || ZNet.instance?.GetPeer(targetPeerId)?.IsReady() == true;
-            LogDiagnostics(
-                $"Sending ShowMessage RPC. recipientId={recipientId} name='{player.GetPlayerName()}' characterId={player.GetZDOID()} targetPeerId={targetPeerId} peerReady={peerReady} via={resolutionSource} message='{message}'.");
             ZRoutedRpc.instance.InvokeRoutedRPC(
                 targetPeerId,
                 "ShowMessage",
@@ -1482,22 +1271,6 @@ internal static class DespawnRulesManager
         return ZNet.instance?.GetPeer(peerId)?.IsReady() == true;
     }
 
-    private static string ResolveRecipientName(long recipientId)
-    {
-        if (recipientId == ZNet.GetUID())
-        {
-            return Player.m_localPlayer != null ? Player.m_localPlayer.GetPlayerName() : "local";
-        }
-
-        ZNetPeer? peer = ZNet.instance?.GetPeer(recipientId);
-        if (peer != null && !string.IsNullOrWhiteSpace(peer.m_playerName))
-        {
-            return peer.m_playerName;
-        }
-
-        return recipientId.ToString();
-    }
-
     private static string BuildDespawnStartMessage(string displayName, int remainingSeconds)
     {
         return $"{displayName} will despawn in {remainingSeconds}s unless someone returns.";
@@ -1538,30 +1311,4 @@ internal static class DespawnRulesManager
             : "Target";
     }
 
-    internal static bool IsManagedDespawnMessage(string? message)
-    {
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return false;
-        }
-
-        string text = message!;
-        return text.Contains(" will despawn in ", StringComparison.OrdinalIgnoreCase) ||
-               text.Contains(" despawn canceled.", StringComparison.OrdinalIgnoreCase);
-    }
-
-    internal static void LogDiagnostics(string message)
-    {
-        if (!PluginSettingsFacade.IsDespawnDiagnosticsEnabled())
-        {
-            return;
-        }
-
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"[Despawn] {message}");
-    }
-
-    private static string FormatPosition(Vector3 position)
-    {
-        return $"{position.x:0.##},{position.y:0.##},{position.z:0.##}";
-    }
 }

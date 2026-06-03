@@ -481,7 +481,6 @@ internal static partial class LocationManager
     private const string LocationProxyResolvedPrefabZdoKey = "DropNSpawn Location Prefab";
     private static readonly HashSet<string> InvalidEntryWarnings = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> DuplicateComponentWarnings = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> OfferingBowlDiagnosticLogs = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ItemStandDiagnosticLogs = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> LocationDiagnosticLogs = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> RedundantLocationConditionWarnings = new(StringComparer.OrdinalIgnoreCase);
@@ -1810,7 +1809,6 @@ internal static partial class LocationManager
         ActiveEntriesByPrefab.Clear();
         AuthoredItemStandSlotsByPrefab.Clear();
         LooseItemStandEntriesByPrefab.Clear();
-        OfferingBowlDiagnosticLogs.Clear();
         InvalidEntryWarnings.Clear();
         ItemStandDiagnosticLogs.Clear();
         LocationDiagnosticLogs.Clear();

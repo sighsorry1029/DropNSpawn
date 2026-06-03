@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -49,14 +48,8 @@ internal static partial class CharacterDropManager
             DropConfiguredItems(drops, centerPos, DespawnRefundDropArea);
             return true;
         }
-        catch (Exception ex)
+        catch
         {
-            if (PluginSettingsFacade.IsDespawnDiagnosticsEnabled())
-            {
-                DropNSpawnPlugin.DropNSpawnLogger.LogWarning(
-                    $"[Despawn] Failed to execute configured despawn refunds at {centerPos.x:F1},{centerPos.y:F1},{centerPos.z:F1}: {ex.Message}");
-            }
-
             return false;
         }
     }

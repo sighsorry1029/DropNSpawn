@@ -44,9 +44,6 @@ internal static class PluginSettingsFacade
     internal static bool IsRunestoneGlobalPinsEnabled() =>
         LocationRunestoneGlobalPinsConfig.IsEnabled();
 
-    internal static float GetAfternoonStartFraction() =>
-        PluginBoundSettings.AfternoonStartFraction?.Value ?? 0.5f;
-
     internal static KeyboardShortcut GetRotateForsakenPowerShortcut() =>
         PluginBoundSettings.RotateForsakenPowerShortcut?.Value ?? default;
 
@@ -89,26 +86,6 @@ internal static class PluginSettingsFacade
     internal static string GetYamlDomainFilePrefix(string domain)
     {
         return $"{DropNSpawnPlugin.YamlFilePrefix}_{domain}";
-    }
-
-    internal static bool IsSpawnSystemDiagnosticsEnabled()
-    {
-        return PluginBoundSettings.EnableSpawnSystemDiagnostics?.Value == DropNSpawnPlugin.Toggle.On;
-    }
-
-    internal static bool IsOfferingBowlDiagnosticsEnabled()
-    {
-        return PluginBoundSettings.EnableOfferingBowlDiagnostics?.Value == DropNSpawnPlugin.Toggle.On;
-    }
-
-    internal static bool IsBossStoneDiagnosticsEnabled()
-    {
-        return PluginBoundSettings.EnableBossStoneDiagnostics?.Value == DropNSpawnPlugin.Toggle.On;
-    }
-
-    internal static bool IsDespawnDiagnosticsEnabled()
-    {
-        return PluginBoundSettings.EnableDespawnDiagnostics?.Value == DropNSpawnPlugin.Toggle.On;
     }
 
     internal static string GetYamlDomainSupplementalPrefix(string domain)

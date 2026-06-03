@@ -54,13 +54,10 @@ internal sealed class TimeOfDayDefinition : IYamlConvertible
 
 internal static class TimeOfDayFormatting
 {
-    private const float DayStartFraction = 0.15f;
-    private const float NightStartFraction = 0.85f;
     private static readonly HashSet<string> InvalidTokenWarnings = new(StringComparer.OrdinalIgnoreCase);
     private static readonly string[] SupportedTokens =
     {
         "day",
-        "afternoon",
         "night"
     };
 
@@ -146,7 +143,7 @@ internal static class TimeOfDayFormatting
             return;
         }
 
-        allowDay = definition.Values.Any(IsDayScopedToken);
+        allowDay = definition.Values.Any(value => string.Equals(value, "day", StringComparison.OrdinalIgnoreCase));
         allowNight = definition.Values.Any(value => string.Equals(value, "night", StringComparison.OrdinalIgnoreCase));
     }
 
@@ -177,12 +174,7 @@ internal static class TimeOfDayFormatting
             return int.MinValue;
         }
 
-        if (EnvMan.IsNight())
-        {
-            return 0;
-        }
-
-        return MatchesConfiguredAfternoon() ? 2 : 1;
+        return EnvMan.IsNight() ? 0 : 1;
     }
 
     internal static string FormatInlineList(TimeOfDayDefinition? definition, TimeOfDayDefinition? fallback = null)
@@ -221,28 +213,9 @@ internal static class TimeOfDayFormatting
         return token switch
         {
             "day" => EnvMan.IsDay(),
-            "afternoon" => MatchesConfiguredAfternoon(),
             "night" => EnvMan.IsNight(),
             _ => false
         };
-    }
-
-    private static bool IsDayScopedToken(string token)
-    {
-        return token.Equals("day", StringComparison.OrdinalIgnoreCase) ||
-               token.Equals("afternoon", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool MatchesConfiguredAfternoon()
-    {
-        if (!EnvMan.IsDay())
-        {
-            return false;
-        }
-
-        float rawDayFraction = GetRawDayFraction();
-        float afternoonStart = PluginSettingsFacade.GetAfternoonStartFraction();
-        return rawDayFraction >= afternoonStart && rawDayFraction < NightStartFraction;
     }
 
     private static void WarnInvalidToken(string token)
@@ -253,22 +226,6 @@ internal static class TimeOfDayFormatting
         }
 
         DropNSpawnPlugin.DropNSpawnLogger.LogWarning(
-            $"Unsupported timeOfDay token '{token}' was ignored. Supported values: day, afternoon, night.");
-    }
-
-    private static float GetRawDayFraction()
-    {
-        float smoothDayFraction = EnvMan.instance != null ? EnvMan.instance.GetDayFraction() : 0f;
-        if (smoothDayFraction <= 0.25f)
-        {
-            return smoothDayFraction / 0.25f * DayStartFraction;
-        }
-
-        if (smoothDayFraction <= 0.75f)
-        {
-            return DayStartFraction + ((smoothDayFraction - 0.25f) / 0.5f) * (NightStartFraction - DayStartFraction);
-        }
-
-        return NightStartFraction + ((smoothDayFraction - 0.75f) / 0.25f) * (1f - NightStartFraction);
+            $"Unsupported timeOfDay token '{token}' was ignored. Supported values: day, night.");
     }
 }

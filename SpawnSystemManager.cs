@@ -294,12 +294,6 @@ internal static partial class SpawnSystemManager
     private static string _lastLoggedVanillaRetainedSignature = "";
     private static string _lastLoggedRuntimeAttachSignature = "";
     private static bool _forceApplyAfterSyncedCommit;
-    private static string _lastLoggedApplySkipKey = "";
-    private static string _lastLoggedPreparedBuildQueuedSignature = "";
-    private static int _lastLoggedPreparedBuildCompletedVersion = -1;
-    private static int _lastLoggedCompiledBuildStartedVersion = -1;
-    private static int _lastLoggedCompiledBuildFinishedVersion = -1;
-    private static string _lastLoggedAwakeRetriggerKey = "";
     private static int _cachedGameDataSignatureFrame = -1;
     private static int _cachedGameDataSignatureValue;
     private static readonly List<string> _cachedConfiguredSpawnSystemResolutionKeys = new();
@@ -552,7 +546,6 @@ internal static partial class SpawnSystemManager
             CompiledSpawnSystemTable? selectedTable = GetSelectedCompiledTableForCurrentState();
             bool preAttachedMutated = preAttached && !IsSystemAttachedToCompiledTable(system, selectedTable);
             bool queueEspRefreshForAwake = !preAttached || preAttachedMutated;
-            LogLiveSpawnListState("awake_postfix_entry", system, selectedTable, preAttached);
 
             if (DropNSpawnPlugin.IsSourceOfTruth)
             {
@@ -571,7 +564,6 @@ internal static partial class SpawnSystemManager
             }
             else if (_configurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0))
             {
-                LogAwakeRetriggerIfNeeded(system, GetLiveSystems().Count);
                 ApplyIfReady(
                     queueEspRefreshForLiveSystems: queueEspRefreshForAwake,
                     queueLiveSystemAttach: true);
@@ -611,7 +603,6 @@ internal static partial class SpawnSystemManager
             }
 
             AttachTableToSystem(system, table);
-            LogLiveSpawnListState("awake_prefix_preattach", system, table, preAttached: true);
             PreAttachedSpawnSystemIds.Add(system.GetInstanceID());
         }
     }
@@ -791,7 +782,6 @@ internal static partial class SpawnSystemManager
         }
 
         AttachTableToSystem(system, table);
-        LogLiveSpawnListState("awake_postfix_attached", system, table);
         MarkSystemMigratedFromRetiredTablesLocked(system.GetInstanceID());
         if (queueEspRefresh)
         {
@@ -833,7 +823,6 @@ internal static partial class SpawnSystemManager
             }
 
             AttachTableToSystem(queuedAttach.System, queuedAttach.TargetTable);
-            LogLiveSpawnListState("queued_attach_applied", queuedAttach.System, queuedAttach.TargetTable);
             MarkSystemMigratedFromRetiredTablesLocked(queuedAttach.SystemId);
             if (queueEspRefresh)
             {
@@ -1505,9 +1494,6 @@ internal static partial class SpawnSystemManager
         int gameDataSignature = ComputeGameDataSignature();
         if (gameDataSignature == 0)
         {
-            LogApplySkipIfNeeded(
-                "game_data_unavailable",
-                "Spawnsystem sync stage=apply_skipped reason=game_data_unavailable");
             return;
         }
 
@@ -1516,18 +1502,12 @@ internal static partial class SpawnSystemManager
         if (!_forceApplyAfterSyncedCommit &&
             string.Equals(_lastAppliedBuildTargetSignature, applyTargetSignature, StringComparison.Ordinal))
         {
-            LogApplySkipIfNeeded(
-                $"already_applied|{applyTargetSignature}",
-                $"Spawnsystem sync stage=apply_skipped reason=already_applied target={applyTargetSignature}");
             return;
         }
 
         if (string.Equals(_pendingBuildTargetSignature, applyTargetSignature, StringComparison.Ordinal) &&
             (_preparedEntriesBuildInFlight || _completedPreparedEntriesBuildResult != null || _pendingCompiledTableBuild != null))
         {
-            LogApplySkipIfNeeded(
-                $"pending_build|{applyTargetSignature}",
-                $"Spawnsystem sync stage=apply_skipped reason=pending_build target={applyTargetSignature} prepared_in_flight={_preparedEntriesBuildInFlight} prepared_ready={(_completedPreparedEntriesBuildResult != null)} compiled_pending={(_pendingCompiledTableBuild != null)}");
             return;
         }
 
@@ -1597,13 +1577,6 @@ internal static partial class SpawnSystemManager
         }
 
         _lastLoggedSyncedConfigPayloadToken = normalizedPayloadToken;
-        if (PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled())
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-                $"Spawnsystem sync stage=config_committed hash={(normalizedPayloadToken.Length > 0 ? normalizedPayloadToken : "<empty>")} entries={entryCount.ToString(CultureInfo.InvariantCulture)} build={DropNSpawnPlugin.RuntimeBuildStamp} force_reapply=armed");
-            return;
-        }
-
         DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
             $"Spawnsystem sync stage=config_committed hash={(normalizedPayloadToken.Length > 0 ? normalizedPayloadToken : "<empty>")} entries={entryCount.ToString(CultureInfo.InvariantCulture)}");
     }
@@ -1648,120 +1621,6 @@ internal static partial class SpawnSystemManager
             applyTargetSignature);
     }
 
-    private static void LogApplySkipIfNeeded(string key, string message)
-    {
-        if (!PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled())
-        {
-            return;
-        }
-
-        if (string.Equals(_lastLoggedApplySkipKey, key, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _lastLoggedApplySkipKey = key;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(message);
-    }
-
-    private static void LogPreparedBuildQueuedIfNeeded(int buildVersion, string applyTargetSignature, int entryCount)
-    {
-        if (!PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled())
-        {
-            return;
-        }
-
-        string key = $"{buildVersion.ToString(CultureInfo.InvariantCulture)}|{applyTargetSignature}";
-        if (string.Equals(_lastLoggedPreparedBuildQueuedSignature, key, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _lastLoggedPreparedBuildQueuedSignature = key;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=prepared_build_queued version={buildVersion.ToString(CultureInfo.InvariantCulture)} entries={entryCount.ToString(CultureInfo.InvariantCulture)} target={applyTargetSignature}");
-    }
-
-    private static void LogPreparedBuildCompletedIfNeeded(int buildVersion, int modelCount, string applyTargetSignature)
-    {
-        if (!PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled())
-        {
-            return;
-        }
-
-        if (_lastLoggedPreparedBuildCompletedVersion == buildVersion)
-        {
-            return;
-        }
-
-        _lastLoggedPreparedBuildCompletedVersion = buildVersion;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=prepared_build_completed version={buildVersion.ToString(CultureInfo.InvariantCulture)} models={modelCount.ToString(CultureInfo.InvariantCulture)} target={applyTargetSignature}");
-    }
-
-    private static void LogPreparedBuildActivatedIfNeeded(int buildVersion, int modelCount, string applyTargetSignature)
-    {
-        if (!PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled())
-        {
-            return;
-        }
-
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=prepared_build_activated version={buildVersion.ToString(CultureInfo.InvariantCulture)} models={modelCount.ToString(CultureInfo.InvariantCulture)} target={applyTargetSignature}");
-    }
-
-    private static void LogCompiledBuildStartedIfNeeded(int buildVersion, int finalizedEntryCount, string applyTargetSignature)
-    {
-        if (!PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled())
-        {
-            return;
-        }
-
-        if (_lastLoggedCompiledBuildStartedVersion == buildVersion)
-        {
-            return;
-        }
-
-        _lastLoggedCompiledBuildStartedVersion = buildVersion;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=compiled_build_started version={buildVersion.ToString(CultureInfo.InvariantCulture)} finalizedEntries={finalizedEntryCount.ToString(CultureInfo.InvariantCulture)} target={applyTargetSignature}");
-    }
-
-    private static void LogCompiledBuildFinishedIfNeeded(int buildVersion, int finalizedEntryCount, int liveSystemCount, string applyTargetSignature)
-    {
-        if (!PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled())
-        {
-            return;
-        }
-
-        if (_lastLoggedCompiledBuildFinishedVersion == buildVersion)
-        {
-            return;
-        }
-
-        _lastLoggedCompiledBuildFinishedVersion = buildVersion;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=compiled_build_finished version={buildVersion.ToString(CultureInfo.InvariantCulture)} finalizedEntries={finalizedEntryCount.ToString(CultureInfo.InvariantCulture)} liveSystems={liveSystemCount.ToString(CultureInfo.InvariantCulture)} target={applyTargetSignature}");
-    }
-
-    private static void LogAwakeRetriggerIfNeeded(SpawnSystem system, int liveSystemCount)
-    {
-        if (!PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled())
-        {
-            return;
-        }
-
-        string key = $"{LoadState.LastLoadedPayload}|{system.GetInstanceID().ToString(CultureInfo.InvariantCulture)}";
-        if (string.Equals(_lastLoggedAwakeRetriggerKey, key, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _lastLoggedAwakeRetriggerKey = key;
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=awake_retrigger version={_preparedEntriesBuildVersion.ToString(CultureInfo.InvariantCulture)} liveSystems={liveSystemCount.ToString(CultureInfo.InvariantCulture)} payloadHash={(LoadState.LastLoadedPayload.Length > 0 ? LoadState.LastLoadedPayload : "<none>")}");
-    }
-
     private static void LogVanillaRetainedIfNeeded(
         string applyTargetSignature,
         string reason,
@@ -1794,24 +1653,6 @@ internal static partial class SpawnSystemManager
         _lastLoggedVanillaRetainedSignature = "";
         DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
             $"Spawnsystem sync stage=runtime_table_attached kind={kind} liveSystems={liveSystemCount.ToString(CultureInfo.InvariantCulture)} rows={CountSpawnRows(table).ToString(CultureInfo.InvariantCulture)}");
-    }
-
-    private static void LogLiveSpawnListState(string stage, SpawnSystem? system, CompiledSpawnSystemTable? table, bool preAttached = false)
-    {
-        if (!PluginSettingsFacade.IsSpawnSystemDiagnosticsEnabled() || system == null)
-        {
-            return;
-        }
-
-        SpawnListSummary liveSummary = SummarizeSpawnLists(system.m_spawnLists);
-        SpawnListSummary tableSummary = SummarizeSpawnLists(table?.Lists);
-        bool attached = IsSystemAttachedToCompiledTable(system, table);
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem live stage={stage} systemId={system.GetInstanceID().ToString(CultureInfo.InvariantCulture)} preAttached={preAttached} attached={attached} " +
-            $"liveLists={liveSummary.ListCount.ToString(CultureInfo.InvariantCulture)} liveRows={liveSummary.RowCount.ToString(CultureInfo.InvariantCulture)} liveHash={liveSummary.ContentHash.ToString(CultureInfo.InvariantCulture)} " +
-            $"tableLists={tableSummary.ListCount.ToString(CultureInfo.InvariantCulture)} tableRows={tableSummary.RowCount.ToString(CultureInfo.InvariantCulture)} tableHash={tableSummary.ContentHash.ToString(CultureInfo.InvariantCulture)} " +
-            $"baselineLists={table?.BaselineListCount.ToString(CultureInfo.InvariantCulture) ?? "0"} baselineRows={table?.BaselineRowCount.ToString(CultureInfo.InvariantCulture) ?? "0"} baselineHash={table?.BaselineContentHash.ToString(CultureInfo.InvariantCulture) ?? "0"} " +
-            $"liveSample='{liveSummary.SamplePrefabs}' tableSample='{tableSummary.SamplePrefabs}'");
     }
 
     private static SpawnListSummary SummarizeSpawnLists(IEnumerable<SpawnSystemList>? spawnLists)
@@ -1984,7 +1825,6 @@ internal static partial class SpawnSystemManager
         };
         request.ConfigurationSnapshot.AddRange(_configuration);
         _pendingPreparedEntriesBuildRequest = request;
-        LogPreparedBuildQueuedIfNeeded(buildVersion, applyTargetSignature, request.ConfigurationSnapshot.Count);
         EnsurePreparedEntriesBuildWorkerLocked();
     }
 
@@ -2040,7 +1880,6 @@ internal static partial class SpawnSystemManager
                         result.Models.Select(model => model.EntrySignature));
                     _completedPreparedEntriesBuildResult = result;
                     _preparedEntriesBuildInFlight = _pendingPreparedEntriesBuildRequest != null;
-                    LogPreparedBuildCompletedIfNeeded(result.BuildVersion, result.Models.Count, result.ApplyTargetSignature);
                 }
             }
             catch (Exception ex)
@@ -2324,7 +2163,6 @@ internal static partial class SpawnSystemManager
         };
         buildState.Models.AddRange(completedResult.Models);
         _pendingCompiledTableBuild = buildState;
-        LogPreparedBuildActivatedIfNeeded(buildState.BuildVersion, buildState.Models.Count, buildState.ApplyTargetSignature);
         return true;
     }
 
@@ -2377,7 +2215,6 @@ internal static partial class SpawnSystemManager
                     Signature = buildState.PreparedEntriesSignature
                 };
                 buildState.BuildingLiveEntries = new List<SpawnSystem.SpawnData>(buildState.FinalizedEntries.Count);
-                LogCompiledBuildStartedIfNeeded(buildState.BuildVersion, buildState.FinalizedEntries.Count, buildState.ApplyTargetSignature);
                 return true;
             }
 
@@ -2416,7 +2253,6 @@ internal static partial class SpawnSystemManager
         _activeCompiledTable = buildState.DomainEnabled ? buildState.BuildingActiveTable : null;
         QueueLiveSystemAttachForTable(_activeCompiledTable, buildState.BuildVersion, buildState.QueueEspRefreshForLiveSystems, liveSystems);
         RetireCompiledTableAfterMigrationLocked(previousSelectedTable, _activeCompiledTable, liveSystems);
-        LogCompiledBuildFinishedIfNeeded(buildState.BuildVersion, buildState.FinalizedEntries.Count, liveSystems.Count, buildState.ApplyTargetSignature);
         LogRuntimeTableAttachedIfNeeded(buildState.ApplyTargetSignature, "authoritative", _activeCompiledTable, liveSystems.Count);
         DestroyCompiledTableIfInactiveLocked(buildState.PreviousActiveTable);
         DestroyCompiledTableIfInactiveLocked(buildState.PreviousVanillaTable);

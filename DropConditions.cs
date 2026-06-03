@@ -570,8 +570,7 @@ internal static class DropConditionEvaluator
         string normalized = (token ?? "").Trim().ToLowerInvariant();
         return normalized switch
         {
-            "day" => phaseMarker == 1 || phaseMarker == 2,
-            "afternoon" => phaseMarker == 2,
+            "day" => phaseMarker == 1,
             "night" => phaseMarker == 0,
             _ => false
         };

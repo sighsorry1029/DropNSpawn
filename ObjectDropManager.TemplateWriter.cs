@@ -26,7 +26,7 @@ internal static partial class ObjectDropManager
         AppendTemplateLine(builder, 2, "distanceFromCenter: null # ex) 0~10000 # Range in meters from the world center");
         AppendTemplateLine(builder, 2, "biomes: [] # ex) [BlackForest, Mistlands] # Allowed biomes # EWD custom biome names also work when EWD is installed");
         AppendTemplateLine(builder, 2, "locations: [] # ex) [Hildir_camp] # Allowed location prefab names");
-        AppendTemplateLine(builder, 2, "timeOfDay: null # ex) [night] # [day, afternoon, night] # day contains afternoon");
+        AppendTemplateLine(builder, 2, "timeOfDay: null # ex) [night] # [day, night]");
         AppendTemplateLine(builder, 2, "requiredEnvironments: [] # ex) [Rain] # Allowed environment names");
         AppendTemplateLine(builder, 2, "requiredGlobalKeys: [] # ex) [defeated_gdking] # Required global keys");
         AppendTemplateLine(builder, 2, "forbiddenGlobalKeys: [] # ex) [nomap] # Forbidden global keys");

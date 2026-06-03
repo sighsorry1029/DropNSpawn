@@ -125,7 +125,6 @@ Most server-facing settings are synced from the server.
 - `Enable Location Overrides`
 - `Enable SpawnSystem Overrides`
 - `Default SpawnArea Max Total Spawns`
-- `Afternoon Start Fraction`
 - `Enable Runestone Global Pins`
 - `Show LocationProxy Offering Bowl Hover Info`
 - `Per Player Boss Stones`
@@ -139,7 +138,7 @@ Most server-facing settings are synced from the server.
 - `One Per Player Nearby Range`
 - `One Per Player Nearby Range Living Players Only`
 
-Client-only settings include `Reference Update Mode`, diagnostics toggles, and `Rotate Forsaken Power Shortcut`.
+Client-only settings include `Reference Update Mode` and `Rotate Forsaken Power Shortcut`.
 
 ## Compatibility
 
@@ -158,3 +157,6 @@ If another mod fully owns the same system, disable the overlapping DropNSpawn do
 - `ESP` for spawners, spawn points, and object info
 - `XRayVision` for object components
 - `Infinity Hammer` for placing and removing test objects
+
+## Github
+https://github.com/sighsorry1029/DropNSpawn

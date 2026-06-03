@@ -55,11 +55,6 @@ internal static class BossStonePerPlayerRuntime
         EnsureRpcRegistered();
     }
 
-    private static void LogDiagnostic(string message)
-    {
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo("[BossStone] " + message);
-    }
-
     internal static void EnsureRpcRegistered()
     {
         ZRoutedRpc? rpc = ZRoutedRpc.instance;
@@ -79,10 +74,6 @@ internal static class BossStonePerPlayerRuntime
         rpc.Register<long, int>(BossStoneResetAckRpc, OnBossStoneResetAckRpc);
         rpc.Register<string>(BossStoneResetStatusRpc, OnBossStoneResetStatusRpc);
         _registeredRpcInstance = rpc;
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic("Registered boss stone routed RPC handlers.");
-        }
     }
 
     internal static void Shutdown()
@@ -106,10 +97,6 @@ internal static class BossStonePerPlayerRuntime
             message = normalizedPlayerName.Length == 0
                 ? "Syntax: dns:bossstone reset <exactPlayerName>"
                 : $"Player '{normalizedPlayerName}' not found. Use exact player name.";
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Reset request rejected before send. input='{normalizedPlayerName}' reason='player_not_found'.");
-            }
             return false;
         }
 
@@ -117,19 +104,11 @@ internal static class BossStonePerPlayerRuntime
         if (ZRoutedRpc.instance == null)
         {
             message = "Boss stone reset is unavailable because routed RPC is not ready.";
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Reset request rejected before send. target='{resolvedPlayerName}' reason='rpc_not_ready'.");
-            }
             return false;
         }
 
         ZRoutedRpc.instance.InvokeRoutedRPC(BossStoneResetRequestRpc, resolvedPlayerName);
         message = $"Queued boss stone reset request for '{resolvedPlayerName}'. Awaiting server result.";
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Reset request sent. target='{resolvedPlayerName}'.");
-        }
         return true;
     }
 
@@ -156,13 +135,8 @@ internal static class BossStonePerPlayerRuntime
 
             if (now - request.CreatedAt >= BossStoneResetRequestTimeoutSeconds)
             {
-                if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-                {
-                    LogDiagnostic($"Reset request timed out. requestId={requestId} target='{request.TargetPlayerName}'.");
-                }
                 CompletePendingBossStoneResetRequest(
                     requestId,
-                    success: false,
                     $"Boss stone reset failed for '{request.TargetPlayerName}': target did not acknowledge within {BossStoneResetRequestTimeoutSeconds:0.#}s.");
                 continue;
             }
@@ -170,10 +144,6 @@ internal static class BossStonePerPlayerRuntime
             if (TryGetHostedLocalPlayerName(out string hostedLocalPlayerName) &&
                 string.Equals(request.TargetPlayerName, hostedLocalPlayerName, StringComparison.Ordinal))
             {
-                if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-                {
-                    LogDiagnostic($"Reset apply routed locally for hosted player. requestId={requestId} target='{request.TargetPlayerName}'.");
-                }
                 ZRoutedRpc.instance.InvokeRoutedRPC(BossStoneResetApplyRpc, request.RequestId);
                 request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
                 continue;
@@ -182,18 +152,10 @@ internal static class BossStonePerPlayerRuntime
             ZNetPeer? targetPeer = ZNet.instance.GetPeerByPlayerName(request.TargetPlayerName);
             if (targetPeer == null || !targetPeer.IsReady())
             {
-                if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-                {
-                    LogDiagnostic($"Reset request waiting for ready peer. requestId={requestId} target='{request.TargetPlayerName}' peerFound={(targetPeer != null)} peerReady={(targetPeer?.IsReady() ?? false)}.");
-                }
                 request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
                 continue;
             }
 
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Reset apply sent. requestId={requestId} target='{request.TargetPlayerName}' peerId={targetPeer.m_uid}.");
-            }
             ZRoutedRpc.instance.InvokeRoutedRPC(targetPeer.m_uid, BossStoneResetApplyRpc, request.RequestId);
             request.NextRetryAt = now + BossStoneResetRetryIntervalSeconds;
         }
@@ -253,21 +215,8 @@ internal static class BossStonePerPlayerRuntime
             return false;
         }
 
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic(
-                $"Sacrifice use-item intercepted. player='{localPlayer.GetPlayerName()}' item='{item?.m_dropPrefab?.name ?? item?.m_shared?.m_name ?? "<null>"}' " +
-                $"bossStone='{itemStand.m_guardianPower?.name ?? "<none>"}' canAccept={(item != null && CanAcceptConfiguredSacrifice(itemStand, item))}.");
-        }
-
         if (item == null || !CanAcceptConfiguredSacrifice(itemStand, item) || !localPlayer.GetInventory().ContainsItem(item))
         {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic(
-                    $"Sacrifice use-item rejected locally. player='{localPlayer.GetPlayerName()}' itemPresent={(item != null)} " +
-                    $"canAccept={(item != null && CanAcceptConfiguredSacrifice(itemStand, item))} inventoryContains={(item != null && localPlayer.GetInventory().ContainsItem(item))}.");
-            }
             localPlayer.Message(MessageHud.MessageType.Center, "$piece_itemstand_cantattach");
             result = true;
             return true;
@@ -275,20 +224,10 @@ internal static class BossStonePerPlayerRuntime
 
         if (!TryGetBossStone(itemStand, out BossStone? bossStone) || bossStone == null)
         {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Sacrifice use-item fell through because boss stone resolution failed after local validation. player='{localPlayer.GetPlayerName()}'.");
-            }
             return false;
         }
 
         long requestId = _nextBossStoneSacrificeRequestId++;
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic(
-                $"Sacrifice applying locally before broadcast. requestId={requestId} player='{localPlayer.GetPlayerName()}' " +
-                $"item='{item.m_dropPrefab?.name ?? item.m_shared?.m_name ?? "<null>"}'.");
-        }
 
         if (!TryApplyLocalBossStoneSacrifice(localPlayer, bossStone, item, requestId))
         {
@@ -296,13 +235,7 @@ internal static class BossStonePerPlayerRuntime
             return true;
         }
 
-        if (!TryBroadcastSacrifice(bossStone, requestId))
-        {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Sacrifice broadcast skipped after local apply. requestId={requestId} player='{localPlayer.GetPlayerName()}'.");
-            }
-        }
+        _ = TryBroadcastSacrifice(bossStone, requestId);
 
         result = true;
         return true;
@@ -481,10 +414,6 @@ internal static class BossStonePerPlayerRuntime
         }
 
         RefreshAllBossStoneVisuals();
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Sacrifice applied locally. requestId={requestId} player='{localPlayer.GetPlayerName()}' key='{playerKey}'.");
-        }
 
         return true;
     }
@@ -593,23 +522,11 @@ internal static class BossStonePerPlayerRuntime
     private static bool TryBroadcastSacrifice(BossStone bossStone, long requestId)
     {
         EnsureRpcRegistered();
-        ZNetView? nview = GetItemStandZNetView(bossStone.m_itemStand);
         if (ZRoutedRpc.instance == null)
         {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic(
-                    $"Sacrifice broadcast aborted. bossStone='{bossStone.m_itemStand?.m_guardianPower?.name ?? "<none>"}' " +
-                    $"routedRpcReady={(ZRoutedRpc.instance != null)}.");
-            }
             return false;
         }
 
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic(
-                $"Sacrifice request broadcast. requestId={requestId} itemStandId={(nview?.GetZDO()?.m_uid ?? ZDOID.None)} requestView='{nview?.name ?? "<none>"}' bossStone='{bossStone.m_itemStand?.m_guardianPower?.name ?? "<none>"}'.");
-        }
         ZRoutedRpc.instance.InvokeRoutedRPC(ZRoutedRpc.Everybody, BossStoneSacrificeRequestRpc, requestId, GetPlayerKey(bossStone), bossStone.transform.position);
         return true;
     }
@@ -634,13 +551,6 @@ internal static class BossStonePerPlayerRuntime
         bool insideLocation = localPlayer != null &&
                               location != null &&
                               location.IsInside(localPlayer.transform.position, 0f, false);
-        bool senderIsLocal = IsLocalRoutedSender(sender);
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic(
-                $"Sacrifice broadcast received. requestId={requestId} sender={sender} senderIsLocal={senderIsLocal} validKey={validKey} " +
-                $"location='{(location != null ? Utils.GetPrefabName(location.gameObject.name) : "<none>")}' localPlayer='{localPlayer?.GetPlayerName() ?? "<null>"}' insideLocation={insideLocation}.");
-        }
 
         if (!validKey || localPlayer == null || location == null || !insideLocation)
         {
@@ -667,10 +577,6 @@ internal static class BossStonePerPlayerRuntime
 
         if (!TryResolveKnownPlayerName(exactPlayerName, out string resolvedPlayerName))
         {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Reset request received by server but target not found. sender={sender} input='{(exactPlayerName ?? "").Trim()}'.");
-            }
             SendBossStoneResetStatus(sender, $"Boss stone reset failed: player '{exactPlayerName?.Trim()}' was not found.");
             return;
         }
@@ -684,10 +590,6 @@ internal static class BossStonePerPlayerRuntime
             CreatedAt = Time.realtimeSinceStartup,
             NextRetryAt = Time.realtimeSinceStartup
         };
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Reset request accepted by server. requestId={requestId} sender={sender} target='{resolvedPlayerName}'.");
-        }
         ProcessPendingResetRequests();
     }
 
@@ -695,10 +597,6 @@ internal static class BossStonePerPlayerRuntime
     {
         bool isServerSender = IsServerRoutedSender(sender);
         Player? localPlayer = Player.m_localPlayer;
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Reset apply received. requestId={requestId} sender={sender} serverValid={isServerSender} localPlayerReady={(localPlayer != null)} localPlayer='{localPlayer?.GetPlayerName() ?? "<null>"}'.");
-        }
         if (!isServerSender)
         {
             return;
@@ -712,10 +610,6 @@ internal static class BossStonePerPlayerRuntime
         int removedCount = ClearBossStonePlayerKeys(localPlayer);
         RefreshAllBossStoneVisuals();
         Console.instance?.Print($"Removed {removedCount} boss stone keys from '{localPlayer.GetPlayerName()}'.");
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Reset apply completed locally. requestId={requestId} removedCount={removedCount} player='{localPlayer.GetPlayerName()}'.");
-        }
         ZRoutedRpc.instance?.InvokeRoutedRPC(BossStoneResetAckRpc, requestId, removedCount);
     }
 
@@ -727,30 +621,17 @@ internal static class BossStonePerPlayerRuntime
             !PendingBossStoneResetRequests.TryGetValue(requestId, out PendingBossStoneResetRequest? request) ||
             request == null)
         {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Reset ack ignored. sender={sender} requestId={requestId} pendingFound={PendingBossStoneResetRequests.ContainsKey(requestId)}.");
-            }
             return;
         }
 
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Reset ack received by server. sender={sender} requestId={requestId} removedCount={removedCount} target='{request.TargetPlayerName}'.");
-        }
         CompletePendingBossStoneResetRequest(
             requestId,
-            success: true,
             $"Boss stone reset completed for '{request.TargetPlayerName}': removed {removedCount} key(s).");
     }
 
     private static void OnBossStoneResetStatusRpc(long sender, string message)
     {
         bool isServerSender = IsServerRoutedSender(sender);
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Reset status received. sender={sender} serverValid={isServerSender} message='{message}'.");
-        }
         if (!isServerSender)
         {
             return;
@@ -774,26 +655,6 @@ internal static class BossStonePerPlayerRuntime
         return hostedLocalPlayerName.Length > 0;
     }
 
-    private static bool TryGetHostedLocalPlayerPeerId(out long hostedLocalPeerId)
-    {
-        hostedLocalPeerId = 0L;
-        if (ZNet.instance == null ||
-            !ZNet.instance.IsServer() ||
-            Player.m_localPlayer == null ||
-            ZRoutedRpc.instance == null)
-        {
-            return false;
-        }
-
-        hostedLocalPeerId = RoutedRpcIdRef(ZRoutedRpc.instance);
-        return hostedLocalPeerId != 0L;
-    }
-
-    private static bool IsLocalRoutedSender(long sender)
-    {
-        return ZRoutedRpc.instance != null && RoutedRpcIdRef(ZRoutedRpc.instance) == sender;
-    }
-
     private static bool TryNormalizePlayerKey(string playerKey, out string normalizedPlayerKey)
     {
         normalizedPlayerKey = (playerKey ?? "").Trim();
@@ -805,10 +666,6 @@ internal static class BossStonePerPlayerRuntime
     {
         if (localPlayer == null || item == null)
         {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic("Sacrifice consume could not remove item because local player or item was not ready.");
-            }
             return false;
         }
 
@@ -830,16 +687,10 @@ internal static class BossStonePerPlayerRuntime
             removed = true;
         }
 
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic(
-                $"Sacrifice consume finalized local inventory. player='{localPlayer.GetPlayerName()}' item='{itemName}' prefab='{itemPrefabName}' removed={removed}.");
-        }
-
         return removed;
     }
 
-    private static void CompletePendingBossStoneResetRequest(long requestId, bool success, string message)
+    private static void CompletePendingBossStoneResetRequest(long requestId, string message)
     {
         if (!PendingBossStoneResetRequests.TryGetValue(requestId, out PendingBossStoneResetRequest? request) ||
             request == null)
@@ -848,10 +699,6 @@ internal static class BossStonePerPlayerRuntime
         }
 
         PendingBossStoneResetRequests.Remove(requestId);
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Reset request completed on server. requestId={requestId} success={success} requester={request.RequesterPeerId} target='{request.TargetPlayerName}' message='{message}'.");
-        }
         SendBossStoneResetStatus(request.RequesterPeerId, message);
     }
 
@@ -859,28 +706,16 @@ internal static class BossStonePerPlayerRuntime
     {
         if (ZRoutedRpc.instance == null)
         {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Reset status printed locally because routed RPC is unavailable. requester={requesterPeerId} message='{message}'.");
-            }
             Console.instance?.Print(message);
             return;
         }
 
         if (requesterPeerId == 0L)
         {
-            if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-            {
-                LogDiagnostic($"Reset status printed locally for local requester. message='{message}'.");
-            }
             Console.instance?.Print(message);
             return;
         }
 
-        if (PluginSettingsFacade.IsBossStoneDiagnosticsEnabled())
-        {
-            LogDiagnostic($"Reset status sent to requester. requester={requesterPeerId} message='{message}'.");
-        }
         ZRoutedRpc.instance.InvokeRoutedRPC(requesterPeerId, BossStoneResetStatusRpc, message);
     }
 

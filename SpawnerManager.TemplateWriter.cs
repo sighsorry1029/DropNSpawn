@@ -23,7 +23,7 @@ internal static partial class SpawnerManager
         AppendTemplateLine(builder, 2, "altitude: null # ex) -1000~1000 # Range in world-height meters");
         AppendTemplateLine(builder, 2, "distanceFromCenter: null # ex) 0~10000 # Range in meters from the world center");
         AppendTemplateLine(builder, 2, "biomes: [] # ex) [BlackForest, Mistlands] # Allowed biomes # EWD custom biome names also work when EWD is installed");
-        AppendTemplateLine(builder, 2, "timeOfDay: null # ex) [night] # [day, afternoon, night] # day contains afternoon");
+        AppendTemplateLine(builder, 2, "timeOfDay: null # ex) [night] # [day, night]");
         AppendTemplateLine(builder, 2, "requiredEnvironments: [] # ex) [Rain] # Allowed environment names");
         AppendTemplateLine(builder, 2, "requiredGlobalKeys: [] # ex) [defeated_gdking] # Required global keys");
         AppendTemplateLine(builder, 2, "forbiddenGlobalKeys: [] # ex) [nomap] # Forbidden global keys");
@@ -66,7 +66,7 @@ internal static partial class SpawnerManager
         AppendTemplateLine(builder, 2, "inDungeon: null");
         AppendTemplateLine(builder, 1, "creatureSpawner:");
         AppendTemplateLine(builder, 2, "creature: null # ex) Skeleton # Required creature prefab name");
-        AppendTemplateLine(builder, 2, "timeOfDay: [day, night] # ex) [afternoon] # Runtime gate for this spawner # day contains afternoon");
+        AppendTemplateLine(builder, 2, "timeOfDay: [day, night] # Runtime gate for this spawner");
         AppendTemplateLine(builder, 2, "requiredGlobalKey: '' # ex) defeated_gdking # Use '' to clear the native requirement # Omit the key to keep the current value");
         AppendTemplateLine(builder, 2, "blockingGlobalKey: '' # ex) nomap # Use '' to clear the native block key # Omit the key to keep the current value");
         AppendTemplateLine(builder, 2, "level: 1~1 # ex) 1~2 # Range of spawned creature levels");

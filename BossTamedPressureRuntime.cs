@@ -25,6 +25,7 @@ internal static class BossTamedPressureRuntime
     private static readonly int GenerationKey = "DropNSpawn_BossTamedPressure_Generation".GetStableHashCode();
     private static readonly List<Rule> Rules = new();
     private static int CurrentGeneration = 1;
+    private static CharacterPrefabCatalog _characterPrefabCatalog = CharacterPrefabCatalog.Empty;
 
     private sealed class Rule
     {
@@ -52,41 +53,37 @@ internal static class BossTamedPressureRuntime
         public Dictionary<long, double> NextMessageByPlayer { get; } = new();
     }
 
+    private sealed class CharacterPrefabCatalog
+    {
+        public static CharacterPrefabCatalog Empty { get; } = new();
+
+        public int GameDataSignature { get; set; } = -1;
+        public HashSet<int> CharacterPrefabHashes { get; } = new();
+        public HashSet<int> MonsterAiCharacterPrefabHashes { get; } = new();
+        public HashSet<int> PlayerPrefabHashes { get; } = new();
+        public Dictionary<int, string> PrefabNamesByHash { get; } = new();
+        public Dictionary<int, float> BaseHealthByHash { get; } = new();
+    }
+
     private sealed class BossCandidate
     {
-        public Character Character { get; set; } = null!;
+        public ZDO Zdo { get; set; } = null!;
         public Vector3 Position { get; set; }
     }
 
     private sealed class TargetCandidate
     {
-        public Character Character { get; set; } = null!;
+        public ZDO Zdo { get; set; } = null!;
         public Vector3 Position { get; set; }
+        public float DistanceSqr { get; set; }
         public int Order { get; set; }
     }
 
     private sealed class TrackedTarget
     {
-        public Character Character { get; set; } = null!;
+        public int PrefabHash { get; set; }
+        public Vector3 LastKnownPosition { get; set; }
         public double ExpiresAt { get; set; }
-    }
-
-    private readonly struct BucketKey : IEquatable<BucketKey>
-    {
-        public BucketKey(int x, int z)
-        {
-            X = x;
-            Z = z;
-        }
-
-        public int X { get; }
-        public int Z { get; }
-
-        public bool Equals(BucketKey other) => X == other.X && Z == other.Z;
-
-        public override bool Equals(object? obj) => obj is BucketKey other && Equals(other);
-
-        public override int GetHashCode() => (X * 397) ^ Z;
     }
 
     internal static void Configure(IEnumerable<BossTamedPressureDefinition> definitions)
@@ -101,16 +98,32 @@ internal static class BossTamedPressureRuntime
 
     internal static void ExecuteServerTick()
     {
-        if (!DropNSpawnPlugin.IsRuntimeServer() ||
-            !PluginSettingsFacade.IsCharacterDomainEnabled() ||
-            !PluginSettingsFacade.IsBossTamedPressureEnabled() ||
-            Rules.Count == 0 ||
-            ZNet.instance == null)
+        double now = GetTimeSeconds();
+        if (ZNet.instance == null)
         {
             return;
         }
 
-        double now = GetTimeSeconds();
+        if (!DropNSpawnPlugin.IsRuntimeServer())
+        {
+            return;
+        }
+
+        if (!PluginSettingsFacade.IsCharacterDomainEnabled())
+        {
+            return;
+        }
+
+        if (!PluginSettingsFacade.IsBossTamedPressureEnabled())
+        {
+            return;
+        }
+
+        if (Rules.Count == 0)
+        {
+            return;
+        }
+
         foreach (Rule rule in Rules)
         {
             if (now >= rule.NextScanAt)
@@ -133,8 +146,7 @@ internal static class BossTamedPressureRuntime
             hit == null ||
             !hit.HaveAttacker() ||
             !PluginSettingsFacade.IsCharacterDomainEnabled() ||
-            !PluginSettingsFacade.IsBossTamedPressureEnabled() ||
-            Rules.Count == 0)
+            !PluginSettingsFacade.IsBossTamedPressureEnabled())
         {
             return;
         }
@@ -142,15 +154,19 @@ internal static class BossTamedPressureRuntime
         double now = GetTimeSeconds();
         float multiplier = 1f;
 
-        if (TryGetCharacterZdo(victim, out ZDO? victimZdo) &&
-            TryGetActiveMultiplier(victimZdo, IncomingMultiplierKey, now, out float incomingMultiplier))
+        float incomingMultiplier = 1f;
+        bool incomingActive = TryGetCharacterZdo(victim, out ZDO? victimZdo) &&
+                              TryGetActiveMultiplier(victimZdo, IncomingMultiplierKey, now, out incomingMultiplier);
+        if (incomingActive)
         {
             multiplier *= incomingMultiplier;
         }
 
         ZDO? attackerZdo = ResolveAttackerZdo(hit);
-        if (attackerZdo != null &&
-            TryGetActiveMultiplier(attackerZdo, OutgoingMultiplierKey, now, out float outgoingMultiplier))
+        float outgoingMultiplier = 1f;
+        bool outgoingActive = attackerZdo != null &&
+                              TryGetActiveMultiplier(attackerZdo, OutgoingMultiplierKey, now, out outgoingMultiplier);
+        if (outgoingActive)
         {
             multiplier *= outgoingMultiplier;
         }
@@ -160,7 +176,8 @@ internal static class BossTamedPressureRuntime
             return;
         }
 
-        hit.ApplyModifier(Mathf.Max(0f, multiplier));
+        float appliedMultiplier = Mathf.Max(0f, multiplier);
+        hit.ApplyModifier(appliedMultiplier);
     }
 
     internal static string BuildRuleKey(BossTamedPressureDefinition definition)
@@ -209,23 +226,10 @@ internal static class BossTamedPressureRuntime
 
     private static void ScanRule(Rule rule, double now)
     {
-        List<Character> characters = Character.GetAllCharacters();
-        if (characters == null || characters.Count == 0)
-        {
-            return;
-        }
-
-        float bucketSize = Mathf.Max(rule.Range, 1f);
+        CharacterPrefabCatalog catalog = EnsureCharacterPrefabCatalog();
         List<BossCandidate> bosses = new();
-        BuildBossCandidates(rule, characters, bosses);
+        BuildBossCandidates(rule, bosses, catalog);
         if (bosses.Count == 0)
-        {
-            return;
-        }
-
-        Dictionary<BucketKey, List<TargetCandidate>> targetBuckets = new();
-        BuildTargetBuckets(rule, characters, bucketSize, targetBuckets);
-        if (targetBuckets.Count == 0)
         {
             return;
         }
@@ -234,7 +238,7 @@ internal static class BossTamedPressureRuntime
         List<TargetCandidate> nearbyTargets = new();
         foreach (BossCandidate boss in bosses)
         {
-            CollectTargetsNearBoss(rule, targetBuckets, bucketSize, boss.Position, rangeSqr, nearbyTargets);
+            CollectTargetsNearBoss(rule, catalog, boss, rangeSqr, nearbyTargets);
             if (nearbyTargets.Count == 0)
             {
                 continue;
@@ -242,20 +246,26 @@ internal static class BossTamedPressureRuntime
 
             if (nearbyTargets.Count > 1)
             {
-                nearbyTargets.Sort(static (left, right) => left.Order.CompareTo(right.Order));
+                nearbyTargets.Sort(static (left, right) =>
+                {
+                    int distanceComparison = left.DistanceSqr.CompareTo(right.DistanceSqr);
+                    return distanceComparison != 0 ? distanceComparison : left.Order.CompareTo(right.Order);
+                });
             }
 
             int appliedCount = 0;
             foreach (TargetCandidate candidate in nearbyTargets)
             {
-                if (ReferenceEquals(candidate.Character, boss.Character) ||
-                    !IsValidCharacter(candidate.Character))
+                if (candidate.Zdo.m_uid == boss.Zdo.m_uid)
                 {
                     continue;
                 }
 
-                TrackTarget(rule, candidate.Character, now);
-                appliedCount++;
+                if (TrackTarget(rule, candidate.Zdo, candidate.Position, now))
+                {
+                    appliedCount++;
+                }
+
                 if (appliedCount >= rule.MaxTargetsPerBoss)
                 {
                     break;
@@ -266,114 +276,106 @@ internal static class BossTamedPressureRuntime
 
     private static void BuildBossCandidates(
         Rule rule,
-        List<Character> characters,
-        List<BossCandidate> bosses)
+        List<BossCandidate> bosses,
+        CharacterPrefabCatalog catalog)
     {
-        for (int index = 0; index < characters.Count; index++)
-        {
-            Character character = characters[index];
-            if (!IsValidCharacter(character) || !TryGetCharacterZdo(character, out ZDO? zdo))
-            {
-                continue;
-            }
-
-            int prefabHash = zdo.GetPrefab();
-            if (IsBossSource(rule, character, prefabHash))
-            {
-                bosses.Add(new BossCandidate
-                {
-                    Character = character,
-                    Position = character.GetCenterPoint()
-                });
-            }
-        }
-    }
-
-    private static void BuildTargetBuckets(
-        Rule rule,
-        List<Character> characters,
-        float bucketSize,
-        Dictionary<BucketKey, List<TargetCandidate>> targetBuckets)
-    {
-        for (int index = 0; index < characters.Count; index++)
-        {
-            Character character = characters[index];
-            if (!IsValidCharacter(character) || !TryGetCharacterZdo(character, out ZDO? zdo))
-            {
-                continue;
-            }
-
-            int prefabHash = zdo.GetPrefab();
-            if (!IsEligiblePressureTarget(rule, character, zdo, prefabHash))
-            {
-                continue;
-            }
-
-            Vector3 position = character.transform.position;
-            TargetCandidate target = new()
-            {
-                Character = character,
-                Position = position,
-                Order = index
-            };
-
-            BucketKey key = GetBucketKey(position, bucketSize);
-            if (!targetBuckets.TryGetValue(key, out List<TargetCandidate> bucket))
-            {
-                bucket = new List<TargetCandidate>();
-                targetBuckets[key] = bucket;
-            }
-
-            bucket.Add(target);
-        }
-    }
-
-    private static void CollectTargetsNearBoss(
-        Rule rule,
-        Dictionary<BucketKey, List<TargetCandidate>> targetBuckets,
-        float bucketSize,
-        Vector3 bossPosition,
-        float rangeSqr,
-        List<TargetCandidate> nearbyTargets)
-    {
-        nearbyTargets.Clear();
-        int minX = GetBucketCoordinate(bossPosition.x - rule.Range, bucketSize);
-        int maxX = GetBucketCoordinate(bossPosition.x + rule.Range, bucketSize);
-        int minZ = GetBucketCoordinate(bossPosition.z - rule.Range, bucketSize);
-        int maxZ = GetBucketCoordinate(bossPosition.z + rule.Range, bucketSize);
-
-        for (int x = minX; x <= maxX; x++)
-        {
-            for (int z = minZ; z <= maxZ; z++)
-            {
-                if (!targetBuckets.TryGetValue(new BucketKey(x, z), out List<TargetCandidate> bucket))
-                {
-                    continue;
-                }
-
-                foreach (TargetCandidate candidate in bucket)
-                {
-                    if (IsWithinHorizontalRange(bossPosition, candidate.Position, rangeSqr))
-                    {
-                        nearbyTargets.Add(candidate);
-                    }
-                }
-            }
-        }
-    }
-
-    private static void TrackTarget(Rule rule, Character target, double now)
-    {
-        if (!TryGetCharacterZdo(target, out ZDO? zdo))
+        if (ZDOMan.instance == null)
         {
             return;
         }
 
+        foreach (int bossPrefabHash in EnumerateBossPrefabHashes(rule))
+        {
+            if (!catalog.PrefabNamesByHash.TryGetValue(bossPrefabHash, out string prefabName) ||
+                string.IsNullOrWhiteSpace(prefabName))
+            {
+                continue;
+            }
+
+            List<ZDO> bossZdos = new();
+            int index = 0;
+            while (!ZDOMan.instance.GetAllZDOsWithPrefabIterative(prefabName, bossZdos, ref index))
+            {
+            }
+
+            foreach (ZDO bossZdo in bossZdos)
+            {
+                if (IsValidLiveZdo(bossZdo, GetBaseHealth(catalog, bossPrefabHash)))
+                {
+                    bosses.Add(new BossCandidate
+                    {
+                        Zdo = bossZdo,
+                        Position = bossZdo.GetPosition()
+                    });
+                }
+            }
+        }
+    }
+
+    private static int CollectTargetsNearBoss(
+        Rule rule,
+        CharacterPrefabCatalog catalog,
+        BossCandidate boss,
+        float rangeSqr,
+        List<TargetCandidate> nearbyTargets)
+    {
+        nearbyTargets.Clear();
+        if (ZDOMan.instance == null || ZoneSystem.instance == null)
+        {
+            return 0;
+        }
+
+        List<ZDO> sectorObjects = new();
+        int sectorRange = Mathf.Max(0, Mathf.CeilToInt(rule.Range / ZoneSystem.c_ZoneSize) + 1);
+        ZDOMan.instance.FindSectorObjects(ZoneSystem.GetZone(boss.Position), sectorRange, 0, sectorObjects);
+
+        int order = 0;
+        foreach (ZDO candidate in sectorObjects)
+        {
+            if (candidate == null ||
+                candidate.m_uid == boss.Zdo.m_uid ||
+                !IsEligiblePressureTarget(rule, candidate, catalog))
+            {
+                continue;
+            }
+
+            Vector3 position = candidate.GetPosition();
+            float distanceSqr = GetHorizontalDistanceSqr(boss.Position, position);
+            if (distanceSqr > rangeSqr)
+            {
+                continue;
+            }
+
+            nearbyTargets.Add(new TargetCandidate
+            {
+                Zdo = candidate,
+                Position = position,
+                DistanceSqr = distanceSqr,
+                Order = order++
+            });
+        }
+
+        return sectorObjects.Count;
+    }
+
+    private static bool TrackTarget(
+        Rule rule,
+        ZDO zdo,
+        Vector3 position,
+        double now)
+    {
+        if (zdo == null || !zdo.IsValid())
+        {
+            return false;
+        }
+
         ZDOID targetId = zdo.m_uid;
+        int prefabHash = zdo.GetPrefab();
         double expiresAt = now + rule.ScanInterval + 0.5d;
         rule.Targets[targetId] = new TrackedTarget
         {
-            Character = target,
+            PrefabHash = prefabHash,
+            LastKnownPosition = position,
             ExpiresAt = expiresAt
         };
 
@@ -392,6 +394,10 @@ internal static class BossTamedPressureRuntime
         zdo.Set(GenerationKey, CurrentGeneration);
         zdo.Set(IncomingMultiplierKey, Mathf.Clamp(incoming, 0f, 10f));
         zdo.Set(OutgoingMultiplierKey, Mathf.Clamp(outgoing, 0f, 10f));
+
+        // Damage multipliers are evaluated by the damage owner, which can be a client on dedicated servers.
+        ZDOMan.instance?.ForceSendZDO(targetId);
+        return true;
     }
 
     private static void ApplyPeriodicDamage(Rule rule, double now)
@@ -402,17 +408,25 @@ internal static class BossTamedPressureRuntime
             return;
         }
 
+        CharacterPrefabCatalog catalog = EnsureCharacterPrefabCatalog();
         foreach (ZDOID targetId in rule.Targets.Keys.ToArray())
         {
-            if (!rule.Targets.TryGetValue(targetId, out TrackedTarget? target) ||
-                target.ExpiresAt < now ||
-                !IsEligiblePressureTarget(rule, target.Character))
+            if (!rule.Targets.TryGetValue(targetId, out TrackedTarget? target) || target.ExpiresAt < now)
             {
                 rule.Targets.Remove(targetId);
                 continue;
             }
 
-            float baseHealth = Mathf.Max(target.Character.GetMaxHealth(), rule.MinBaseHealth);
+            ZDO? zdo = ZDOMan.instance?.GetZDO(targetId);
+            if (zdo == null || !IsEligiblePressureTarget(rule, zdo, catalog))
+            {
+                rule.Targets.Remove(targetId);
+                continue;
+            }
+
+            target.PrefabHash = zdo.GetPrefab();
+            target.LastKnownPosition = zdo.GetPosition();
+            float baseHealth = Mathf.Max(GetMaxHealth(zdo, target.PrefabHash, catalog), rule.MinBaseHealth);
             float damage = baseHealth * rule.PercentMaxHealthPerSecond * rule.DamageInterval;
             if (damage <= 0f)
             {
@@ -421,11 +435,12 @@ internal static class BossTamedPressureRuntime
 
             HitData hit = new()
             {
-                m_hitType = HitData.HitType.Undefined
+                m_hitType = HitData.HitType.Undefined,
+                m_point = target.LastKnownPosition
             };
             hit.m_damage.m_damage = damage;
-            target.Character.Damage(hit);
-            TrySendMessage(rule, target.Character, now);
+            ZRoutedRpc.instance?.InvokeRoutedRPC(zdo.GetOwner(), zdo.m_uid, "RPC_Damage", hit);
+            TrySendMessage(rule, target.LastKnownPosition, now);
         }
     }
 
@@ -440,33 +455,18 @@ internal static class BossTamedPressureRuntime
         }
     }
 
-    private static bool IsBossSource(Rule rule, Character character, int prefabHash)
+    private static bool IsEligiblePressureTarget(Rule rule, ZDO zdo, CharacterPrefabCatalog catalog)
     {
-        if (prefabHash == 0 || rule.ExcludedBossPrefabHashes.Contains(prefabHash))
+        if (zdo == null || !zdo.IsValid())
         {
             return false;
         }
 
-        return character.IsBoss() ||
-               CharacterBossPolicyRuntime.IsAutoDetectedBossPrefab(prefabHash) ||
-               rule.BossPrefabHashes.Contains(prefabHash);
-    }
-
-    private static bool IsEligiblePressureTarget(Rule rule, Character? character)
-    {
-        if (!IsValidCharacter(character) ||
-            character!.IsPlayer() ||
-            !TryGetCharacterZdo(character, out ZDO? zdo))
-        {
-            return false;
-        }
-
-        return IsEligiblePressureTarget(rule, character, zdo, zdo.GetPrefab());
-    }
-
-    private static bool IsEligiblePressureTarget(Rule rule, Character character, ZDO zdo, int prefabHash)
-    {
-        if (zdo == null || character.IsPlayer())
+        int prefabHash = zdo.GetPrefab();
+        if (prefabHash == 0 ||
+            !catalog.CharacterPrefabHashes.Contains(prefabHash) ||
+            catalog.PlayerPrefabHashes.Contains(prefabHash) ||
+            !IsValidLiveZdo(zdo, GetBaseHealth(catalog, prefabHash)))
         {
             return false;
         }
@@ -474,12 +474,7 @@ internal static class BossTamedPressureRuntime
         bool hasPrefabTargeting = rule.ExtraPressuredPrefabHashes.Count > 0 || rule.ExcludedTamedPrefabHashes.Count > 0;
         if (!hasPrefabTargeting)
         {
-            return IsTamedMonsterAi(character);
-        }
-
-        if (prefabHash == 0)
-        {
-            return false;
+            return IsTamedMonsterAiZdo(zdo, prefabHash, catalog);
         }
 
         if (rule.ExtraPressuredPrefabHashes.Contains(prefabHash))
@@ -487,39 +482,134 @@ internal static class BossTamedPressureRuntime
             return true;
         }
 
-        return IsTamedMonsterAi(character) &&
+        return IsTamedMonsterAiZdo(zdo, prefabHash, catalog) &&
                !rule.ExcludedTamedPrefabHashes.Contains(prefabHash);
     }
 
-    private static bool IsTamedMonsterAi(Character character)
+    private static bool IsTamedMonsterAiZdo(ZDO zdo, int prefabHash, CharacterPrefabCatalog catalog)
     {
-        return character.IsTamed() && character.GetComponent<MonsterAI>() != null;
+        return zdo.GetBool(ZDOVars.s_tamed) &&
+               catalog.MonsterAiCharacterPrefabHashes.Contains(prefabHash);
     }
 
-    private static bool IsWithinHorizontalRange(Vector3 origin, Vector3 target, float rangeSqr)
+    private static bool IsValidLiveZdo(ZDO? zdo, float baseHealth)
+    {
+        if (zdo == null || !zdo.IsValid())
+        {
+            return false;
+        }
+
+        float maxHealth = zdo.GetFloat(ZDOVars.s_maxHealth, Mathf.Max(baseHealth, 1f));
+        return zdo.GetFloat(ZDOVars.s_health, maxHealth) > 0f;
+    }
+
+    private static float GetHorizontalDistanceSqr(Vector3 origin, Vector3 target)
     {
         float dx = target.x - origin.x;
         float dz = target.z - origin.z;
-        return dx * dx + dz * dz <= rangeSqr;
+        return dx * dx + dz * dz;
     }
 
-    private static BucketKey GetBucketKey(Vector3 position, float bucketSize)
+    private static CharacterPrefabCatalog EnsureCharacterPrefabCatalog()
     {
-        return new BucketKey(
-            GetBucketCoordinate(position.x, bucketSize),
-            GetBucketCoordinate(position.z, bucketSize));
+        int gameDataSignature = CharacterDropManager.ComputeGameDataSignatureForDespawnRuntime();
+        if (_characterPrefabCatalog.GameDataSignature == gameDataSignature)
+        {
+            return _characterPrefabCatalog;
+        }
+
+        CharacterPrefabCatalog catalog = new()
+        {
+            GameDataSignature = gameDataSignature
+        };
+
+        foreach (GameObject prefab in CharacterDropManager.EnumeratePrefabsForDespawnRuntime())
+        {
+            if (prefab == null || !prefab.TryGetComponent(out Character character))
+            {
+                continue;
+            }
+
+            string prefabName = CharacterDropManager.GetPrefabNameForDespawnRuntime(prefab);
+            if (string.IsNullOrWhiteSpace(prefabName))
+            {
+                continue;
+            }
+
+            int prefabHash = prefabName.GetStableHashCode();
+            catalog.CharacterPrefabHashes.Add(prefabHash);
+            catalog.PrefabNamesByHash[prefabHash] = prefabName;
+            catalog.BaseHealthByHash[prefabHash] = Mathf.Max(character.m_health, 1f);
+            if (prefab.GetComponent<MonsterAI>() != null)
+            {
+                catalog.MonsterAiCharacterPrefabHashes.Add(prefabHash);
+            }
+
+            if (character.IsPlayer())
+            {
+                catalog.PlayerPrefabHashes.Add(prefabHash);
+            }
+        }
+
+        foreach (string bossPrefabName in CharacterBossPolicyRuntime.GetAutoDetectedBossPrefabNames())
+        {
+            string normalizedName = (bossPrefabName ?? "").Trim();
+            if (normalizedName.Length == 0)
+            {
+                continue;
+            }
+
+            int prefabHash = normalizedName.GetStableHashCode();
+            catalog.PrefabNamesByHash[prefabHash] = normalizedName;
+        }
+
+        _characterPrefabCatalog = catalog;
+        return _characterPrefabCatalog;
     }
 
-    private static int GetBucketCoordinate(float value, float bucketSize)
+    private static IEnumerable<int> EnumerateBossPrefabHashes(Rule rule)
     {
-        return Mathf.FloorToInt(value / bucketSize);
+        HashSet<int> yielded = new();
+        foreach (string bossPrefabName in CharacterBossPolicyRuntime.GetAutoDetectedBossPrefabNames())
+        {
+            string normalizedName = (bossPrefabName ?? "").Trim();
+            if (normalizedName.Length == 0)
+            {
+                continue;
+            }
+
+            int prefabHash = normalizedName.GetStableHashCode();
+            if (prefabHash != 0 &&
+                !rule.ExcludedBossPrefabHashes.Contains(prefabHash) &&
+                yielded.Add(prefabHash))
+            {
+                yield return prefabHash;
+            }
+        }
+
+        foreach (int prefabHash in rule.BossPrefabHashes)
+        {
+            if (prefabHash != 0 &&
+                !rule.ExcludedBossPrefabHashes.Contains(prefabHash) &&
+                yielded.Add(prefabHash))
+            {
+                yield return prefabHash;
+            }
+        }
     }
 
-    private static bool IsValidCharacter(Character? character)
+    private static float GetBaseHealth(CharacterPrefabCatalog catalog, int prefabHash)
     {
-        return character != null &&
-               character.gameObject != null &&
-               !character.IsDead();
+        return catalog.BaseHealthByHash.TryGetValue(prefabHash, out float baseHealth)
+            ? Mathf.Max(baseHealth, 1f)
+            : 1f;
+    }
+
+    private static float GetMaxHealth(ZDO zdo, int prefabHash, CharacterPrefabCatalog catalog)
+    {
+        float baseHealth = GetBaseHealth(catalog, prefabHash);
+        int level = Mathf.Max(1, zdo.GetInt(ZDOVars.s_level, 1));
+        return zdo.GetFloat(ZDOVars.s_maxHealth, baseHealth * level);
     }
 
     private static bool TryGetCharacterZdo(Character character, [NotNullWhen(true)] out ZDO? zdo)
@@ -542,8 +632,7 @@ internal static class BossTamedPressureRuntime
     private static bool TryGetActiveMultiplier(ZDO zdo, int multiplierKey, double now, out float multiplier)
     {
         multiplier = 1f;
-        if (zdo.GetInt(GenerationKey, 0) != CurrentGeneration ||
-            zdo.GetFloat(ActiveUntilKey, 0f) <= now)
+        if (zdo.GetFloat(ActiveUntilKey, 0f) <= now)
         {
             return false;
         }
@@ -552,10 +641,17 @@ internal static class BossTamedPressureRuntime
         return !Mathf.Approximately(multiplier, 1f);
     }
 
-    private static void TrySendMessage(Rule rule, Character target, double now)
+    private static void TrySendMessage(
+        Rule rule,
+        Vector3 targetPosition,
+        double now)
     {
-        if (string.IsNullOrWhiteSpace(rule.Message) ||
-            !SceneProximityQueries.TryFindNearestLivingPlayerInRangeXZ(target.GetCenterPoint(), Mathf.Max(rule.Range, 32f), out long playerId) ||
+        if (string.IsNullOrWhiteSpace(rule.Message))
+        {
+            return;
+        }
+
+        if (!SceneProximityQueries.TryFindNearestLivingPlayerInRangeXZ(targetPosition, Mathf.Max(rule.Range, 32f), out long playerId) ||
             playerId == 0L)
         {
             return;
