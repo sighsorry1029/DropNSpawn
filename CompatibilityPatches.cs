@@ -10,6 +10,7 @@ namespace DropNSpawn;
 internal static class PreviewGhostCompatibility
 {
     private static readonly FieldInfo? ZNetViewFunctionsField = AccessTools.Field(typeof(ZNetView), "m_functions");
+    private static readonly AccessTools.FieldRef<bool>? ZNetViewForceDisableInitRef = CreateForceDisableInitRef();
 
     internal static void EnsureNoOpRpc(Component? component, string name, System.Action<long, HitData> handler)
     {
@@ -69,13 +70,42 @@ internal static class PreviewGhostCompatibility
     private static bool TryGetPreviewGhostNetView(Component? component, out ZNetView? nview)
     {
         nview = null;
-        if (component == null)
+        if (component == null || !ShouldProbeForPreviewGhost())
         {
             return false;
         }
 
         nview = component.GetComponent<ZNetView>();
         return nview != null && nview.GetZDO() == null;
+    }
+
+    private static AccessTools.FieldRef<bool>? CreateForceDisableInitRef()
+    {
+        try
+        {
+            return AccessTools.StaticFieldRefAccess<bool>(typeof(ZNetView), "m_forceDisableInit");
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool ShouldProbeForPreviewGhost()
+    {
+        if (ZNetViewForceDisableInitRef == null)
+        {
+            return true;
+        }
+
+        try
+        {
+            return ZNetViewForceDisableInitRef();
+        }
+        catch
+        {
+            return true;
+        }
     }
 
     private static bool HasRegisteredRpc(ZNetView nview, string name)

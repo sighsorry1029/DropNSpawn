@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text;
 using SpawnSystemConfigurationEntry = DropNSpawn.CanonicalSpawnSystemEntry;
@@ -11,27 +10,7 @@ internal static partial class SpawnSystemManager
 {
     private static ReferenceCatalogSnapshot BuildCurrentReferenceCatalogSnapshot()
     {
-        SpawnSystemSnapshot? templateSnapshot = GetCachedTemplateSnapshot();
-        if (templateSnapshot != null && templateSnapshot.Entries.Count > 0)
-        {
-            return BuildReferenceCatalogSnapshotFromTemplateSnapshot(templateSnapshot);
-        }
-
-        return BuildReferenceCatalogSnapshot(GetLiveSystems());
-    }
-
-    private static ReferenceCatalogSnapshot BuildReferenceCatalogSnapshotFromTemplateSnapshot(SpawnSystemSnapshot snapshot)
-    {
-        ReferenceCatalogSnapshot referenceCatalogSnapshot = new();
-        List<SpawnSystemConfigurationEntry> mergedEntries = MergeUniqueReferenceEntriesWithExternalProjections(
-            BuildTemplateReferenceEntries(snapshot),
-            forceRefresh: true);
-        referenceCatalogSnapshot.LiveEntries.AddRange(mergedEntries);
-        referenceCatalogSnapshot.LiveEntries.Sort(CompareReferenceEntriesForOutput);
-
-        string renderedContent = SerializeReferenceEntries(referenceCatalogSnapshot.LiveEntries);
-        referenceCatalogSnapshot.SourceSignature = ReferenceRefreshSupport.ComputeStableHash(renderedContent);
-        return referenceCatalogSnapshot;
+        return BuildReferenceCatalogSnapshot();
     }
 
     private static string BuildReferenceConfigurationTemplate(
@@ -70,11 +49,97 @@ internal static partial class SpawnSystemManager
 
     private static void WriteReferenceConfigurationFile(string content, string logMessage)
     {
-        Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-        if (GeneratedFileWriter.WriteAllTextIfChanged(ReferenceConfigurationPath, content))
+        GeneratedArtifactWriter.WriteText(ReferenceConfigurationPath, content, logMessage, logOnlyWhenChanged: true);
+    }
+
+    internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
+    {
+        string content;
+        string logMessage;
+        lock (Sync)
         {
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo(logMessage);
+            path = FullScaffoldConfigurationPath;
+            error = "";
+
+            if (!TryCaptureSnapshotsIfNeeded())
+            {
+                error = "SpawnSystem game data is not ready yet.";
+                return false;
+            }
+
+            content = BuildFullScaffoldConfigurationTemplate();
+            logMessage = $"Wrote spawnsystem full scaffold configuration to {path}.";
         }
+
+        GeneratedArtifactWriter.WriteTextAlways(path, content, logMessage);
+        return true;
+    }
+
+    internal static bool TryWriteReferenceConfigurationFile(out string path, out string error)
+    {
+        string content;
+        string sourceSignature;
+        string logMessage;
+        lock (Sync)
+        {
+            path = ReferenceConfigurationPath;
+            error = "";
+
+            if (ZNetScene.instance == null || ObjectDB.instance == null)
+            {
+                error = "SpawnSystem game data is not ready yet.";
+                return false;
+            }
+
+            ReferenceCatalogSnapshot referenceCatalogSnapshot = BuildCurrentReferenceCatalogSnapshot();
+            if (!referenceCatalogSnapshot.HasAnyEntries)
+            {
+                error = "SpawnSystem game data is not ready yet.";
+                return false;
+            }
+
+            content = BuildReferenceConfigurationTemplate(referenceCatalogSnapshot);
+            sourceSignature = referenceCatalogSnapshot.SourceSignature;
+            logMessage = $"Updated spawnsystem reference configuration at {ReferenceConfigurationPath}.";
+            path = ReferenceConfigurationPath;
+        }
+
+        WriteReferenceConfigurationFile(content, logMessage);
+        ReferenceArtifactLifecycle.RecordUpdate(
+            ReferenceAutoUpdateStateKey,
+            ReferenceConfigurationPath,
+            sourceSignature);
+        return true;
+    }
+
+    internal static void RefreshReferenceConfigurationFile()
+    {
+        string content;
+        string sourceSignature;
+        string logMessage;
+        lock (Sync)
+        {
+            if (ZNetScene.instance == null || ObjectDB.instance == null)
+            {
+                return;
+            }
+
+            ReferenceCatalogSnapshot referenceCatalogSnapshot = BuildCurrentReferenceCatalogSnapshot();
+            if (!referenceCatalogSnapshot.HasAnyEntries)
+            {
+                return;
+            }
+
+            content = BuildReferenceConfigurationTemplate(referenceCatalogSnapshot);
+            sourceSignature = referenceCatalogSnapshot.SourceSignature;
+            logMessage = $"Updated spawnsystem reference configuration at {ReferenceConfigurationPath}.";
+        }
+
+        WriteReferenceConfigurationFile(content, logMessage);
+        ReferenceArtifactLifecycle.RecordUpdate(
+            ReferenceAutoUpdateStateKey,
+            ReferenceConfigurationPath,
+            sourceSignature);
     }
 
     private static CreatureManagerSpawnReferenceSupport.ReferenceSnapshot? TryGetExternalReferenceProjectionSnapshot(bool forceRefresh)
@@ -181,11 +246,11 @@ internal static partial class SpawnSystemManager
         return entries;
     }
 
-    private static ReferenceCatalogSnapshot BuildReferenceCatalogSnapshot(List<SpawnSystem>? systems = null)
+    private static ReferenceCatalogSnapshot BuildReferenceCatalogSnapshot()
     {
         ReferenceCatalogSnapshot snapshot = new();
         HashSet<string> liveKeys = new(StringComparer.Ordinal);
-        foreach (SpawnSystem.SpawnData spawnData in EnumerateReferenceLiveSpawnData(systems))
+        foreach (SpawnSystem.SpawnData spawnData in EnumerateUpstreamReferenceSpawnData())
         {
             SpawnSystemConfigurationEntry entry = ConvertToReferenceEntry(spawnData);
             string stableKey = GetStableReferenceSortKey(entry);
@@ -207,29 +272,33 @@ internal static partial class SpawnSystemManager
         return snapshot;
     }
 
-    private static IEnumerable<SpawnSystem.SpawnData> EnumerateReferenceLiveSpawnData(List<SpawnSystem>? systems = null)
+    private static IEnumerable<SpawnSystem.SpawnData> EnumerateUpstreamReferenceSpawnData()
     {
-        CompiledSpawnSystemTable? selectedTable = GetSelectedCompiledTableForCurrentState();
-        if (TryEnumerateReferenceLiveSpawnData(selectedTable?.Lists, out IEnumerable<SpawnSystem.SpawnData>? compiledEntries))
+        if (TryEnumerateReferenceSpawnData(GetReferenceSourceSpawnLists(), out IEnumerable<SpawnSystem.SpawnData>? sourceEntries))
         {
-            return compiledEntries!;
+            return sourceEntries!;
         }
 
-        SpawnSystemSnapshot? templateSnapshot = GetCachedTemplateSnapshot();
-        if (templateSnapshot != null && templateSnapshot.Entries.Count > 0)
+        return Enumerable.Empty<SpawnSystem.SpawnData>();
+    }
+
+    private static IEnumerable<SpawnSystemList> GetReferenceSourceSpawnLists()
+    {
+        SpawnSystem? zoneCtrlSpawnSystem = GetZoneCtrlPrefabSpawnSystem();
+        if (zoneCtrlSpawnSystem?.m_spawnLists != null)
         {
-            return templateSnapshot.Entries
-                .Where(entry => entry?.Data != null)
-                .Select(entry => entry.Data);
+            return zoneCtrlSpawnSystem.m_spawnLists
+                .Where(spawnList => spawnList != null);
         }
 
-        systems ??= GetLiveSystems();
-        return systems
-            .Where(current => current != null)
-            .OrderBy(current => current.GetInstanceID())
-            .SelectMany(system => system.m_spawnLists ?? new List<SpawnSystemList>())
-            .Where(spawnList => spawnList != null)
-            .SelectMany(spawnList => spawnList.m_spawners ?? new List<SpawnSystem.SpawnData>())
-            .Where(spawnData => spawnData != null);
+        if (_vanillaCompiledTable != null &&
+            _vanillaCompiledTable.ReferenceSourceTrusted &&
+            _vanillaCompiledTable.Lists.Count > 0)
+        {
+            return _vanillaCompiledTable.Lists
+                .Where(spawnList => spawnList != null);
+        }
+
+        return Enumerable.Empty<SpawnSystemList>();
     }
 }

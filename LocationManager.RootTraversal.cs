@@ -5,6 +5,22 @@ namespace DropNSpawn;
 
 internal static partial class LocationManager
 {
+    internal static void QueueDungeonLocationReconcile(DungeonGenerator? generator)
+    {
+        if (generator == null)
+        {
+            return;
+        }
+
+        Location? location = generator.GetComponentInParent<Location>(true);
+        if (location == null)
+        {
+            return;
+        }
+
+        QueueSpawnedLocationRootReconcile(location.gameObject);
+    }
+
     private static void TrackSpawnedLocationRootInternal(GameObject? rootObject)
     {
         if (rootObject == null)
@@ -43,7 +59,6 @@ internal static partial class LocationManager
         Transform? root,
         List<OfferingBowl> offeringBowls,
         List<ItemStand> itemStands,
-        List<Vegvisir> vegvisirs,
         List<RuneStone> runestones)
     {
         if (root == null)
@@ -61,11 +76,6 @@ internal static partial class LocationManager
             if (transform.TryGetComponent(out ItemStand itemStand) && itemStand != null)
             {
                 itemStands.Add(itemStand);
-            }
-
-            if (transform.TryGetComponent(out Vegvisir vegvisir) && vegvisir != null)
-            {
-                vegvisirs.Add(vegvisir);
             }
 
             if (transform.TryGetComponent(out RuneStone runestone) && runestone != null)
@@ -179,13 +189,6 @@ internal static partial class LocationManager
 
                 if (pendingRoot.RuntimeComponentsByLocationId != null &&
                     pendingRoot.RuntimeComponentsByLocationId.TryGetValue(locationId, out components) &&
-                    transform.TryGetComponent(out Vegvisir vegvisir))
-                {
-                    AddPendingLocationVegvisir(components, vegvisir);
-                }
-
-                if (pendingRoot.RuntimeComponentsByLocationId != null &&
-                    pendingRoot.RuntimeComponentsByLocationId.TryGetValue(locationId, out components) &&
                     transform.TryGetComponent(out RuneStone runestone))
                 {
                     AddPendingLocationRunestone(components, runestone);
@@ -251,17 +254,6 @@ internal static partial class LocationManager
         components.ItemStandsByPath[GetRelativePath(components.Root, itemStand.transform)] = itemStand;
     }
 
-    private static void AddPendingLocationVegvisir(LocationRuntimeComponents components, Vegvisir vegvisir)
-    {
-        if (components == null || vegvisir == null)
-        {
-            return;
-        }
-
-        components.Vegvisirs.Add(vegvisir);
-        components.VegvisirsByPath[GetRelativePath(components.Root, vegvisir.transform)] = vegvisir;
-    }
-
     private static void AddPendingLocationRunestone(LocationRuntimeComponents components, RuneStone runestone)
     {
         if (components == null || runestone == null)
@@ -270,7 +262,6 @@ internal static partial class LocationManager
         }
 
         components.Runestones.Add(runestone);
-        components.RunestonesByPath[GetRelativePath(components.Root, runestone.transform)] = runestone;
     }
 
     private static void FinalizePendingLocationRootBundle(PendingLocationRootReconcile pendingRoot)
@@ -309,7 +300,7 @@ internal static partial class LocationManager
             }
 
             int instanceId = location.GetInstanceID();
-            if (PendingLocationReconcileIds.Contains(instanceId))
+            if (PendingLocationReconciles.Contains(instanceId))
             {
                 SuppressedQueuedLocationReconciles[instanceId] =
                     SuppressedQueuedLocationReconciles.TryGetValue(instanceId, out int suppressedCount)

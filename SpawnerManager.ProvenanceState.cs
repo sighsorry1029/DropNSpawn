@@ -84,6 +84,11 @@ internal static partial class SpawnerManager
             return _pendingLocationRootProvenanceScans.Count > 0;
         }
 
+        public int PendingRootScanCount()
+        {
+            return _pendingLocationRootProvenanceScans.Count;
+        }
+
         public bool TryPeekPendingRootScan(out PendingLocationRootProvenanceScan pendingScan)
         {
             if (_pendingLocationRootProvenanceScans.TryPeek(out PendingLocationRootProvenanceScan? candidate))

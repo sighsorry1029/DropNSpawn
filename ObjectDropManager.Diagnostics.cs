@@ -9,30 +9,6 @@ namespace DropNSpawn;
 
 internal static partial class ObjectDropManager
 {
-    private static int _invalidEntryWarningSuppressionDepth;
-
-    private readonly struct InvalidEntryWarningSuppressionScope : IDisposable
-    {
-        private readonly bool _active;
-
-        public InvalidEntryWarningSuppressionScope(bool active)
-        {
-            _active = active;
-            if (_active)
-            {
-                _invalidEntryWarningSuppressionDepth++;
-            }
-        }
-
-        public void Dispose()
-        {
-            if (_active)
-            {
-                _invalidEntryWarningSuppressionDepth--;
-            }
-        }
-    }
-
     private static void WarnMissingComponent(string key, string componentName)
     {
         if (MissingComponentWarnings.Add(key))
@@ -43,28 +19,12 @@ internal static partial class ObjectDropManager
 
     private static void WarnInvalidEntry(string message)
     {
-        if (_invalidEntryWarningSuppressionDepth > 0 || ShouldSuppressServerSourcedInvalidEntryWarning(message))
-        {
-            return;
-        }
-
-        if (InvalidEntryWarnings.Add(message))
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogWarning(message);
-        }
+        InvalidEntryWarnings.Warn(message);
     }
 
-    private static InvalidEntryWarningSuppressionScope BeginInvalidEntryWarningSuppressionForSyncedClientBuild(string sourceName)
+    private static InvalidEntryDiagnostics.SuppressionScope BeginInvalidEntryWarningSuppressionForSyncedClientBuild(string sourceName)
     {
-        return !DropNSpawnPlugin.IsSourceOfTruth && sourceName.StartsWith("ServerSync:", StringComparison.Ordinal)
-            ? new InvalidEntryWarningSuppressionScope(active: true)
-            : default;
-    }
-
-    private static bool ShouldSuppressServerSourcedInvalidEntryWarning(string message)
-    {
-        return !DropNSpawnPlugin.IsSourceOfTruth &&
-               message.IndexOf("ServerSync:", StringComparison.Ordinal) >= 0;
+        return InvalidEntryWarnings.BeginSuppressionForSyncedClientBuild(sourceName);
     }
 
     private static void LogPartiallyAcceptedLocalConfiguration(int parsedEntryCount, int acceptedEntryCount, List<string> warnings)

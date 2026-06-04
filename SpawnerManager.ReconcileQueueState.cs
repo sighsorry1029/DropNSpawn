@@ -1,5 +1,3 @@
-using System.Collections.Generic;
-
 namespace DropNSpawn;
 
 internal static partial class SpawnerManager
@@ -8,103 +6,55 @@ internal static partial class SpawnerManager
 
     private sealed class SpawnerReconcileQueue
     {
-        private readonly RingBufferQueue<PendingSpawnAreaReconcile> _pendingSpawnAreaReconciles = new();
-        private readonly HashSet<int> _pendingSpawnAreaReconcileIds = new();
-        private readonly RingBufferQueue<PendingCreatureSpawnerReconcile> _pendingCreatureSpawnerReconciles = new();
-        private readonly HashSet<int> _pendingCreatureSpawnerReconcileIds = new();
+        private readonly InstanceReconcileQueue<SpawnArea, PendingSpawnAreaReconcile> _pendingSpawnAreaReconciles =
+            new(
+                (spawnArea, instanceId, epoch) => new PendingSpawnAreaReconcile(spawnArea, instanceId, epoch),
+                queuedSpawnArea => queuedSpawnArea.InstanceId,
+                queuedSpawnArea => queuedSpawnArea.Epoch,
+                queuedSpawnArea => queuedSpawnArea.SpawnArea);
+
+        private readonly InstanceReconcileQueue<CreatureSpawner, PendingCreatureSpawnerReconcile> _pendingCreatureSpawnerReconciles =
+            new(
+                (creatureSpawner, instanceId, epoch) => new PendingCreatureSpawnerReconcile(creatureSpawner, instanceId, epoch),
+                queuedCreatureSpawner => queuedCreatureSpawner.InstanceId,
+                queuedCreatureSpawner => queuedCreatureSpawner.Epoch,
+                queuedCreatureSpawner => queuedCreatureSpawner.CreatureSpawner);
 
         public bool TryQueue(SpawnArea? spawnArea, int epoch)
         {
-            if (spawnArea == null)
-            {
-                return false;
-            }
-
-            int instanceId = spawnArea.GetInstanceID();
-            if (!_pendingSpawnAreaReconcileIds.Add(instanceId))
-            {
-                return false;
-            }
-
-            _pendingSpawnAreaReconciles.Enqueue(new PendingSpawnAreaReconcile(spawnArea, instanceId, epoch));
-            return true;
+            return _pendingSpawnAreaReconciles.TryQueue(spawnArea, epoch);
         }
 
         public bool TryQueue(CreatureSpawner? creatureSpawner, int epoch)
         {
-            if (creatureSpawner == null)
-            {
-                return false;
-            }
-
-            int instanceId = creatureSpawner.GetInstanceID();
-            if (!_pendingCreatureSpawnerReconcileIds.Add(instanceId))
-            {
-                return false;
-            }
-
-            _pendingCreatureSpawnerReconciles.Enqueue(new PendingCreatureSpawnerReconcile(creatureSpawner, instanceId, epoch));
-            return true;
+            return _pendingCreatureSpawnerReconciles.TryQueue(creatureSpawner, epoch);
         }
 
         public bool HasPendingWork()
         {
-            return _pendingSpawnAreaReconciles.Count > 0 ||
-                   _pendingCreatureSpawnerReconciles.Count > 0;
+            return _pendingSpawnAreaReconciles.HasPendingWork ||
+                   _pendingCreatureSpawnerReconciles.HasPendingWork;
+        }
+
+        public int GetPendingWorkCount()
+        {
+            return _pendingSpawnAreaReconciles.Count + _pendingCreatureSpawnerReconciles.Count;
         }
 
         public bool TryDequeueNextSpawnArea(int epoch, out SpawnArea? spawnArea)
         {
-            spawnArea = null;
-            while (_pendingSpawnAreaReconciles.Count > 0)
-            {
-                if (!_pendingSpawnAreaReconciles.TryDequeue(out PendingSpawnAreaReconcile queuedSpawnArea))
-                {
-                    continue;
-                }
-
-                _pendingSpawnAreaReconcileIds.Remove(queuedSpawnArea.InstanceId);
-                if (queuedSpawnArea.Epoch != epoch || queuedSpawnArea.SpawnArea == null)
-                {
-                    continue;
-                }
-
-                spawnArea = queuedSpawnArea.SpawnArea;
-                return true;
-            }
-
-            return false;
+            return _pendingSpawnAreaReconciles.TryDequeueCurrent(epoch, out spawnArea, out _);
         }
 
         public bool TryDequeueNextCreatureSpawner(int epoch, out CreatureSpawner? creatureSpawner)
         {
-            creatureSpawner = null;
-            while (_pendingCreatureSpawnerReconciles.Count > 0)
-            {
-                if (!_pendingCreatureSpawnerReconciles.TryDequeue(out PendingCreatureSpawnerReconcile queuedCreatureSpawner))
-                {
-                    continue;
-                }
-
-                _pendingCreatureSpawnerReconcileIds.Remove(queuedCreatureSpawner.InstanceId);
-                if (queuedCreatureSpawner.Epoch != epoch || queuedCreatureSpawner.CreatureSpawner == null)
-                {
-                    continue;
-                }
-
-                creatureSpawner = queuedCreatureSpawner.CreatureSpawner;
-                return true;
-            }
-
-            return false;
+            return _pendingCreatureSpawnerReconciles.TryDequeueCurrent(epoch, out creatureSpawner, out _);
         }
 
         public void Clear()
         {
             _pendingSpawnAreaReconciles.Clear();
-            _pendingSpawnAreaReconcileIds.Clear();
             _pendingCreatureSpawnerReconciles.Clear();
-            _pendingCreatureSpawnerReconcileIds.Clear();
         }
     }
 }

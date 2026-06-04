@@ -140,24 +140,6 @@ internal static partial class NetworkPayloadSyncSupport
                 ReadItemStandDefinition,
                 ConfigurationEntryCloneSupport.CloneLocationItemStandDefinition);
 
-    private static ValueCodec<LocationVegvisirDefinition> _vegvisirValueCodec;
-    private static ValueCodec<LocationVegvisirDefinition> VegvisirValueCodec =>
-        _vegvisirValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteVegvisirDefinition(builder, definition),
-                WriteVegvisirDefinition,
-                ReadVegvisirDefinition,
-                ConfigurationEntryCloneSupport.CloneLocationVegvisirDefinition);
-
-    private static ValueCodec<LocationRunestoneDefinition> _runestoneValueCodec;
-    private static ValueCodec<LocationRunestoneDefinition> RunestoneValueCodec =>
-        _runestoneValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteRunestoneDefinition(builder, definition),
-                WriteRunestoneDefinition,
-                ReadRunestoneDefinition,
-                ConfigurationEntryCloneSupport.CloneLocationRunestoneDefinition);
-
     private static ValueCodec<LocationRunestoneGlobalPinsDefinition> _runestoneGlobalPinsValueCodec;
     private static ValueCodec<LocationRunestoneGlobalPinsDefinition> RunestoneGlobalPinsValueCodec =>
         _runestoneGlobalPinsValueCodec ??=
@@ -166,6 +148,15 @@ internal static partial class NetworkPayloadSyncSupport
                 WriteRunestoneGlobalPinsDefinition,
                 ReadRunestoneGlobalPinsDefinition,
                 ConfigurationEntryCloneSupport.CloneLocationRunestoneGlobalPinsDefinition);
+
+    private static ValueCodec<LocationVegvisirGlobalEffectsDefinition> _vegvisirGlobalEffectsValueCodec;
+    private static ValueCodec<LocationVegvisirGlobalEffectsDefinition> VegvisirGlobalEffectsValueCodec =>
+        _vegvisirGlobalEffectsValueCodec ??=
+            new(
+                static (builder, definition, _) => WriteVegvisirGlobalEffectsDefinition(builder, definition),
+                WriteVegvisirGlobalEffectsDefinition,
+                ReadVegvisirGlobalEffectsDefinition,
+                ConfigurationEntryCloneSupport.CloneLocationVegvisirGlobalEffectsDefinition);
 
     private static ValueCodec<SpawnSystemSpawnDefinition> _spawnSystemSpawnValueCodec;
     private static ValueCodec<SpawnSystemSpawnDefinition> SpawnSystemSpawnValueCodec =>

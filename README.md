@@ -8,7 +8,7 @@ DropNSpawn is split into five domains. Each domain can be enabled or disabled se
 
 | Domain | What it controls |
 | --- | --- |
-| `location` | Boss altars, altar item stands, Vegvisirs, RuneStones, and RuneStone global pins |
+| `location` | Boss altars, altar item stands, Vegvisir global effects, and RuneStone global pins |
 | `character` | `CharacterDrop` loot, one-per-player drop counting, drop-in-stack, despawn rules, and boss-tamed pressure |
 | `object` | Containers, pickables, pickable items, fish, destructibles, mine rocks, trees, and object drop tables |
 | `spawner` | `SpawnArea` and `CreatureSpawner` tables, intervals, caps, level ranges, and location-scoped spawner rules |
@@ -18,28 +18,31 @@ DropNSpawn is split into five domains. Each domain can be enabled or disabled se
 
 ## Location
 ![](https://i.ibb.co/FLPN5q68/altar.png)  
-Specific for boss-related locations
+Boss-location and location-helper behavior.
 
-- boss altar behavior (Harder boss at night, boss respawn cooldown and so on)
-- slot-specific `ItemStand` restrictions (Change offerings)
-- Vegvisir target or presentation changes (change icon and the location it points to)
-- Hover on altar to see the offerings and boss. (serversync)
+- boss altar behavior, summon requirements, and respawn timing
+- slot-specific `ItemStand` restrictions and offering changes
+- biome-based `vegvisirGlobalEffects` status-effect rewards when interacting with Vegvisirs
+- RuneStone global pins for revealing configured map locations from pinless RuneStones
+- hover on altar to see the offering and summonable boss
 
 ## Character
 ![](https://i.ibb.co/nMZ7gcZR/characterdrop.png)
 
-- Configure creature loot to your liking
-- merge multiple conditional loot rows for the same creature (VNEI compatible)
-- Check various conditioned examples on the config/DropNSpawn/examples
-- Mobs can drop loots in one stack.
-- `Loot per person` checks configured range instead of whole world.
+- configure creature loot
+- merge multiple conditional loot rows for the same creature
+- VNEI-compatible character drop display
+- drop creature loot in one stack when configured
+- `onePerPlayer` can count nearby living players within the configured range
+- character despawn rules and boss-tamed pressure
+
 ## Object
 ![](https://i.ibb.co/yFhNTP60/objectdrop.png)
 
 - chest loot replacement
-- tooltier, health change for trees and rocks
+- tool-tier and health changes for trees and rocks
 - tree or rock drop changes
-- pickable loot changes (bonefiles, fish, berries)
+- pickable loot changes (bone piles, fish, berries)
 - destructible health and spawn-on-destroy changes
 - `DNS_object.locations.reference.yml` exists because many objects are dependent on locations
 
@@ -48,20 +51,21 @@ Specific for boss-related locations
 
 - change spawn tables
 - change spawn intervals, trigger distance, caps, level range, respawn time
-- apply location-scoped spawner overrides with top-level `location`
+- apply location-scoped spawner overrides with top-level `locations`
 - ExpandWorldData compatible
 - `DNS_spawner.locations.reference.yml` exists because many spawners are dependent on locations
 
 ## SpawnSystem
-You can see many vertical lines on above image. Those are SpawnSystems
+The vertical lines in the spawner image are world `SpawnSystem` checks.
+
 - biome/world spawn rules
 - global-key-gated spawning
 - time-of-day spawn rules
 - world-level conditional behavior
-- ExpandWorldData compatible (Same system with ExpandWorldSpawn just that format is different)
+- ExpandWorldData compatible
 - This domain is authoritative and replaces the live `SpawnSystem` table with the rows you define.
   ![](https://i.ibb.co/wZ4BfJF1/spawnsystem.png)
-- Above image is explanation of how spawnsystem works in valheim
+- Above image explains how Valheim world spawning works.
 
 ## Workflow
 
@@ -92,15 +96,12 @@ Use one primary file per domain when possible. Supplemental files are useful for
 
 ## Reference Updates
 
-`Reference Update Mode` controls generated reference files.
-
-- `AutoUpdate`: creates missing reference files and updates most existing reference files automatically.
-- `ManualUpdate`: creates missing reference files, but updates existing reference files only when you run `dns:reference`.
+Reference files are generated lookup snapshots. Missing reference files are created automatically, and existing reference files are updated automatically when their source game data changes.
 
 Notes:
 
-- `DNS_spawnsystem.reference.yml` is manual only. Run `dns:reference spawnsystem`.
-- `DNS_spawner.locations.reference.yml` is auto-created when missing, but not auto-updated afterward.
+- `DNS_spawnsystem.reference.yml` is generated from vanilla and upstream mod SpawnSystem data. `DNS_spawnsystem.yml` full overrides are not used as reference source data.
+- `DNS_object.locations.reference.yml` and `DNS_spawner.locations.reference.yml` are generated lookup files and are also kept up to date automatically.
 
 ## Console Commands
 
@@ -119,38 +120,44 @@ Notes:
 
 Most server-facing settings are synced from the server.
 
+Domain toggles live under `4 - Domains`:
+
 - `Enable Object Overrides`
 - `Enable Character Overrides`
 - `Enable Spawner Overrides`
 - `Enable Location Overrides`
 - `Enable SpawnSystem Overrides`
+
+General, boss, and character settings include:
+
+- `Lock Configuration`
 - `Default SpawnArea Max Total Spawns`
 - `Enable Runestone Global Pins`
+- `Enable Vegvisir Global Effects`
 - `Show LocationProxy Offering Bowl Hover Info`
 - `Per Player Boss Stones`
 - `Remote Forsaken Power Selection`
 - `Enable Boss Tamed Pressure`
 - `Enable Same Boss Duplicate Block`
-- `Default Despawn Range`
-- `Default Despawn Delay Seconds`
-- `Global Drop In Stack`
-- `Drop In Stack Blacklist`
-- `One Per Player Nearby Range`
-- `One Per Player Nearby Range Living Players Only`
+- `default despawn delay seconds`
+- `default despawn range`
+- `OnePerPlayer drop check range`
+- `global drop in stack`
+- `global drop in stack blacklist`
+- `global trophy level multiplier`
+- `global trophy level multiplier blacklist`
 
-Client-only settings include `Reference Update Mode` and `Rotate Forsaken Power Shortcut`.
+Client-only settings include `Rotate Forsaken Power Shortcut`.
 
 ## Compatibility
 
 If another mod fully owns the same system, disable the overlapping DropNSpawn domain instead of stacking both.
 
 - `VNEI`: DropNSpawn character drops are exposed for normal lookup.
-- `CLLC`: CLLC effects can be used in supported character and spawn conditions/modifiers.
 - `MonsterDB`: overlaps with `character` and `spawnsystem`.
 - `Drop That!`: overlaps with `object` and `character`.
 - `Spawn That!`: overlaps with `spawner` and `spawnsystem`.
 - `Expand World Spawns`: overlaps with `spawnsystem`.
-- `Spawner Tweaks`: usually compatible, but disable overlapping DropNSpawn domains or Spawner Tweaks features when both edit the same object, altar, item stand, spawn point, or spawner.
 
 ## Helpful Mods
 
@@ -158,5 +165,5 @@ If another mod fully owns the same system, disable the overlapping DropNSpawn do
 - `XRayVision` for object components
 - `Infinity Hammer` for placing and removing test objects
 
-## Github
+## GitHub
 https://github.com/sighsorry1029/DropNSpawn

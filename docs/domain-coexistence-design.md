@@ -309,7 +309,7 @@ sealed class LocationRuleSet
     public string Prefab;
     public List<OfferingBowlBlock> OfferingBowls;
     public List<ItemStandBlock> ItemStands;
-    public List<VegvisirBlock> Vegvisirs;
+    public VegvisirGlobalEffectsBlock? VegvisirGlobalEffects;
 }
 ```
 
@@ -369,7 +369,7 @@ Manifest hashes must be computed from this canonical grouped form, not from the 
 
 ## Recommended Schema Changes
 
-Legacy compatibility is not required, so the cleanest path is to add explicit rule identities.
+Backward compatibility is not required here, so the cleanest path is to add explicit rule identities.
 
 ### Add optional `id` everywhere
 

@@ -11,8 +11,7 @@ internal static partial class LocationManager
         AppendTemplateComment(builder, $"Any file named {PluginSettingsFacade.GetYamlDomainSupplementalPrefix("location")}*.yml or {PluginSettingsFacade.GetYamlDomainSupplementalPrefix("location")}*.yaml is also loaded.");
         AppendTemplateComment(builder, $"Use {PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.reference.yml to look up real location prefab names and run dns:full location to regenerate {PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.full.yml.");
         AppendTemplateComment(builder, $"itemStands uses a YAML list. Omit path to apply one row to all relevant item stands for the location, or copy an exact itemStands.path from {PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.reference.yml to target one stand.");
-        AppendTemplateComment(builder, $"Vegvisir overrides are path-targeted by default. Copy the exact vegvisirs.path value from {PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.reference.yml when a location has multiple Vegvisirs. Omit path only when exactly one live Vegvisir matches.");
-        AppendTemplateComment(builder, $"RuneStone overrides are path-targeted by default. Copy the exact runestones.path value from {PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.reference.yml when a location has multiple RuneStones. Omit path only when exactly one live RuneStone matches.");
+        AppendTemplateComment(builder, "vegvisirGlobalEffects is a global Vegvisir reward table applied when a Vegvisir interaction succeeds. It does not change vanilla Vegvisir pins.");
         AppendTemplateComment(builder, "Expand World clone aliases are matched exactly # ex) prefab: \"Dragonqueen:clone\" # quotes are required because ':' must stay inside one YAML string");
         AppendTemplateComment(builder, "offeringBowl data/fields/objects require Expand World Data and apply only when bossPrefab spawns a character # objects spawn at the resolved boss spawn point");
         AppendTemplateBlankLine(builder);
@@ -75,52 +74,9 @@ internal static partial class LocationManager
         AppendTemplateLine(builder, 2, "guardianPower: null # ex) GP_Eikthyr # StatusEffect prefab name granted when this stand is used");
         AppendTemplateBlankLine(builder);
 
-        AppendTemplateComment(builder, "vegvisirs");
+        AppendTemplateComment(builder, "vegvisirGlobalEffects # Enable with BepInEx config: 1 - General / Enable Vegvisir Global Effects");
         AppendTemplateBlankLine(builder);
-        AppendTemplateLine(builder, 0, "- prefab: SwampRuin1");
-        AppendTemplateLine(builder, 1, "enabled: true");
-        AppendTemplateLine(builder, 1, "conditions: {} # Same static location-filter shape as the offeringBowl example above");
-        AppendTemplateLine(builder, 1, "vegvisirs:");
-        AppendTemplateLine(builder, 1, $"- path: null # ex) Vegvisir_Bonemass (1)[0] # Optional exact vegvisirs.path from {PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.reference.yml");
-        AppendTemplateLine(builder, 2, "expectedLocations: [] # ex) [Vendor_BlackForest] # Optional validation list # When path is omitted this must match exactly one live Vegvisir");
-        AppendTemplateLine(builder, 2, "name: null # ex) '$piece_vegvisir' # Optional hover name");
-        AppendTemplateLine(builder, 2, "useText: null # ex) '$piece_register_location' # Optional interaction text");
-        AppendTemplateLine(builder, 2, "hoverName: null # ex) Pin # Optional secondary hover label");
-        AppendTemplateLine(builder, 2, "setsGlobalKey: null # ex) defeated_gdking # Optional global key set after interaction");
-        AppendTemplateLine(builder, 2, "setsPlayerKey: null # Optional per-player key set after interaction");
-        AppendTemplateLine(builder, 2, "locations: # One or more location discoveries triggered by this vegvisir");
-        AppendTemplateLine(builder, 2, "- locationName: null # ex) Vendor_BlackForest # Required location prefab name");
-        AppendTemplateLine(builder, 3, "pinName: null # ex) Pin # Optional map pin label");
-        AppendTemplateLine(builder, 3, "pinType: null # ex) Boss # Optional Minimap.PinType name");
-        AppendTemplateLine(builder, 3, "discoverAll: false # True reveals every matching location instead of only the closest one");
-        AppendTemplateLine(builder, 3, "showMap: true # True creates or updates a map pin for the discovered location");
-        AppendTemplateLine(builder, 3, "weight: null # Optional weighted single-target pick when any vegvisir location defines weight");
-        AppendTemplateBlankLine(builder);
-
-        AppendTemplateComment(builder, "runestones");
-        AppendTemplateBlankLine(builder);
-        AppendTemplateLine(builder, 0, "- prefab: Runestone_Greydwarfs");
-        AppendTemplateLine(builder, 1, "enabled: true");
-        AppendTemplateLine(builder, 1, "conditions: {} # Same static location-filter shape as the offeringBowl example above");
-        AppendTemplateLine(builder, 1, "runestones:");
-        AppendTemplateLine(builder, 1, $"- path: null # ex) RuneStone[0] # Optional exact runestones.path from {PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.reference.yml");
-        AppendTemplateLine(builder, 2, "expectedLocationName: null # Optional validation/disambiguation when path is omitted");
-        AppendTemplateLine(builder, 2, "expectedLabel: null # Optional validation/disambiguation by current RuneStone label");
-        AppendTemplateLine(builder, 2, "expectedTopic: null # Optional validation/disambiguation by current RuneStone topic");
-        AppendTemplateLine(builder, 2, "name: null # ex) 'Rune stone' # Optional hover name");
-        AppendTemplateLine(builder, 2, "topic: null # Optional TextViewer topic or localization key");
-        AppendTemplateLine(builder, 2, "label: null # Optional known-text label key");
-        AppendTemplateLine(builder, 2, "text: null # Optional TextViewer body or localization key");
-        AppendTemplateLine(builder, 2, "randomTexts: null # [] clears random texts # list entries replace the whole random text list");
-        AppendTemplateLine(builder, 2, "# - topic: null");
-        AppendTemplateLine(builder, 2, "#   label: null");
-        AppendTemplateLine(builder, 2, "#   text: null");
-        AppendTemplateLine(builder, 2, "locationName: null # Optional location prefab discovered on interaction");
-        AppendTemplateLine(builder, 2, "pinName: null # ex) Pin # Optional map pin label");
-        AppendTemplateLine(builder, 2, "pinType: null # ex) Boss # Optional Minimap.PinType name");
-        AppendTemplateLine(builder, 2, "showMap: null # True shows/creates the discovered location map pin");
-        AppendTemplateLine(builder, 2, "chance: null # Optional 0..1 pin chance rolled once per loaded RuneStone instance");
-        AppendTemplateBlankLine(builder);
+        AppendVegvisirGlobalEffectsDefaults(builder);
 
         AppendTemplateComment(builder, "runestoneGlobalPins # Enable with BepInEx config: 1 - General / Enable Runestone Global Pins");
         AppendTemplateBlankLine(builder);
@@ -149,6 +105,111 @@ internal static partial class LocationManager
         return builder.ToString();
     }
 
+    private static void AppendVegvisirGlobalEffectsDefaults(StringBuilder builder)
+    {
+        AppendActiveTemplateLine(builder, 0, "- vegvisirGlobalEffects:");
+        AppendActiveTemplateLine(builder, 1, "# Row: StatusEffect, durationSeconds, cooldownSeconds, weight, effectPrefab");
+        AppendActiveTemplateLine(builder, 1, "# All is pooled with the current biome row; every other key must be one biome name.");
+        AppendActiveTemplateLine(builder, 1, "# Each loaded Vegvisir locks one weighted pick until unload; unload/load resets its pick and cooldown state.");
+        AppendActiveTemplateLine(builder, 1, "# Omitted duration/cooldown use StatusEffect prefab values; cooldown 0 = none; cooldown < 0 = once per loaded Vegvisir/player.");
+        AppendActiveTemplateLine(builder, 1, "# DNS_ClearStatus ignores duration, clears current status effects, and shows \"You got bamboozled\".");
+        AppendActiveTemplateLine(builder, 1, "# If the selected StatusEffect is already active, it is not reapplied and no cooldown/fx starts.");
+        AppendActiveTemplateLine(builder, 1, "# effectPrefab is optional and must start with vfx_, sfx_, or fx_ case-insensitively.");
+        AppendActiveTemplateLine(builder, 1, "- All:");
+        AppendActiveTemplateLine(builder, 2, "- CorpseRun, 60, 120, 0.1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- SoftDeath, 120, 240, 0.5, vfx_HealthUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- DNS_ClearStatus, 0, 5, 0.1, sfx_goblin_idle");
+        AppendActiveTemplateLine(builder, 1, "- Meadows:");
+        AppendActiveTemplateLine(builder, 2, "- Rested, 240, 480, 1, vfx_HealthUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- BeltStrength, 120, 240, 1, vfx_HealthUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- AdrenalineRush, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "# - Lightning, 5, 10, 1000, fx_eikthyr_stomp");
+        AppendActiveTemplateLine(builder, 1, "- BlackForest:");
+        AppendActiveTemplateLine(builder, 2, "- GP_Eikthyr, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_health_minor");
+        AppendActiveTemplateLine(builder, 2, "- Potion_stamina_minor");
+        AppendActiveTemplateLine(builder, 2, "- Potion_tasty, 10, 20, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_BerserkerArmor, 120, 240, 1, vfx_HealthUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_TrollArmor, 120, 240, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- TrinketBronzeHealth, 60, 120, 1, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- TrinketBronzeStamina, 60, 120, 1, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- AdrenalineRush, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Wet, 60, -1, 0.5, sfx_gdking_scream");
+        AppendActiveTemplateLine(builder, 1, "- Swamp:");
+        AppendActiveTemplateLine(builder, 2, "- GP_TheElder, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_hasty, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_strength, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_swimmer, 240, 360, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_TrollPheromones, 240, 360, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_poisonresist, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_health_medium");
+        AppendActiveTemplateLine(builder, 2, "- Potion_stamina_minor");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_RootArmor, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- TrinketIronHealth, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- TrinketIronStamina, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- AdrenalineRush2, 120, 240, 1, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- Puke, 5, 10, 0.5, fx_Bonemass_aoe_start # sfx_Bonemass_alert");
+        AppendActiveTemplateLine(builder, 1, "- Mountain:");
+        AppendActiveTemplateLine(builder, 2, "- GP_Bonemass, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_frostresist, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_tamer, 240, 480, 1");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_FenringArmor, 120, 240, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_WolfArmor, 120, 240, 1, vfx_HealthUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_FishingHat, 240, 480, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_HarvesterArmor, 240, 480, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- TrinketChitinSwim, 120, 240, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- TrinketSilverDamage, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- TrinketSilverResist, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- AdrenalineRush2, 120, 240, 1, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- Frost, 5, 10, 0.5, sfx_dragon_scream");
+        AppendActiveTemplateLine(builder, 1, "- Plains:");
+        AppendActiveTemplateLine(builder, 2, "- GP_Moder, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_BugRepellent, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_bzerker, 30, 60, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_barleywine, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_stamina_medium");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_BerserkerUndeadArmor, 120, 240, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- TrinketBlackDamageHealth, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- TrinketBlackStamina, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- AdrenalineRush3, 120, 240, 1, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- Tared, 5, 10, 0.5, sfx_goblinking_taunt");
+        AppendActiveTemplateLine(builder, 1, "- Mistlands:");
+        AppendActiveTemplateLine(builder, 2, "- GP_Yagluth, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_eitr_minor");
+        AppendActiveTemplateLine(builder, 2, "- Potion_health_major");
+        AppendActiveTemplateLine(builder, 2, "- Potion_LightFoot, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_stamina_lingering, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_MageArmor, 120, 240, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- SE_Dvergr_buff, 60, 120, 1, vfx_HealthUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- SlowFall, 60, 120, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- Staff_shield, 120, 240, 1, vfx_HealthUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- TrinketCarapaceEitr, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- TrinketScaleStaminaDamage, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- Demister, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- AdrenalineRush3, 120, 240, 1, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- Slimed, 5, 10, 0.5, sfx_HiveQueen_callout");
+        AppendActiveTemplateLine(builder, 1, "- AshLands:");
+        AppendActiveTemplateLine(builder, 2, "- GP_Queen, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_eitr_lingering, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- Potion_health_lingering, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- SetEffect_AshlandsMediumArmor, 120, 240, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- WindRun, 120, 240, 1, vfx_StaminaUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- TrinketFlametalEitr, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- TrinketFlametalStaminaHealth, 60, 120, 0.5, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- Warm, 60, 120, 0.5, vfx_HealthUpgrade");
+        AppendActiveTemplateLine(builder, 2, "- AdrenalineRush4, 120, 240, 1, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 2, "- Immobilized, 5, 10, 0.5, sfx_fader_taunt");
+        AppendActiveTemplateLine(builder, 1, "- DeepNorth:");
+        AppendActiveTemplateLine(builder, 2, "- GP_Fader, 120, 240, 1");
+        AppendActiveTemplateLine(builder, 2, "- AdrenalineRush4, 120, 240, 1, fx_Adrenaline1");
+        AppendActiveTemplateLine(builder, 1, "- Localize:");
+        AppendActiveTemplateLine(builder, 2, "- \"You have received {name}\": # \"{name} \uD6A8\uACFC\uB97C \uBC1B\uC558\uC2B5\uB2C8\uB2E4\"");
+        AppendActiveTemplateLine(builder, 2, "- \"You got bamboozled\": # \"\uC18D\uC558\uC2B5\uB2C8\uB2E4\"");
+        AppendActiveTemplateLine(builder, 2, "- \"Buff Cooldown {seconds}s\": # \"\uBC84\uD504 \uCFE8\uB2E4\uC6B4 {seconds}\uCD08\"");
+        AppendActiveTemplateLine(builder, 2, "- \"Already active {name}\": # \"{name} \uD6A8\uACFC\uAC00 \uC774\uBBF8 \uD65C\uC131\uD654\uB418\uC5B4 \uC788\uC2B5\uB2C8\uB2E4\"");
+        AppendActiveTemplateBlankLine(builder);
+    }
+
     private static void AppendRunestoneGlobalPinTarget(StringBuilder builder, string locationName, bool includeFieldComments = false)
     {
         AppendActiveTemplateLine(builder, 2, includeFieldComments
@@ -166,7 +227,7 @@ internal static partial class LocationManager
             ? "sourceBiomes: [] # Extra RuneStone source biomes allowed in addition to the target location's own biome"
             : "sourceBiomes: []");
         AppendActiveTemplateLine(builder, 3, includeFieldComments
-            ? "pinName: null # Defaults to the target Location.m_discoverLabel, then locationName"
+            ? "pinName: null # Defaults to target Location.m_discoverLabel, then child Teleport.m_enterText, then locationName"
             : "pinName: null");
         AppendActiveTemplateLine(builder, 3, includeFieldComments
             ? "pinType: Icon3 # Options: Icon0, Icon1, Icon2, Icon3, Death, Bed, Icon4, Shout, None, Boss, Player, RandomEvent, Ping, EventArea, Hildir1, Hildir2, Hildir3"

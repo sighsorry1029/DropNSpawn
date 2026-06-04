@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 
 namespace DropNSpawn;
@@ -29,9 +28,7 @@ internal static partial class LocationManager
                     {
                         Prefab = snapshot.Prefab,
                         OfferingBowl = snapshot.OfferingBowl != null ? ConvertReferenceOfferingBowl(snapshot.OfferingBowl) : null,
-                        ItemStands = snapshot.ItemStands.Count > 0 ? snapshot.ItemStands.Select(ConvertReferenceItemStand).ToList() : null,
-                        Vegvisirs = snapshot.Vegvisirs.Count == 0 ? null : snapshot.Vegvisirs.Select(ConvertReferenceVegvisir).ToList(),
-                        Runestones = snapshot.Runestones.Count == 0 ? null : snapshot.Runestones.Select(ConvertReferenceRunestone).ToList()
+                        ItemStands = snapshot.ItemStands.Count > 0 ? snapshot.ItemStands.Select(ConvertReferenceItemStand).ToList() : null
                     })
                     .ToList()))
             .ToList();
@@ -44,11 +41,59 @@ internal static partial class LocationManager
         return ReferenceRefreshSupport.SerializeReferenceSections(entries, entry => entry.Prefab, Serializer);
     }
 
+    internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
+    {
+        string content;
+        string logMessage;
+        lock (Sync)
+        {
+            path = FullScaffoldConfigurationPath;
+            error = "";
+
+            if (!IsGameDataReady() && !_snapshotsCaptured)
+            {
+                error = "Location game data is not ready yet.";
+                return false;
+            }
+
+            RefreshReferenceSnapshots();
+            content = BuildFullScaffoldConfigurationTemplate();
+            logMessage = $"Wrote location full scaffold configuration to {path}.";
+        }
+
+        GeneratedArtifactWriter.WriteTextAlways(path, content, logMessage);
+        return true;
+    }
+
+    internal static void RefreshReferenceConfigurationFile()
+    {
+        string content;
+        string sourceSignature;
+        string logMessage;
+        lock (Sync)
+        {
+            if (!IsGameDataReady())
+            {
+                return;
+            }
+
+            RefreshReferenceSnapshots();
+            content = BuildReferenceConfigurationTemplate();
+            sourceSignature = ComputeReferenceSourceSignature();
+            logMessage = $"Updated location reference configuration at {ReferenceConfigurationPath}.";
+        }
+
+        WriteReferenceConfigurationFile(content, logMessage);
+        ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, sourceSignature);
+        lock (Sync)
+        {
+            ResetReferenceSnapshots();
+        }
+    }
+
     private static void WriteReferenceConfigurationFile(string content, string logMessage)
     {
-        Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-        GeneratedFileWriter.WriteAllTextIfChanged(ReferenceConfigurationPath, content);
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(logMessage);
+        GeneratedArtifactWriter.WriteText(ReferenceConfigurationPath, content, logMessage);
     }
 
     private static LocationOfferingBowlDefinition ConvertReferenceOfferingBowl(OfferingBowlSnapshot snapshot)
@@ -82,32 +127,6 @@ internal static partial class LocationManager
         };
     }
 
-    private static LocationVegvisirDefinition ConvertReferenceVegvisir(PathScopedVegvisirSnapshot snapshot)
-    {
-        return new LocationVegvisirDefinition
-        {
-            Path = snapshot.Path,
-            ExpectedLocations = GetExpectedVegvisirLocations(snapshot.Snapshot),
-            Name = string.IsNullOrWhiteSpace(snapshot.Snapshot.Name) || snapshot.Snapshot.Name == "$piece_vegvisir" ? null : snapshot.Snapshot.Name,
-            UseText = string.IsNullOrWhiteSpace(snapshot.Snapshot.UseText) || snapshot.Snapshot.UseText == "$piece_register_location" ? null : snapshot.Snapshot.UseText,
-            HoverName = string.IsNullOrWhiteSpace(snapshot.Snapshot.HoverName) || snapshot.Snapshot.HoverName == "Pin" ? null : snapshot.Snapshot.HoverName,
-            SetsGlobalKey = string.IsNullOrWhiteSpace(snapshot.Snapshot.SetsGlobalKey) ? null : snapshot.Snapshot.SetsGlobalKey,
-            SetsPlayerKey = string.IsNullOrWhiteSpace(snapshot.Snapshot.SetsPlayerKey) ? null : snapshot.Snapshot.SetsPlayerKey,
-            Locations = snapshot.Snapshot.Locations.Count == 0 ? null : snapshot.Snapshot.Locations.Select(ConvertReferenceVegvisirTarget).ToList()
-        };
-    }
-
-    private static List<string>? GetExpectedVegvisirLocations(VegvisirSnapshot snapshot)
-    {
-        List<string> expectedLocations = snapshot.Locations
-            .Select(location => (location.LocationName ?? "").Trim())
-            .Where(value => value.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return expectedLocations.Count == 0 ? null : expectedLocations;
-    }
-
     private static LocationItemStandDefinition ConvertReferenceItemStand(PathScopedItemStandSnapshot snapshot)
     {
         return new LocationItemStandDefinition
@@ -125,45 +144,4 @@ internal static partial class LocationManager
         };
     }
 
-    private static LocationRunestoneDefinition ConvertReferenceRunestone(PathScopedRunestoneSnapshot snapshot)
-    {
-        return new LocationRunestoneDefinition
-        {
-            Path = snapshot.Path,
-            ExpectedLocationName = string.IsNullOrWhiteSpace(snapshot.Snapshot.LocationName) ? null : snapshot.Snapshot.LocationName,
-            ExpectedLabel = string.IsNullOrWhiteSpace(snapshot.Snapshot.Label) ? null : snapshot.Snapshot.Label,
-            ExpectedTopic = string.IsNullOrWhiteSpace(snapshot.Snapshot.Topic) ? null : snapshot.Snapshot.Topic,
-            Name = string.IsNullOrWhiteSpace(snapshot.Snapshot.Name) || snapshot.Snapshot.Name == "Rune stone" ? null : snapshot.Snapshot.Name,
-            Topic = string.IsNullOrWhiteSpace(snapshot.Snapshot.Topic) ? null : snapshot.Snapshot.Topic,
-            Label = string.IsNullOrWhiteSpace(snapshot.Snapshot.Label) ? null : snapshot.Snapshot.Label,
-            Text = string.IsNullOrWhiteSpace(snapshot.Snapshot.Text) ? null : snapshot.Snapshot.Text,
-            RandomTexts = snapshot.Snapshot.RandomTexts.Count == 0 ? null : snapshot.Snapshot.RandomTexts.Select(ConvertReferenceRunestoneText).ToList(),
-            LocationName = string.IsNullOrWhiteSpace(snapshot.Snapshot.LocationName) ? null : snapshot.Snapshot.LocationName,
-            PinName = string.IsNullOrWhiteSpace(snapshot.Snapshot.PinName) || snapshot.Snapshot.PinName == "Pin" ? null : snapshot.Snapshot.PinName,
-            PinType = string.IsNullOrWhiteSpace(snapshot.Snapshot.PinType) || snapshot.Snapshot.PinType == Minimap.PinType.Boss.ToString() ? null : snapshot.Snapshot.PinType,
-            ShowMap = snapshot.Snapshot.ShowMap ? true : null
-        };
-    }
-
-    private static LocationRunestoneTextDefinition ConvertReferenceRunestoneText(RunestoneTextSnapshot snapshot)
-    {
-        return new LocationRunestoneTextDefinition
-        {
-            Topic = string.IsNullOrWhiteSpace(snapshot.Topic) ? null : snapshot.Topic,
-            Label = string.IsNullOrWhiteSpace(snapshot.Label) ? null : snapshot.Label,
-            Text = string.IsNullOrWhiteSpace(snapshot.Text) ? null : snapshot.Text
-        };
-    }
-
-    private static LocationVegvisirTargetDefinition ConvertReferenceVegvisirTarget(VegvisirTargetSnapshot snapshot)
-    {
-        return new LocationVegvisirTargetDefinition
-        {
-            LocationName = snapshot.LocationName,
-            PinName = string.IsNullOrWhiteSpace(snapshot.PinName) || snapshot.PinName == "Pin" ? null : snapshot.PinName,
-            PinType = string.IsNullOrWhiteSpace(snapshot.PinType) || snapshot.PinType == Minimap.PinType.Icon0.ToString() ? null : snapshot.PinType,
-            DiscoverAll = snapshot.DiscoverAll ? true : null,
-            ShowMap = snapshot.ShowMap ? null : false
-        };
-    }
 }

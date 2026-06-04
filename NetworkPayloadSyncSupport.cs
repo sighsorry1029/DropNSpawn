@@ -141,9 +141,7 @@ internal static partial class NetworkPayloadSyncSupport
             }
 
             string[] parts = (raw ?? "").Split('|');
-            bool isV1 = parts.Length == 4 && string.Equals(parts[0], "v1", StringComparison.Ordinal);
-            bool isV2 = parts.Length == 5 && string.Equals(parts[0], "v2", StringComparison.Ordinal);
-            if (!isV1 && !isV2)
+            if (parts.Length != 5 || !string.Equals(parts[0], "v2", StringComparison.Ordinal))
             {
                 return false;
             }
@@ -154,15 +152,9 @@ internal static partial class NetworkPayloadSyncSupport
                 return false;
             }
 
-            int? entryCount = null;
-            if (isV2)
+            if (!int.TryParse(parts[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedEntryCount))
             {
-                if (!int.TryParse(parts[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedEntryCount))
-                {
-                    return false;
-                }
-
-                entryCount = Math.Max(0, parsedEntryCount);
+                return false;
             }
 
             manifest = new PayloadManifest
@@ -170,7 +162,7 @@ internal static partial class NetworkPayloadSyncSupport
                 Hash = parts[1] ?? "",
                 CompressedSize = Math.Max(0, compressedSize),
                 ChunkCount = Math.Max(0, chunkCount),
-                EntryCount = entryCount
+                EntryCount = Math.Max(0, parsedEntryCount)
             };
 
             return true;
@@ -467,6 +459,25 @@ internal static partial class NetworkPayloadSyncSupport
                    PendingReloadActions.Count > 0 ||
                    PendingOutboundTransferKeys.Count > 0 ||
                    HasPendingClientRequestWorkLocked();
+        }
+    }
+
+    internal static int GetPendingWorkCount()
+    {
+        lock (Sync)
+        {
+            int count = PendingMainThreadPayloadCommits.Count +
+                        PendingReloadActions.Count +
+                        PendingOutboundTransferKeys.Count;
+            foreach (IDomainTransport transport in AllTransports)
+            {
+                if (transport.HasWaitingRequest())
+                {
+                    count++;
+                }
+            }
+
+            return count;
         }
     }
 
@@ -1537,49 +1548,38 @@ PublishExit:
         WriteNullableString(builder, definition.GuardianPower);
     }
 
-    private static void WriteVegvisirDefinition(PayloadSignatureBuilder builder, LocationVegvisirDefinition definition)
-    {
-        builder.WriteString(definition.Path ?? "");
-        WriteStringList(builder, definition.ExpectedLocations);
-        WriteNullableString(builder, definition.Name);
-        WriteNullableString(builder, definition.UseText);
-        WriteNullableString(builder, definition.HoverName);
-        WriteNullableString(builder, definition.SetsGlobalKey);
-        WriteNullableString(builder, definition.SetsPlayerKey);
-        WriteList(builder, definition.Locations, WriteVegvisirTargetDefinition);
-    }
-
-    private static void WriteVegvisirTargetDefinition(PayloadSignatureBuilder builder, LocationVegvisirTargetDefinition definition)
-    {
-        builder.WriteString(definition.LocationName ?? "");
-        WriteNullableString(builder, definition.PinName);
-        WriteNullableString(builder, definition.PinType);
-        WriteNullableBool(builder, definition.DiscoverAll);
-        WriteNullableBool(builder, definition.ShowMap);
-        WriteNullableFloat(builder, definition.Weight);
-    }
-
-    private static void WriteRunestoneDefinition(PayloadSignatureBuilder builder, LocationRunestoneDefinition definition)
-    {
-        builder.WriteString(definition.Path ?? "");
-        WriteNullableString(builder, definition.ExpectedLocationName);
-        WriteNullableString(builder, definition.ExpectedLabel);
-        WriteNullableString(builder, definition.ExpectedTopic);
-        WriteNullableString(builder, definition.Name);
-        WriteNullableString(builder, definition.Topic);
-        WriteNullableString(builder, definition.Label);
-        WriteNullableString(builder, definition.Text);
-        WriteList(builder, definition.RandomTexts, WriteRunestoneTextDefinition);
-        WriteNullableString(builder, definition.LocationName);
-        WriteNullableString(builder, definition.PinName);
-        WriteNullableString(builder, definition.PinType);
-        WriteNullableBool(builder, definition.ShowMap);
-        WriteNullableFloat(builder, definition.Chance);
-    }
-
     private static void WriteRunestoneGlobalPinsDefinition(PayloadSignatureBuilder builder, LocationRunestoneGlobalPinsDefinition definition)
     {
         WriteList(builder, definition.TargetLocations, WriteRunestoneGlobalPinTargetDefinition);
+    }
+
+    private static void WriteVegvisirGlobalEffectsDefinition(PayloadSignatureBuilder builder, LocationVegvisirGlobalEffectsDefinition definition)
+    {
+        WriteList(builder, definition.Biomes, WriteVegvisirGlobalEffectsBiomeDefinition);
+        WriteOptional(builder, definition.Localize, WriteVegvisirGlobalEffectsLocalizationDefinition);
+    }
+
+    private static void WriteVegvisirGlobalEffectsBiomeDefinition(PayloadSignatureBuilder builder, LocationVegvisirGlobalEffectsBiomeDefinition definition)
+    {
+        WriteNullableString(builder, definition.Biome);
+        WriteList(builder, definition.StatusEffects, WriteVegvisirGlobalEffectDefinition);
+    }
+
+    private static void WriteVegvisirGlobalEffectDefinition(PayloadSignatureBuilder builder, LocationVegvisirGlobalEffectDefinition definition)
+    {
+        builder.WriteString(definition.StatusEffect ?? "");
+        WriteNullableFloat(builder, definition.Weight);
+        WriteNullableFloat(builder, definition.CooldownSeconds);
+        WriteNullableFloat(builder, definition.DurationSeconds);
+        WriteNullableString(builder, definition.EffectPrefab);
+    }
+
+    private static void WriteVegvisirGlobalEffectsLocalizationDefinition(PayloadSignatureBuilder builder, LocationVegvisirGlobalEffectsLocalizationDefinition definition)
+    {
+        WriteNullableString(builder, definition.YouHaveReceived);
+        WriteNullableString(builder, definition.YouGotBamboozled);
+        WriteNullableString(builder, definition.BuffCooldownNs);
+        WriteNullableString(builder, definition.AlreadyActive);
     }
 
     private static void WriteRunestoneGlobalPinTargetDefinition(PayloadSignatureBuilder builder, LocationRunestoneGlobalPinTargetDefinition definition)
@@ -1589,13 +1589,6 @@ PublishExit:
         WriteStringList(builder, definition.SourceBiomes);
         WriteNullableString(builder, definition.PinName);
         WriteNullableString(builder, definition.PinType);
-    }
-
-    private static void WriteRunestoneTextDefinition(PayloadSignatureBuilder builder, LocationRunestoneTextDefinition definition)
-    {
-        WriteNullableString(builder, definition.Topic);
-        WriteNullableString(builder, definition.Label);
-        WriteNullableString(builder, definition.Text);
     }
 
     private static void WriteConditionsDefinition(PayloadSignatureBuilder builder, ConditionsDefinition definition, bool includeResolvedBiomeMask)
@@ -2212,95 +2205,6 @@ PublishExit:
         };
     }
 
-    private static void WriteVegvisirDefinition(ZPackage package, LocationVegvisirDefinition definition)
-    {
-        package.Write(definition.Path ?? "");
-        WriteStringList(package, definition.ExpectedLocations);
-        WriteNullableString(package, definition.Name);
-        WriteNullableString(package, definition.UseText);
-        WriteNullableString(package, definition.HoverName);
-        WriteNullableString(package, definition.SetsGlobalKey);
-        WriteNullableString(package, definition.SetsPlayerKey);
-        WriteList(package, definition.Locations, WriteVegvisirTargetDefinition);
-    }
-
-    private static LocationVegvisirDefinition ReadVegvisirDefinition(ZPackage package)
-    {
-        return new LocationVegvisirDefinition
-        {
-            Path = package.ReadString(),
-            ExpectedLocations = ReadStringList(package),
-            Name = ReadNullableString(package),
-            UseText = ReadNullableString(package),
-            HoverName = ReadNullableString(package),
-            SetsGlobalKey = ReadNullableString(package),
-            SetsPlayerKey = ReadNullableString(package),
-            Locations = ReadList(package, ReadVegvisirTargetDefinition)
-        };
-    }
-
-    private static void WriteVegvisirTargetDefinition(ZPackage package, LocationVegvisirTargetDefinition definition)
-    {
-        package.Write(definition.LocationName ?? "");
-        WriteNullableString(package, definition.PinName);
-        WriteNullableString(package, definition.PinType);
-        WriteNullableBool(package, definition.DiscoverAll);
-        WriteNullableBool(package, definition.ShowMap);
-        WriteNullableFloat(package, definition.Weight);
-    }
-
-    private static LocationVegvisirTargetDefinition ReadVegvisirTargetDefinition(ZPackage package)
-    {
-        return new LocationVegvisirTargetDefinition
-        {
-            LocationName = package.ReadString(),
-            PinName = ReadNullableString(package),
-            PinType = ReadNullableString(package),
-            DiscoverAll = ReadNullableBool(package),
-            ShowMap = ReadNullableBool(package),
-            Weight = ReadNullableFloat(package)
-        };
-    }
-
-    private static void WriteRunestoneDefinition(ZPackage package, LocationRunestoneDefinition definition)
-    {
-        package.Write(definition.Path ?? "");
-        WriteNullableString(package, definition.ExpectedLocationName);
-        WriteNullableString(package, definition.ExpectedLabel);
-        WriteNullableString(package, definition.ExpectedTopic);
-        WriteNullableString(package, definition.Name);
-        WriteNullableString(package, definition.Topic);
-        WriteNullableString(package, definition.Label);
-        WriteNullableString(package, definition.Text);
-        WriteList(package, definition.RandomTexts, WriteRunestoneTextDefinition);
-        WriteNullableString(package, definition.LocationName);
-        WriteNullableString(package, definition.PinName);
-        WriteNullableString(package, definition.PinType);
-        WriteNullableBool(package, definition.ShowMap);
-        WriteNullableFloat(package, definition.Chance);
-    }
-
-    private static LocationRunestoneDefinition ReadRunestoneDefinition(ZPackage package)
-    {
-        return new LocationRunestoneDefinition
-        {
-            Path = package.ReadString(),
-            ExpectedLocationName = ReadNullableString(package),
-            ExpectedLabel = ReadNullableString(package),
-            ExpectedTopic = ReadNullableString(package),
-            Name = ReadNullableString(package),
-            Topic = ReadNullableString(package),
-            Label = ReadNullableString(package),
-            Text = ReadNullableString(package),
-            RandomTexts = ReadList(package, ReadRunestoneTextDefinition),
-            LocationName = ReadNullableString(package),
-            PinName = ReadNullableString(package),
-            PinType = ReadNullableString(package),
-            ShowMap = ReadNullableBool(package),
-            Chance = ReadNullableFloat(package)
-        };
-    }
-
     private static void WriteRunestoneGlobalPinsDefinition(ZPackage package, LocationRunestoneGlobalPinsDefinition definition)
     {
         WriteList(package, definition.TargetLocations, WriteRunestoneGlobalPinTargetDefinition);
@@ -2311,6 +2215,76 @@ PublishExit:
         return new LocationRunestoneGlobalPinsDefinition
         {
             TargetLocations = ReadList(package, ReadRunestoneGlobalPinTargetDefinition)
+        };
+    }
+
+    private static void WriteVegvisirGlobalEffectsDefinition(ZPackage package, LocationVegvisirGlobalEffectsDefinition definition)
+    {
+        WriteList(package, definition.Biomes, WriteVegvisirGlobalEffectsBiomeDefinition);
+        WriteOptional(package, definition.Localize, WriteVegvisirGlobalEffectsLocalizationDefinition);
+    }
+
+    private static LocationVegvisirGlobalEffectsDefinition ReadVegvisirGlobalEffectsDefinition(ZPackage package)
+    {
+        return new LocationVegvisirGlobalEffectsDefinition
+        {
+            Biomes = ReadList(package, ReadVegvisirGlobalEffectsBiomeDefinition),
+            Localize = ReadOptional(package, ReadVegvisirGlobalEffectsLocalizationDefinition)
+        };
+    }
+
+    private static void WriteVegvisirGlobalEffectsBiomeDefinition(ZPackage package, LocationVegvisirGlobalEffectsBiomeDefinition definition)
+    {
+        WriteNullableString(package, definition.Biome);
+        WriteList(package, definition.StatusEffects, WriteVegvisirGlobalEffectDefinition);
+    }
+
+    private static LocationVegvisirGlobalEffectsBiomeDefinition ReadVegvisirGlobalEffectsBiomeDefinition(ZPackage package)
+    {
+        return new LocationVegvisirGlobalEffectsBiomeDefinition
+        {
+            Biome = ReadNullableString(package),
+            StatusEffects = ReadList(package, ReadVegvisirGlobalEffectDefinition)
+        };
+    }
+
+    private static void WriteVegvisirGlobalEffectDefinition(ZPackage package, LocationVegvisirGlobalEffectDefinition definition)
+    {
+        package.Write(definition.StatusEffect ?? "");
+        WriteNullableFloat(package, definition.Weight);
+        WriteNullableFloat(package, definition.CooldownSeconds);
+        WriteNullableFloat(package, definition.DurationSeconds);
+        WriteNullableString(package, definition.EffectPrefab);
+    }
+
+    private static LocationVegvisirGlobalEffectDefinition ReadVegvisirGlobalEffectDefinition(ZPackage package)
+    {
+        return new LocationVegvisirGlobalEffectDefinition
+        {
+            StatusEffect = package.ReadString(),
+            Weight = ReadNullableFloat(package),
+            CooldownSeconds = ReadNullableFloat(package),
+            DurationSeconds = ReadNullableFloat(package),
+            EffectPrefab = ReadNullableString(package)
+        };
+    }
+
+    private static void WriteVegvisirGlobalEffectsLocalizationDefinition(ZPackage package, LocationVegvisirGlobalEffectsLocalizationDefinition definition)
+    {
+        WriteNullableString(package, definition.YouHaveReceived);
+        WriteNullableString(package, definition.YouGotBamboozled);
+        WriteNullableString(package, definition.BuffCooldownNs);
+        WriteNullableString(package, definition.AlreadyActive);
+    }
+
+    private static LocationVegvisirGlobalEffectsLocalizationDefinition ReadVegvisirGlobalEffectsLocalizationDefinition(ZPackage package)
+    {
+        return new LocationVegvisirGlobalEffectsLocalizationDefinition
+        {
+            YouHaveReceived = ReadNullableString(package),
+            YouGotBamboozled = ReadNullableString(package),
+            BuffCooldownNs = ReadNullableString(package),
+            AlreadyActive = ReadNullableString(package)
         };
     }
 
@@ -2332,23 +2306,6 @@ PublishExit:
             SourceBiomes = ReadStringList(package),
             PinName = ReadNullableString(package),
             PinType = ReadNullableString(package)
-        };
-    }
-
-    private static void WriteRunestoneTextDefinition(ZPackage package, LocationRunestoneTextDefinition definition)
-    {
-        WriteNullableString(package, definition.Topic);
-        WriteNullableString(package, definition.Label);
-        WriteNullableString(package, definition.Text);
-    }
-
-    private static LocationRunestoneTextDefinition ReadRunestoneTextDefinition(ZPackage package)
-    {
-        return new LocationRunestoneTextDefinition
-        {
-            Topic = ReadNullableString(package),
-            Label = ReadNullableString(package),
-            Text = ReadNullableString(package)
         };
     }
 

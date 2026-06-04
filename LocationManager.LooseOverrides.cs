@@ -263,31 +263,22 @@ internal static partial class LocationManager
             return;
         }
 
-        int offeringBowlInstanceId = offeringBowl.GetInstanceID();
-        if (!PendingLooseOfferingBowlOverrideIds.Add(offeringBowlInstanceId))
-        {
-            return;
-        }
-
-        PendingLooseOfferingBowlOverrides.Enqueue(new PendingLooseOfferingBowlOverride(offeringBowl, offeringBowlInstanceId, _reconcileQueueEpoch));
+        PendingLooseOfferingBowlOverrides.TryQueue(offeringBowl, _reconcileQueueEpoch);
     }
 
     private static bool HasPendingLooseLocationOverrideWorkLocked()
     {
-        return PendingLooseOfferingBowlOverrides.Count > 0;
+        return PendingLooseOfferingBowlOverrides.HasPendingWork;
     }
 
     private static bool TryProcessPendingLooseLocationOverrideLocked()
     {
-        while (PendingLooseOfferingBowlOverrides.Count > 0)
+        while (PendingLooseOfferingBowlOverrides.HasPendingWork)
         {
-            if (!PendingLooseOfferingBowlOverrides.TryDequeue(out PendingLooseOfferingBowlOverride queuedOverride))
-            {
-                continue;
-            }
-
-            PendingLooseOfferingBowlOverrideIds.Remove(queuedOverride.OfferingBowlInstanceId);
-            if (queuedOverride.Epoch != _reconcileQueueEpoch || queuedOverride.OfferingBowl == null)
+            if (!PendingLooseOfferingBowlOverrides.TryDequeueCurrent(
+                    _reconcileQueueEpoch,
+                    out OfferingBowl? offeringBowl,
+                    out _))
             {
                 continue;
             }
@@ -297,7 +288,7 @@ internal static partial class LocationManager
                 Initialize();
             }
 
-            TryApplyLooseOfferingBowlOverrideInternal(queuedOverride.OfferingBowl);
+            TryApplyLooseOfferingBowlOverrideInternal(offeringBowl);
             return true;
         }
 

@@ -261,42 +261,6 @@ internal static partial class ConfigurationEntryCloneSupport
         };
     }
 
-    internal static LocationVegvisirDefinition CloneLocationVegvisirDefinition(LocationVegvisirDefinition source)
-    {
-        return new LocationVegvisirDefinition
-        {
-            Path = source.Path,
-            ExpectedLocations = CloneStringList(source.ExpectedLocations),
-            Name = source.Name,
-            UseText = source.UseText,
-            HoverName = source.HoverName,
-            SetsGlobalKey = source.SetsGlobalKey,
-            SetsPlayerKey = source.SetsPlayerKey,
-            Locations = CloneList(source.Locations, CloneLocationVegvisirTargetDefinition)
-        };
-    }
-
-    internal static LocationRunestoneDefinition CloneLocationRunestoneDefinition(LocationRunestoneDefinition source)
-    {
-        return new LocationRunestoneDefinition
-        {
-            Path = source.Path,
-            ExpectedLocationName = source.ExpectedLocationName,
-            ExpectedLabel = source.ExpectedLabel,
-            ExpectedTopic = source.ExpectedTopic,
-            Name = source.Name,
-            Topic = source.Topic,
-            Label = source.Label,
-            Text = source.Text,
-            RandomTexts = CloneList(source.RandomTexts, CloneLocationRunestoneTextDefinition),
-            LocationName = source.LocationName,
-            PinName = source.PinName,
-            PinType = source.PinType,
-            ShowMap = source.ShowMap,
-            Chance = source.Chance
-        };
-    }
-
     internal static LocationRunestoneGlobalPinsDefinition? CloneLocationRunestoneGlobalPinsDefinition(LocationRunestoneGlobalPinsDefinition? source)
     {
         if (source == null)
@@ -307,6 +271,57 @@ internal static partial class ConfigurationEntryCloneSupport
         return new LocationRunestoneGlobalPinsDefinition
         {
             TargetLocations = CloneList(source.TargetLocations, CloneLocationRunestoneGlobalPinTargetDefinition)
+        };
+    }
+
+    internal static LocationVegvisirGlobalEffectsDefinition? CloneLocationVegvisirGlobalEffectsDefinition(LocationVegvisirGlobalEffectsDefinition? source)
+    {
+        if (source == null)
+        {
+            return null;
+        }
+
+        return new LocationVegvisirGlobalEffectsDefinition
+        {
+            Biomes = CloneList(source.Biomes, CloneLocationVegvisirGlobalEffectsBiomeDefinition),
+            Localize = CloneLocationVegvisirGlobalEffectsLocalizationDefinition(source.Localize)
+        };
+    }
+
+    private static LocationVegvisirGlobalEffectsLocalizationDefinition? CloneLocationVegvisirGlobalEffectsLocalizationDefinition(LocationVegvisirGlobalEffectsLocalizationDefinition? source)
+    {
+        if (source == null)
+        {
+            return null;
+        }
+
+        return new LocationVegvisirGlobalEffectsLocalizationDefinition
+        {
+            YouHaveReceived = source.YouHaveReceived,
+            YouGotBamboozled = source.YouGotBamboozled,
+            BuffCooldownNs = source.BuffCooldownNs,
+            AlreadyActive = source.AlreadyActive
+        };
+    }
+
+    private static LocationVegvisirGlobalEffectsBiomeDefinition CloneLocationVegvisirGlobalEffectsBiomeDefinition(LocationVegvisirGlobalEffectsBiomeDefinition source)
+    {
+        return new LocationVegvisirGlobalEffectsBiomeDefinition
+        {
+            Biome = source.Biome,
+            StatusEffects = CloneList(source.StatusEffects, CloneLocationVegvisirGlobalEffectDefinition)
+        };
+    }
+
+    private static LocationVegvisirGlobalEffectDefinition CloneLocationVegvisirGlobalEffectDefinition(LocationVegvisirGlobalEffectDefinition source)
+    {
+        return new LocationVegvisirGlobalEffectDefinition
+        {
+            StatusEffect = source.StatusEffect,
+            Weight = source.Weight,
+            CooldownSeconds = source.CooldownSeconds,
+            DurationSeconds = source.DurationSeconds,
+            EffectPrefab = source.EffectPrefab
         };
     }
 
@@ -336,29 +351,6 @@ internal static partial class ConfigurationEntryCloneSupport
             UnsupportedItems = CloneStringList(source.UnsupportedItems),
             PowerActivationDelay = source.PowerActivationDelay,
             GuardianPower = source.GuardianPower
-        };
-    }
-
-    private static LocationVegvisirTargetDefinition CloneLocationVegvisirTargetDefinition(LocationVegvisirTargetDefinition source)
-    {
-        return new LocationVegvisirTargetDefinition
-        {
-            LocationName = source.LocationName,
-            PinName = source.PinName,
-            PinType = source.PinType,
-            DiscoverAll = source.DiscoverAll,
-            ShowMap = source.ShowMap,
-            Weight = source.Weight
-        };
-    }
-
-    private static LocationRunestoneTextDefinition CloneLocationRunestoneTextDefinition(LocationRunestoneTextDefinition source)
-    {
-        return new LocationRunestoneTextDefinition
-        {
-            Topic = source.Topic,
-            Label = source.Label,
-            Text = source.Text
         };
     }
 

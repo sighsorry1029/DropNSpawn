@@ -6,52 +6,6 @@ namespace DropNSpawn;
 
 internal static partial class ObjectDropManager
 {
-    private static bool HasPotentialStaticMatchForComponent(GameObject gameObject, string prefabName, LiveObjectComponentKind sourceKind)
-    {
-        long cacheKey = BuildStaticObjectMatchCacheKey(gameObject.GetInstanceID(), sourceKind);
-        if (ConditionPlanCacheState.TryGetStaticObjectMatch(cacheKey, _reconcileQueueEpoch, out bool hasPotentialStaticMatch))
-        {
-            return hasPotentialStaticMatch;
-        }
-
-        hasPotentialStaticMatch = false;
-        if (ActiveEntriesByPrefab.TryGetValue(prefabName, out List<PrefabConfigurationEntry>? entries))
-        {
-            foreach (PrefabConfigurationEntry entry in entries)
-            {
-                if (!DoesEntryAffectComponentKind(entry, sourceKind))
-                {
-                    continue;
-                }
-
-                if (!DropConditionEvaluator.HasStaticConditions(entry.Conditions) ||
-                    DropConditionEvaluator.AreStaticConditionsSatisfied(gameObject, entry.Conditions))
-                {
-                    hasPotentialStaticMatch = true;
-                    break;
-                }
-            }
-        }
-
-        ConditionPlanCacheState.RecordStaticObjectMatch(cacheKey, _reconcileQueueEpoch, hasPotentialStaticMatch);
-        return hasPotentialStaticMatch;
-    }
-
-    private static bool DoesEntryAffectComponentKind(PrefabConfigurationEntry entry, LiveObjectComponentKind sourceKind)
-    {
-        if (sourceKind == LiveObjectComponentKind.Piece)
-        {
-            return true;
-        }
-
-        return (GetReconcileComponentKinds(entry) & sourceKind) != 0;
-    }
-
-    private static long BuildStaticObjectMatchCacheKey(int instanceId, LiveObjectComponentKind sourceKind)
-    {
-        return ((long)instanceId << 32) ^ (uint)(int)sourceKind;
-    }
-
     private static bool CanUseGroupConditionalApplyPlan(ConditionsDefinition? conditions)
     {
         if (!DropConditionEvaluator.HasConditions(conditions))
@@ -227,7 +181,7 @@ internal static partial class ObjectDropManager
 
     private static void RemovePendingObjectConditionPlanState(int instanceId)
     {
-        ConditionPlanCacheState.InvalidateStaticObjectMatchCacheForInstance(instanceId);
+        ConditionPlanCacheState.InvalidateStaticConditionContextForInstance(instanceId);
     }
 
     private static void ClearLiveObjectConditionCaches()

@@ -21,7 +21,7 @@ internal static partial class CharacterDropManager
         public override void RestoreStaticBaseline(CharacterDesiredState desiredState) => RestoreCharacterStaticBaseline(desiredState);
         public override void ApplyDesiredStateToStaticBaseline(CharacterDesiredState desiredState) => ApplyCharacterDesiredStateToStaticBaseline(desiredState);
         public override void ApplyDesiredStateToLive(CharacterDesiredState desiredState) => ApplyCharacterDesiredStateToLive(desiredState);
-        public override void Commit(CharacterDesiredState desiredState) => RecordAppliedState(desiredState.GameDataSignature, desiredState.DomainEnabled, desiredState.CurrentEntrySignatures);
+        public override void Commit(CharacterDesiredState desiredState) => RecordAppliedState(desiredState.GameDataSignature, desiredState.DomainEnabled, desiredState.CurrentEntrySignatures, desiredState.EffectiveConfigurationSignature);
     }
 
     private sealed class CharacterDesiredState
@@ -29,6 +29,7 @@ internal static partial class CharacterDropManager
         public StandardDomainApplyPlan ApplyPlan { get; set; }
         public CharacterCompiledState CompiledState { get; set; } = CharacterCompiledState.Empty;
         public int GameDataSignature { get; set; }
+        public string EffectiveConfigurationSignature { get; set; } = "";
         public Dictionary<string, string> CurrentEntrySignatures { get; set; } = EmptyEntrySignatures;
         public bool DomainEnabled { get; set; }
     }
@@ -36,9 +37,10 @@ internal static partial class CharacterDropManager
     private static void RunApplyCoordinator(
         int gameDataSignature,
         bool domainEnabled,
-        Dictionary<string, string> currentEntrySignatures)
+        Dictionary<string, string> currentEntrySignatures,
+        string effectiveConfigurationSignature)
     {
-        CharacterDesiredState desiredState = BuildCharacterDesiredState(gameDataSignature, domainEnabled, currentEntrySignatures);
+        CharacterDesiredState desiredState = BuildCharacterDesiredState(gameDataSignature, domainEnabled, currentEntrySignatures, effectiveConfigurationSignature);
         StandardApplyOutcome outcome = StandardBaselineDesiredStateCoordinator.Run(
             desiredState.ApplyPlan,
             desiredState,
@@ -52,15 +54,22 @@ internal static partial class CharacterDropManager
     private static CharacterDesiredState BuildCharacterDesiredState(
         int gameDataSignature,
         bool domainEnabled,
-        Dictionary<string, string> currentEntrySignatures)
+        Dictionary<string, string> currentEntrySignatures,
+        string effectiveConfigurationSignature)
     {
+        bool effectiveConfigurationChanged = !string.Equals(
+            _lastAppliedConfigurationSignature,
+            effectiveConfigurationSignature,
+            System.StringComparison.Ordinal);
         bool canUseTargetedLiveReload = _lastAppliedGameDataSignature == gameDataSignature &&
                                         _lastAppliedDomainEnabled == true &&
+                                        !effectiveConfigurationChanged &&
                                         !HasAddedPrefabs(_lastAppliedEntrySignaturesByPrefab, currentEntrySignatures);
         EnsureCompiledState();
         return new CharacterDesiredState
         {
             GameDataSignature = gameDataSignature,
+            EffectiveConfigurationSignature = effectiveConfigurationSignature,
             ApplyPlan = StandardDomainApplySupport.BuildPlan(
                 _lastAppliedGameDataSignature,
                 gameDataSignature,

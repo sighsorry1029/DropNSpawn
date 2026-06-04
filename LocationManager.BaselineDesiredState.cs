@@ -42,24 +42,12 @@ internal static partial class LocationManager
         public bool HasPath { get; set; }
     }
 
-    private sealed class CompiledLocationVegvisirPlan
-    {
-        public LocationVegvisirDefinition Definition { get; set; } = new();
-    }
-
-    private sealed class CompiledLocationRunestonePlan
-    {
-        public LocationRunestoneDefinition Definition { get; set; } = new();
-    }
-
     private sealed class CompiledLocationEntryPlan
     {
         public ConditionsDefinition? Conditions { get; set; }
         public bool HasConditions { get; set; }
         public CompiledLocationOfferingBowlPlan? OfferingBowl { get; set; }
         public List<CompiledLocationItemStandPlan> ItemStands { get; } = new();
-        public List<CompiledLocationVegvisirPlan> Vegvisirs { get; } = new();
-        public List<CompiledLocationRunestonePlan> Runestones { get; } = new();
     }
 
     private sealed class CompiledLocationPrefabPlan
@@ -253,42 +241,8 @@ internal static partial class LocationManager
             }
         }
 
-        if (!itemStandOnly && entry.Vegvisirs != null)
-        {
-            foreach (LocationVegvisirDefinition definition in entry.Vegvisirs)
-            {
-                if (!HasVegvisirOverride(definition))
-                {
-                    continue;
-                }
-
-                compiledPlan.Vegvisirs.Add(new CompiledLocationVegvisirPlan
-                {
-                    Definition = definition
-                });
-            }
-        }
-
-        if (!itemStandOnly && entry.Runestones != null)
-        {
-            foreach (LocationRunestoneDefinition definition in entry.Runestones)
-            {
-                if (!HasRunestoneOverride(definition))
-                {
-                    continue;
-                }
-
-                compiledPlan.Runestones.Add(new CompiledLocationRunestonePlan
-                {
-                    Definition = definition
-                });
-            }
-        }
-
         if (compiledPlan.OfferingBowl == null &&
-            compiledPlan.ItemStands.Count == 0 &&
-            compiledPlan.Vegvisirs.Count == 0 &&
-            compiledPlan.Runestones.Count == 0)
+            compiledPlan.ItemStands.Count == 0)
         {
             compiledPlan = null;
             return false;

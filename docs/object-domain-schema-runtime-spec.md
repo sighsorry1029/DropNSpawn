@@ -383,7 +383,7 @@ Behavior:
 - normal weather: `Mushroom`
 - rain: `Mushroom + RoyalJelly`
 
-## Unsupported Legacy Shapes
+## Unsupported Shapes
 
 These shapes are intentionally unsupported:
 

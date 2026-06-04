@@ -11,8 +11,6 @@ internal static partial class LocationManager
         OfferingBowl? offeringBowl,
         List<ItemStand> relevantItemStands,
         Dictionary<string, ItemStand> liveItemStandsByPath,
-        Dictionary<string, Vegvisir> liveVegvisirsByPath,
-        Dictionary<string, RuneStone> liveRunestonesByPath,
         string prefabName,
         Transform locationRoot)
     {
@@ -40,25 +38,6 @@ internal static partial class LocationManager
                     offeringBowl);
             }
 
-            foreach (CompiledLocationVegvisirPlan vegvisirPlan in entryPlan.Vegvisirs)
-            {
-                if (!TryResolveVegvisirTarget(prefabName, vegvisirPlan.Definition, liveVegvisirsByPath, out Vegvisir vegvisir))
-                {
-                    continue;
-                }
-
-                ApplyVegvisir(vegvisir, vegvisirPlan.Definition, prefabName);
-            }
-
-            foreach (CompiledLocationRunestonePlan runestonePlan in entryPlan.Runestones)
-            {
-                if (!TryResolveRunestoneTarget(prefabName, runestonePlan.Definition, liveRunestonesByPath, out RuneStone runestone))
-                {
-                    continue;
-                }
-
-                ApplyRunestone(runestone, runestonePlan.Definition, prefabName);
-            }
         }
     }
 

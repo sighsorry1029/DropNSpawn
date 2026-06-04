@@ -53,7 +53,6 @@ These should be represented as lookup/index data built from game data once per s
 #### Location domain
 
 - `prefab` key lookup
-- `vegvisirs.path` path catalog
 - item stand path/name catalog for diagnostics and targeting
 - offering bowl presence/path metadata
 - location prefab name to `SoftReference` / source prefab mapping
@@ -313,7 +312,7 @@ Expected result:
 
 Replace prefab-wide snapshots with catalogs for `LocationManager`.
 
-- catalog paths for offering bowls, item stands, vegvisirs
+- catalog paths for offering bowls and item stands
 - apply only on spawned/live location roots
 - keep lazy per-instance restore snapshots
 

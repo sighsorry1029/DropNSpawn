@@ -15,8 +15,10 @@ internal abstract class DomainDescriptor
         Action<string> onGameDataReady,
         Func<bool> handleExpandWorldDataReady,
         Func<bool>? hasPendingSnapshotBuildWork = null,
+        Func<int>? getPendingSnapshotBuildWorkCount = null,
         Func<float, bool>? processPendingSnapshotBuildStep = null,
         Func<bool>? hasPendingReconcileWork = null,
+        Func<int>? getPendingReconcileWorkCount = null,
         Func<float, bool>? processPendingReconcileStep = null,
         Action? beforeClientManifestChanged = null,
         Action? onClientAuthorityCutover = null)
@@ -30,8 +32,10 @@ internal abstract class DomainDescriptor
         OnGameDataReady = onGameDataReady;
         HandleExpandWorldDataReady = handleExpandWorldDataReady;
         HasPendingSnapshotBuildWork = hasPendingSnapshotBuildWork;
+        GetPendingSnapshotBuildWorkCount = getPendingSnapshotBuildWorkCount;
         ProcessPendingSnapshotBuildStep = processPendingSnapshotBuildStep;
         HasPendingReconcileWork = hasPendingReconcileWork;
+        GetPendingReconcileWorkCount = getPendingReconcileWorkCount;
         ProcessPendingReconcileStep = processPendingReconcileStep;
         BeforeClientManifestChanged = beforeClientManifestChanged;
         OnClientAuthorityCutover = onClientAuthorityCutover;
@@ -46,8 +50,10 @@ internal abstract class DomainDescriptor
     internal Action<string> OnGameDataReady { get; }
     internal Func<bool> HandleExpandWorldDataReady { get; }
     internal Func<bool>? HasPendingSnapshotBuildWork { get; }
+    internal Func<int>? GetPendingSnapshotBuildWorkCount { get; }
     internal Func<float, bool>? ProcessPendingSnapshotBuildStep { get; }
     internal Func<bool>? HasPendingReconcileWork { get; }
+    internal Func<int>? GetPendingReconcileWorkCount { get; }
     internal Func<float, bool>? ProcessPendingReconcileStep { get; }
     internal Action? BeforeClientManifestChanged { get; }
     internal Action? OnClientAuthorityCutover { get; }
@@ -67,8 +73,10 @@ internal sealed class DomainDescriptor<TEntry> : DomainDescriptor
         Action<string> onGameDataReady,
         Func<bool> handleExpandWorldDataReady,
         Func<bool>? hasPendingSnapshotBuildWork = null,
+        Func<int>? getPendingSnapshotBuildWorkCount = null,
         Func<float, bool>? processPendingSnapshotBuildStep = null,
         Func<bool>? hasPendingReconcileWork = null,
+        Func<int>? getPendingReconcileWorkCount = null,
         Func<float, bool>? processPendingReconcileStep = null,
         Action? beforeClientManifestChanged = null,
         Action? onClientAuthorityCutover = null)
@@ -82,8 +90,10 @@ internal sealed class DomainDescriptor<TEntry> : DomainDescriptor
             onGameDataReady,
             handleExpandWorldDataReady,
             hasPendingSnapshotBuildWork,
+            getPendingSnapshotBuildWorkCount,
             processPendingSnapshotBuildStep,
             hasPendingReconcileWork,
+            getPendingReconcileWorkCount,
             processPendingReconcileStep,
             beforeClientManifestChanged,
             onClientAuthorityCutover)

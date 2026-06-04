@@ -8,7 +8,15 @@ internal static class PieceAwakePatch
 {
     private static void Postfix(Piece __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Piece);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Piece);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("Piece.Awake", sample);
+        }
     }
 }
 
@@ -54,7 +62,15 @@ internal static class DestructibleAwakePatch
 {
     private static void Postfix(Destructible __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Destructible);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Destructible);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("Destructible.Awake", sample);
+        }
     }
 }
 
@@ -114,7 +130,15 @@ internal static class DropOnDestroyedAwakePatch
 {
     private static void Postfix(DropOnDestroyed __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.DropOnDestroyed);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.DropOnDestroyed);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("DropOnDestroyed.Awake", sample);
+        }
     }
 }
 
@@ -123,7 +147,15 @@ internal static class ContainerAwakePatch
 {
     private static void Postfix(Container __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Container);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Container);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("Container.Awake", sample);
+        }
     }
 }
 
@@ -132,13 +164,21 @@ internal static class PickableAwakePatch
 {
     private static void Postfix(Pickable __instance)
     {
-        if (!PluginSettingsFacade.IsObjectDomainEnabled())
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            ObjectDropManager.TrackObjectInstance(__instance.gameObject);
-            return;
-        }
+            if (!PluginSettingsFacade.IsObjectDomainEnabled())
+            {
+                ObjectDropManager.TrackObjectInstance(__instance.gameObject);
+                return;
+            }
 
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Pickable);
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Pickable);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("Pickable.Awake", sample);
+        }
     }
 }
 
@@ -147,13 +187,21 @@ internal static class PickableItemAwakePatch
 {
     private static void Postfix(PickableItem __instance)
     {
-        if (!PluginSettingsFacade.IsObjectDomainEnabled())
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            ObjectDropManager.TrackObjectInstance(__instance.gameObject);
-            return;
-        }
+            if (!PluginSettingsFacade.IsObjectDomainEnabled())
+            {
+                ObjectDropManager.TrackObjectInstance(__instance.gameObject);
+                return;
+            }
 
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.PickableItem);
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.PickableItem);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("PickableItem.Awake", sample);
+        }
     }
 }
 
@@ -162,7 +210,15 @@ internal static class FishAwakePatch
 {
     private static void Postfix(Fish __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Fish);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Fish);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("Fish.Awake", sample);
+        }
     }
 }
 
@@ -241,7 +297,15 @@ internal static class MineRockStartPatch
 {
     private static void Postfix(MineRock __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.MineRock);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.MineRock);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("MineRock.Start", sample);
+        }
     }
 }
 
@@ -274,7 +338,15 @@ internal static class MineRock5AwakePatch
 {
     private static void Postfix(MineRock5 __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.MineRock5);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.MineRock5);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("MineRock5.Awake", sample);
+        }
     }
 }
 
@@ -307,7 +379,15 @@ internal static class TreeBaseAwakePatch
 {
     private static void Postfix(TreeBase __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.TreeBase);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.TreeBase);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("TreeBase.Awake", sample);
+        }
     }
 }
 
@@ -353,6 +433,14 @@ internal static class TreeLogAwakePatch
 {
     private static void Postfix(TreeLog __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.TreeLog);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.TreeLog);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("TreeLog.Awake", sample);
+        }
     }
 }

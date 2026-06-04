@@ -21,11 +21,6 @@ internal static class PluginSettingsFacade
     internal static bool IsBossTamedPressureEnabled() =>
         PluginBoundSettings.EnableBossTamedPressure?.Value != DropNSpawnPlugin.Toggle.Off;
 
-    internal static bool ShouldAutoUpdateReferenceFiles() =>
-        PluginBoundSettings.ReferenceUpdateMode?.Value != DropNSpawnPlugin.ReferenceUpdateMode.ManualUpdate;
-
-    internal static bool ShouldAutoCreateMissingReferenceFiles() => true;
-
     internal static bool IsObjectDomainEnabled() =>
         PluginBoundSettings.EnableObjectOverrides?.Value != DropNSpawnPlugin.Toggle.Off;
 
@@ -44,11 +39,23 @@ internal static class PluginSettingsFacade
     internal static bool IsRunestoneGlobalPinsEnabled() =>
         LocationRunestoneGlobalPinsConfig.IsEnabled();
 
+    internal static bool IsVegvisirGlobalEffectsEnabled() =>
+        LocationVegvisirGlobalEffectsConfig.IsEnabled();
+
     internal static KeyboardShortcut GetRotateForsakenPowerShortcut() =>
         PluginBoundSettings.RotateForsakenPowerShortcut?.Value ?? default;
 
     internal static bool IsGlobalCharacterDropInStackEnabled() =>
         CharacterDropGlobalConfig.IsGlobalDropInStackEnabled();
+
+    internal static bool IsGlobalCharacterDropTrophyLevelMultiplierEnabled() =>
+        CharacterDropGlobalConfig.IsGlobalTrophyLevelMultiplierEnabled();
+
+    internal static bool IsCharacterDropTrophyLevelMultiplierBlacklisted(string? prefabName) =>
+        CharacterDropGlobalConfig.IsTrophyLevelMultiplierBlacklisted(prefabName);
+
+    internal static string GetCharacterDropTrophyLevelMultiplierSignature() =>
+        CharacterDropGlobalConfig.GetTrophyLevelMultiplierSignature();
 
     internal static float GetSameBossDuplicateBlockRadius() =>
         BossRulesConfig.GetSameBossDuplicateBlockRadius();

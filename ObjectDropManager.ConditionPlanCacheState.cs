@@ -10,28 +10,9 @@ internal static partial class ObjectDropManager
 
     private sealed class ObjectConditionPlanCacheState
     {
-        private readonly Dictionary<long, StaticObjectMatchCacheEntry> _staticObjectMatchCache = new();
         private readonly Dictionary<string, GroupConditionalApplyPlanCacheEntry> _groupConditionalApplyPlans = new(StringComparer.Ordinal);
         private readonly LinkedList<string> _groupConditionalApplyPlanLru = new();
         private readonly Dictionary<int, StaticConditionContextSnapshot> _staticConditionContexts = new();
-
-        public bool TryGetStaticObjectMatch(long cacheKey, int epoch, out bool hasPotentialStaticMatch)
-        {
-            if (_staticObjectMatchCache.TryGetValue(cacheKey, out StaticObjectMatchCacheEntry cachedEntry) &&
-                cachedEntry.Epoch == epoch)
-            {
-                hasPotentialStaticMatch = cachedEntry.HasPotentialStaticMatch;
-                return true;
-            }
-
-            hasPotentialStaticMatch = false;
-            return false;
-        }
-
-        public void RecordStaticObjectMatch(long cacheKey, int epoch, bool hasPotentialStaticMatch)
-        {
-            _staticObjectMatchCache[cacheKey] = new StaticObjectMatchCacheEntry(epoch, hasPotentialStaticMatch);
-        }
 
         public bool TryGetGroupConditionalApplyPlan(string cacheKey, out GroupConditionalApplyPlan? plan)
         {
@@ -64,13 +45,8 @@ internal static partial class ObjectDropManager
             TrimGroupConditionalApplyPlanCacheIfNeeded();
         }
 
-        public void InvalidateStaticObjectMatchCacheForInstance(int instanceId)
+        public void InvalidateStaticConditionContextForInstance(int instanceId)
         {
-            for (int componentBit = 1; componentBit <= (int)LiveObjectComponentKind.Piece; componentBit <<= 1)
-            {
-                _staticObjectMatchCache.Remove(BuildStaticObjectMatchCacheKey(instanceId, (LiveObjectComponentKind)componentBit));
-            }
-
             _staticConditionContexts.Remove(instanceId);
         }
 
@@ -94,7 +70,6 @@ internal static partial class ObjectDropManager
 
         public void Clear()
         {
-            _staticObjectMatchCache.Clear();
             _groupConditionalApplyPlans.Clear();
             _groupConditionalApplyPlanLru.Clear();
             _staticConditionContexts.Clear();

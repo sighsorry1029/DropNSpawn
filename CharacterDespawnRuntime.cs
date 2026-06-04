@@ -33,6 +33,7 @@ internal static class CharacterDespawnRuntime
         public Dictionary<string, CompiledDespawnRule> RulesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<int, CompiledDespawnRule> RulesByPrefabHash { get; } = new();
         public Dictionary<int, string> PrefabNamesByHash { get; } = new();
+        public HashSet<int> EligiblePrefabHashes { get; } = new();
         public HashSet<string> BootstrapPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public IReadOnlyList<string> BootstrapPrefabOrder { get; set; } = Array.Empty<string>();
     }
@@ -84,6 +85,44 @@ internal static class CharacterDespawnRuntime
         }
 
         return CharacterBossPolicyRuntime.IsAutoDetectedBossPrefab(prefabName);
+    }
+
+    internal static void PrimeRuntimeState(
+        int gameDataSignature,
+        string configurationSignature,
+        IReadOnlyDictionary<string, List<CharacterDropPrefabEntry>> activeEntriesByPrefab)
+    {
+        if (gameDataSignature == 0)
+        {
+            return;
+        }
+
+        if (_runtimeConfigurationGameDataSignature == gameDataSignature &&
+            string.Equals(_runtimeConfigurationSignature, configurationSignature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _runtimeState = BuildRuntimeState(activeEntriesByPrefab);
+        _runtimeConfigurationGameDataSignature = gameDataSignature;
+        _runtimeConfigurationSignature = configurationSignature;
+    }
+
+    internal static bool TryGetCachedDespawnTrackingPrefabHashEligibility(
+        int prefabHash,
+        string configurationSignature,
+        out bool eligible)
+    {
+        eligible = false;
+        if (prefabHash == 0 ||
+            !_runtimeConfigurationGameDataSignature.HasValue ||
+            !string.Equals(_runtimeConfigurationSignature, configurationSignature, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        eligible = _runtimeState.EligiblePrefabHashes.Contains(prefabHash);
+        return true;
     }
 
     internal static bool IsEligibleDespawnTrackingPrefabName(
@@ -148,8 +187,7 @@ internal static class CharacterDespawnRuntime
         }
 
         EnsureRuntimeState(configurationSignature, activeEntriesByPrefab);
-        return _runtimeState.RulesByPrefabHash.ContainsKey(prefabHash) ||
-               CharacterBossPolicyRuntime.IsAutoDetectedBossPrefab(prefabHash);
+        return _runtimeState.EligiblePrefabHashes.Contains(prefabHash);
     }
 
     private static void EnsureRuntimeState(
@@ -174,7 +212,9 @@ internal static class CharacterDespawnRuntime
         foreach (string prefabName in CharacterBossPolicyRuntime.GetAutoDetectedBossPrefabNames())
         {
             state.BootstrapPrefabs.Add(prefabName);
-            state.PrefabNamesByHash[prefabName.GetStableHashCode()] = prefabName;
+            int prefabHash = prefabName.GetStableHashCode();
+            state.PrefabNamesByHash[prefabHash] = prefabName;
+            state.EligiblePrefabHashes.Add(prefabHash);
         }
 
         foreach ((string prefabName, List<CharacterDropPrefabEntry> entries) in activeEntriesByPrefab)
@@ -193,8 +233,10 @@ internal static class CharacterDespawnRuntime
                 }
 
                 state.RulesByPrefab[prefabName] = compiledRule;
-                state.RulesByPrefabHash[prefabName.GetStableHashCode()] = compiledRule;
-                state.PrefabNamesByHash[prefabName.GetStableHashCode()] = prefabName;
+                int prefabHash = prefabName.GetStableHashCode();
+                state.RulesByPrefabHash[prefabHash] = compiledRule;
+                state.PrefabNamesByHash[prefabHash] = prefabName;
+                state.EligiblePrefabHashes.Add(prefabHash);
                 state.BootstrapPrefabs.Add(prefabName);
             }
         }

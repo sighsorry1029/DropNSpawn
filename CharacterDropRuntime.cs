@@ -125,6 +125,17 @@ internal static class CharacterDropRuntime
         return _pendingSnapshotBuild != null;
     }
 
+    internal static int GetPendingSnapshotBuildWorkCount()
+    {
+        if (_pendingSnapshotBuild == null)
+        {
+            return 0;
+        }
+
+        int remainingPrefabs = Math.Max(0, _pendingSnapshotBuild.Prefabs.Count - _pendingSnapshotBuild.NextIndex);
+        return Math.Max(1, remainingPrefabs);
+    }
+
     internal static bool ProcessPendingSnapshotBuildStep(
         float deadline,
         Func<GameObject, CharacterDropSnapshot?> captureSnapshot,

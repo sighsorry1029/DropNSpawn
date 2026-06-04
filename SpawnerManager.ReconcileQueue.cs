@@ -34,43 +34,66 @@ internal static partial class SpawnerManager
     {
         lock (Sync)
         {
-            return ProvenanceRegistry.HasPendingRootScans() ||
-                   ReconcileQueue.HasPendingWork();
+            return HasPendingReconcileWorkLocked();
         }
+    }
+
+    internal static int GetPendingReconcileWorkCount()
+    {
+        lock (Sync)
+        {
+            return GetPendingReconcileWorkCountLocked();
+        }
+    }
+
+    private static bool HasPendingReconcileWorkLocked()
+    {
+        return ProvenanceRegistry.HasPendingRootScans() ||
+               ReconcileQueue.HasPendingWork();
+    }
+
+    private static int GetPendingReconcileWorkCountLocked()
+    {
+        return ProvenanceRegistry.PendingRootScanCount() + ReconcileQueue.GetPendingWorkCount();
     }
 
     internal static bool ProcessQueuedReconcileStep(float deadline)
     {
         lock (Sync)
         {
-            if (Time.realtimeSinceStartup >= deadline)
-            {
-                return false;
-            }
+            return TryProcessQueuedReconcileWorkLocked(deadline);
+        }
+    }
 
-            if (ShouldBlockClientSpawnerUpdate() ||
-                !IsGameDataReady() ||
-                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
-            {
-                return false;
-            }
+    private static bool TryProcessQueuedReconcileWorkLocked(float deadline)
+    {
+        if (Time.realtimeSinceStartup >= deadline)
+        {
+            return false;
+        }
 
-            if (ProcessQueuedLocationRootProvenanceStep(deadline))
-            {
-                return true;
-            }
+        if (ShouldBlockClientSpawnerUpdate() ||
+            !IsGameDataReady() ||
+            DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
+        {
+            return false;
+        }
 
-            while (ReconcileQueue.TryDequeueNextSpawnArea(_reconcileQueueEpoch, out SpawnArea? spawnArea))
-            {
-                ReconcileSpawnAreaInstanceCore(spawnArea);
-                return true;
-            }
+        if (ProcessQueuedLocationRootProvenanceStep(deadline))
+        {
+            return true;
+        }
 
-            while (ReconcileQueue.TryDequeueNextCreatureSpawner(_reconcileQueueEpoch, out CreatureSpawner? creatureSpawner))
-            {
-                ReconcileCreatureSpawnerInstanceCore(creatureSpawner);
-                return true;
-            }
+        while (ReconcileQueue.TryDequeueNextSpawnArea(_reconcileQueueEpoch, out SpawnArea? spawnArea))
+        {
+            ReconcileSpawnAreaInstanceCore(spawnArea);
+            return true;
+        }
+
+        while (ReconcileQueue.TryDequeueNextCreatureSpawner(_reconcileQueueEpoch, out CreatureSpawner? creatureSpawner))
+        {
+            ReconcileCreatureSpawnerInstanceCore(creatureSpawner);
+            return true;
         }
 
         return false;

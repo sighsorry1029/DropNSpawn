@@ -56,11 +56,6 @@ internal static partial class ObjectDropManager
     private static void ReconcileConfiguredInstance(GameObject gameObject, PrefabSnapshot snapshot, IEnumerable<PrefabConfigurationEntry> entries, bool clearCreatorRestrictedContainerContents)
     {
         List<PrefabConfigurationEntry> entryList = entries as List<PrefabConfigurationEntry> ?? entries.ToList();
-        TryGetGroupConditionalApplyPlan(gameObject, snapshot, entryList, out GroupConditionalApplyPlan? groupPlan);
-
-        // Callers restore the instance to baseline before entering configured reconcile.
-        // Keeping that restore outside this helper avoids paying the full restore cost twice.
-
         if (!ShouldApplyToInstance(gameObject))
         {
             if (clearCreatorRestrictedContainerContents)
@@ -73,6 +68,11 @@ internal static partial class ObjectDropManager
 
             return;
         }
+
+        TryGetGroupConditionalApplyPlan(gameObject, snapshot, entryList, out GroupConditionalApplyPlan? groupPlan);
+
+        // Callers restore the instance to baseline before entering configured reconcile.
+        // Keeping that restore outside this helper avoids paying the full restore cost twice.
 
         if (groupPlan != null)
         {

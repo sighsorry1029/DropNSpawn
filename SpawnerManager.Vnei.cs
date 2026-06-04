@@ -34,7 +34,7 @@ internal static partial class SpawnerManager
             {
                 if (entry.SpawnArea?.Creatures == null ||
                     DropConditionEvaluator.HasConditions(entry.Conditions) ||
-                    !string.IsNullOrWhiteSpace(entry.Location))
+                    HasLocationSelector(entry))
                 {
                     continue;
                 }

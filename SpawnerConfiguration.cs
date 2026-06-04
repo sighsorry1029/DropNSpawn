@@ -12,7 +12,7 @@ internal sealed class SpawnerConfigurationEntry
     public bool Enabled { get; set; } = true;
 
     [YamlMember(Order = 3)]
-    public string? Location { get; set; }
+    public List<string>? Locations { get; set; }
 
     [YamlMember(Order = 4)]
     public ConditionsDefinition? Conditions { get; set; }

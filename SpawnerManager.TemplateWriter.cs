@@ -18,7 +18,7 @@ internal static partial class SpawnerManager
         AppendTemplateBlankLine(builder);
         AppendTemplateLine(builder, 0, "- prefab: BonePileSpawner");
         AppendTemplateLine(builder, 1, "enabled: true");
-        AppendTemplateLine(builder, 1, $"location: Grave1 # ex) locations[] from {PluginSettingsFacade.GetYamlDomainFilePrefix("spawner")}.locations.reference.yml # Optional");
+        AppendTemplateLine(builder, 1, $"locations: [Grave1] # ex) locations[] from {PluginSettingsFacade.GetYamlDomainFilePrefix("spawner")}.locations.reference.yml # Optional");
         AppendTemplateLine(builder, 1, "conditions: # If these conditions fail, this custom entry is ignored and the original spawner behavior is used");
         AppendTemplateLine(builder, 2, "altitude: null # ex) -1000~1000 # Range in world-height meters");
         AppendTemplateLine(builder, 2, "distanceFromCenter: null # ex) 0~10000 # Range in meters from the world center");
@@ -56,7 +56,7 @@ internal static partial class SpawnerManager
         AppendTemplateBlankLine(builder);
         AppendTemplateLine(builder, 0, "- prefab: Spawner_Boar");
         AppendTemplateLine(builder, 1, "enabled: true");
-        AppendTemplateLine(builder, 1, $"location: Runestone_Boars # ex) locations[] from {PluginSettingsFacade.GetYamlDomainFilePrefix("spawner")}.locations.reference.yml # Optional");
+        AppendTemplateLine(builder, 1, $"locations: [Runestone_Boars] # ex) locations[] from {PluginSettingsFacade.GetYamlDomainFilePrefix("spawner")}.locations.reference.yml # Optional");
         AppendTemplateLine(builder, 1, "conditions:");
         AppendTemplateLine(builder, 2, "altitude: null");
         AppendTemplateLine(builder, 2, "distanceFromCenter: null");

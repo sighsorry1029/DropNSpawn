@@ -1007,20 +1007,15 @@ internal static class DespawnRulesManager
 
     private static CreatedZdoObservationDecision GetCreatedZdoObservationDecision(int authoritativePrefabHash, int prefabHashHint)
     {
-        if (!CharacterDropManager.IsDespawnTrackingRuleLookupReady())
+        int prefabHash = authoritativePrefabHash != 0 ? authoritativePrefabHash : prefabHashHint;
+        if (CharacterDropManager.TryGetCachedDespawnTrackingPrefabHashEligibility(prefabHash, out bool eligible))
         {
-            return CreatedZdoObservationDecision.Eligible;
-        }
-
-        if (authoritativePrefabHash != 0)
-        {
-            return CharacterDropManager.IsEligibleDespawnTrackingPrefabHash(authoritativePrefabHash)
+            return eligible
                 ? CreatedZdoObservationDecision.Eligible
                 : CreatedZdoObservationDecision.Ineligible;
         }
 
-        if (prefabHashHint != 0 &&
-            CharacterDropManager.IsEligibleDespawnTrackingPrefabHash(prefabHashHint))
+        if (!CharacterDropManager.IsDespawnTrackingRuleLookupReady())
         {
             return CreatedZdoObservationDecision.Eligible;
         }

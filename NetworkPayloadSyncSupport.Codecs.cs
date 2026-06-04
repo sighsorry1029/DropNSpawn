@@ -24,24 +24,4 @@ internal static partial class NetworkPayloadSyncSupport
         public Func<byte[], List<TEntry>> Deserializer { get; }
         public Func<List<TEntry>?, List<TEntry>> CloneEntries { get; }
     }
-
-    private static DomainCodec<PrefabConfigurationEntry>? _objectCodec;
-    private static DomainCodec<PrefabConfigurationEntry> ObjectCodec =>
-        _objectCodec ??= new(CreateObjectEntrySchema());
-
-    private static DomainCodec<CharacterDropPrefabEntry>? _characterCodec;
-    private static DomainCodec<CharacterDropPrefabEntry> CharacterCodec =>
-        _characterCodec ??= new(CreateCharacterEntrySchema());
-
-    private static DomainCodec<SpawnerConfigurationEntry>? _spawnerCodec;
-    private static DomainCodec<SpawnerConfigurationEntry> SpawnerCodec =>
-        _spawnerCodec ??= new(CreateSpawnerEntrySchema());
-
-    private static DomainCodec<LocationConfigurationEntry>? _locationCodec;
-    private static DomainCodec<LocationConfigurationEntry> LocationCodec =>
-        _locationCodec ??= new(CreateLocationEntrySchema());
-
-    private static DomainCodec<CanonicalSpawnSystemEntry>? _spawnSystemCodec;
-    private static DomainCodec<CanonicalSpawnSystemEntry> SpawnSystemCodec =>
-        _spawnSystemCodec ??= new(CreateSpawnSystemEntrySchema());
 }

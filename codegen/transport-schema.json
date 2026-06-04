@@ -110,7 +110,9 @@
       "signatureWriterExpression": "static (builder, definition, _) => WriteOfferingBowlDefinition(builder, definition)",
       "payloadWriterExpression": "WriteOfferingBowlDefinition",
       "payloadReaderExpression": "ReadOfferingBowlDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneLocationOfferingBowlDefinition(value)!"
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneLocationOfferingBowlDefinition(value)!",
+      "signatureCoverageIgnoredProperties": [ "SpawnBossMaxDistance", "SpawnBossMinDistance" ],
+      "payloadCoverageIgnoredProperties": [ "SpawnBossMaxDistance", "SpawnBossMinDistance" ]
     },
     {
       "name": "ItemStandValueCodec",
@@ -121,22 +123,6 @@
       "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationItemStandDefinition"
     },
     {
-      "name": "VegvisirValueCodec",
-      "typeName": "LocationVegvisirDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteVegvisirDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteVegvisirDefinition",
-      "payloadReaderExpression": "ReadVegvisirDefinition",
-      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationVegvisirDefinition"
-    },
-    {
-      "name": "RunestoneValueCodec",
-      "typeName": "LocationRunestoneDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteRunestoneDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteRunestoneDefinition",
-      "payloadReaderExpression": "ReadRunestoneDefinition",
-      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationRunestoneDefinition"
-    },
-    {
       "name": "RunestoneGlobalPinsValueCodec",
       "typeName": "LocationRunestoneGlobalPinsDefinition",
       "signatureWriterExpression": "static (builder, definition, _) => WriteRunestoneGlobalPinsDefinition(builder, definition)",
@@ -145,12 +131,22 @@
       "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationRunestoneGlobalPinsDefinition"
     },
     {
+      "name": "VegvisirGlobalEffectsValueCodec",
+      "typeName": "LocationVegvisirGlobalEffectsDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteVegvisirGlobalEffectsDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteVegvisirGlobalEffectsDefinition",
+      "payloadReaderExpression": "ReadVegvisirGlobalEffectsDefinition",
+      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationVegvisirGlobalEffectsDefinition"
+    },
+    {
       "name": "SpawnSystemSpawnValueCodec",
       "typeName": "SpawnSystemSpawnDefinition",
       "signatureWriterExpression": "static (builder, definition, _) => WriteSpawnSystemSpawnDefinition(builder, definition)",
       "payloadWriterExpression": "WriteSpawnSystemSpawnDefinition",
       "payloadReaderExpression": "ReadSpawnSystemSpawnDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemSpawnDefinition(value)!"
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemSpawnDefinition(value)!",
+      "signatureCoverageIgnoredProperties": [ "MinLevel", "MaxLevel", "SpawnRadiusMin", "SpawnRadiusMax", "GroupSizeMin", "GroupSizeMax" ],
+      "payloadCoverageIgnoredProperties": [ "MinLevel", "MaxLevel", "SpawnRadiusMin", "SpawnRadiusMax", "GroupSizeMin", "GroupSizeMax" ]
     },
     {
       "name": "SpawnSystemConditionsValueCodec",
@@ -158,7 +154,9 @@
       "signatureWriterExpression": "(builder, definition, context) => WriteSpawnSystemConditionsDefinition(builder, definition, context.IncludeResolvedBiomeMask)",
       "payloadWriterExpression": "WriteSpawnSystemConditionsDefinition",
       "payloadReaderExpression": "ReadSpawnSystemConditionsDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemConditionsDefinition(value)!"
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemConditionsDefinition(value)!",
+      "signatureCoverageIgnoredProperties": [ "MinTilt", "MaxTilt", "MinAltitude", "MaxAltitude", "MinOceanDepth", "MaxOceanDepth", "MinDistanceFromCenter", "MaxDistanceFromCenter" ],
+      "payloadCoverageIgnoredProperties": [ "MinTilt", "MaxTilt", "MinAltitude", "MaxAltitude", "MinOceanDepth", "MaxOceanDepth", "MinDistanceFromCenter", "MaxDistanceFromCenter" ]
     },
     {
       "name": "SpawnSystemModifiersValueCodec",
@@ -222,7 +220,7 @@
         { "expression": "StringField<SpawnerConfigurationEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId)" },
         { "expression": "StringField<SpawnerConfigurationEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
         { "expression": "BoolField<SpawnerConfigurationEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
-        { "expression": "NullableStringField<SpawnerConfigurationEntry>(entry => entry.Location, (entry, value) => entry.Location = value)" },
+        { "expression": "ListField<SpawnerConfigurationEntry, string>(entry => entry.Locations, (entry, value) => entry.Locations = value, static (builder, value, _) => builder.WriteString(value ?? \"\"), static (package, value) => package.Write(value ?? \"\"), static package => package.ReadString(), static value => value ?? \"\")" },
         { "expression": "OptionalField<SpawnerConfigurationEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec)" },
         { "expression": "OptionalField<SpawnerConfigurationEntry, SpawnAreaDefinition>(entry => entry.SpawnArea, (entry, value) => entry.SpawnArea = value, SpawnAreaValueCodec)" },
         { "expression": "OptionalField<SpawnerConfigurationEntry, CreatureSpawnerDefinition>(entry => entry.CreatureSpawner, (entry, value) => entry.CreatureSpawner = value, CreatureSpawnerValueCodec)" },
@@ -243,9 +241,8 @@
         { "expression": "OptionalField<LocationConfigurationEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec)" },
         { "expression": "OptionalField<LocationConfigurationEntry, LocationOfferingBowlDefinition>(entry => entry.OfferingBowl, (entry, value) => entry.OfferingBowl = value, OfferingBowlValueCodec)" },
         { "expression": "ListField<LocationConfigurationEntry, LocationItemStandDefinition>(entry => entry.ItemStands, (entry, value) => entry.ItemStands = value, ItemStandValueCodec)" },
-        { "expression": "ListField<LocationConfigurationEntry, LocationVegvisirDefinition>(entry => entry.Vegvisirs, (entry, value) => entry.Vegvisirs = value, VegvisirValueCodec)" },
-        { "expression": "ListField<LocationConfigurationEntry, LocationRunestoneDefinition>(entry => entry.Runestones, (entry, value) => entry.Runestones = value, RunestoneValueCodec)" },
         { "expression": "OptionalField<LocationConfigurationEntry, LocationRunestoneGlobalPinsDefinition>(entry => entry.RunestoneGlobalPins, (entry, value) => entry.RunestoneGlobalPins = value, RunestoneGlobalPinsValueCodec)" },
+        { "expression": "OptionalField<LocationConfigurationEntry, LocationVegvisirGlobalEffectsDefinition>(entry => entry.VegvisirGlobalEffects, (entry, value) => entry.VegvisirGlobalEffects = value, VegvisirGlobalEffectsValueCodec)" },
         { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourcePath = source.SourcePath)" },
         { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourceLine = source.SourceLine)" },
         { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourceColumn = source.SourceColumn)" }
@@ -267,6 +264,44 @@
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceLine = source.SourceLine)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceColumn = source.SourceColumn)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.ReferenceOwnerName = source.ReferenceOwnerName)" }
+      ]
+    }
+  ],
+  "coverageAudits": [
+    {
+      "typeName": "LocationRunestoneGlobalPinTargetDefinition",
+      "methods": [
+        { "file": "ConfigurationEntryCloneSupport.cs", "name": "CloneLocationRunestoneGlobalPinTargetDefinition" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteRunestoneGlobalPinTargetDefinition", "parametersContain": "PayloadSignatureBuilder" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteRunestoneGlobalPinTargetDefinition", "parametersContain": "ZPackage" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "ReadRunestoneGlobalPinTargetDefinition" }
+      ]
+    },
+    {
+      "typeName": "LocationVegvisirGlobalEffectsBiomeDefinition",
+      "methods": [
+        { "file": "ConfigurationEntryCloneSupport.cs", "name": "CloneLocationVegvisirGlobalEffectsBiomeDefinition" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectsBiomeDefinition", "parametersContain": "PayloadSignatureBuilder" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectsBiomeDefinition", "parametersContain": "ZPackage" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "ReadVegvisirGlobalEffectsBiomeDefinition" }
+      ]
+    },
+    {
+      "typeName": "LocationVegvisirGlobalEffectDefinition",
+      "methods": [
+        { "file": "ConfigurationEntryCloneSupport.cs", "name": "CloneLocationVegvisirGlobalEffectDefinition" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectDefinition", "parametersContain": "PayloadSignatureBuilder" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectDefinition", "parametersContain": "ZPackage" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "ReadVegvisirGlobalEffectDefinition" }
+      ]
+    },
+    {
+      "typeName": "LocationVegvisirGlobalEffectsLocalizationDefinition",
+      "methods": [
+        { "file": "ConfigurationEntryCloneSupport.cs", "name": "CloneLocationVegvisirGlobalEffectsLocalizationDefinition" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectsLocalizationDefinition", "parametersContain": "PayloadSignatureBuilder" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectsLocalizationDefinition", "parametersContain": "ZPackage" },
+        { "file": "NetworkPayloadSyncSupport.cs", "name": "ReadVegvisirGlobalEffectsLocalizationDefinition" }
       ]
     }
   ]

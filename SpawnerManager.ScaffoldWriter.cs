@@ -23,7 +23,7 @@ internal static partial class SpawnerManager
 
                 AppendScaffoldListEntryLine(builder, 0, "prefab", entry.Prefab);
                 AppendScaffoldLine(builder, 1, $"enabled: {FormatYamlBool(entry.Enabled)}");
-                AppendScaffoldStringLine(builder, 1, "location", null);
+                AppendScaffoldLine(builder, 1, "locations: []");
                 AppendScaffoldConditionsBlock(builder, 1, entry.SpawnArea != null);
 
                 if (entry.SpawnArea != null)

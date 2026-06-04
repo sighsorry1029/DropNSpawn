@@ -14,54 +14,23 @@ internal static partial class ExampleContentWriter
     internal static void EnsureDefaultExampleFiles()
     {
         EnsureExampleFile("README.md", ReadmeContent);
-        EnsureExampleFile(CharacterSampleFileName, CharacterConditionContent, "character.sample.yml", "DNS_character.conditions.sample.yml");
-        EnsureExampleFile(ObjectSampleFileName, ObjectConditionContent, "object.sample.yml", "DNS_object.conditions.sample.yml");
-        EnsureExampleFile(SpawnerSampleFileName, SpawnerConditionContent, "spawner.sample.yml", "DNS_spawner.conditions.sample.yml");
-        EnsureExampleFile(LocationSampleFileName, LocationConditionContent, "location.sample.yml", "DNS_location.conditions.sample.yml");
-        EnsureExampleFile(SpawnSystemSampleFileName, SpawnSystemConditionContent, "spawnsystem.sample.yml", "DNS_spawnsystem.conditions.sample.yml");
+        EnsureExampleFile(CharacterSampleFileName, CharacterConditionContent);
+        EnsureExampleFile(ObjectSampleFileName, ObjectConditionContent);
+        EnsureExampleFile(SpawnerSampleFileName, SpawnerConditionContent);
+        EnsureExampleFile(LocationSampleFileName, LocationConditionContent);
+        EnsureExampleFile(SpawnSystemSampleFileName, SpawnSystemConditionContent);
     }
 
-    private static void EnsureExampleFile(string fileName, string defaultContent, params string[] legacyFileNames)
+    private static void EnsureExampleFile(string fileName, string defaultContent)
     {
         string currentPath = Path.Combine(ExamplesDirectoryPath, fileName);
-        Directory.CreateDirectory(ExamplesDirectoryPath);
-
-        foreach (string legacyFileName in legacyFileNames)
-        {
-            if (string.IsNullOrWhiteSpace(legacyFileName))
-            {
-                continue;
-            }
-
-            if (TryMoveLegacyExampleFile(Path.Combine(ExamplesDirectoryPath, legacyFileName), currentPath))
-            {
-                break;
-            }
-        }
 
         if (File.Exists(currentPath))
         {
             return;
         }
 
-        File.WriteAllText(currentPath, defaultContent);
-    }
-
-    private static bool TryMoveLegacyExampleFile(string legacyPath, string currentPath)
-    {
-        if (!File.Exists(legacyPath))
-        {
-            return false;
-        }
-
-        if (File.Exists(currentPath))
-        {
-            File.Delete(legacyPath);
-            return true;
-        }
-
-        File.Move(legacyPath, currentPath);
-        return true;
+        GeneratedArtifactWriter.WriteTextAlways(currentPath, defaultContent);
     }
 
     private const string ReadmeContent = @"Across all field types, `field: null` or omitting the field usually means the field is unspecified.

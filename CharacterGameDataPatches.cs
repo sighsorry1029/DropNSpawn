@@ -29,8 +29,10 @@ internal static class CharacterDropGenerateDropListPatch
             return;
         }
 
+        List<CharacterDrop.Drop>? previousDrops = CharacterDropManager.OverrideConditionalDrops(__instance);
+        previousDrops ??= CharacterDropManager.OverrideTrophyLevelMultiplierDrops(__instance);
         __state = new State(
-            CharacterDropManager.OverrideConditionalDrops(__instance),
+            previousDrops,
             CharacterDropManager.BeginOnePerPlayerNearbyPlayerScope(__instance));
     }
 
@@ -87,12 +89,20 @@ internal static class CharacterDropStartPatch
 {
     private static void Postfix(CharacterDrop __instance)
     {
-        if (!PluginSettingsFacade.IsCharacterDomainEnabled())
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            if (!PluginSettingsFacade.IsCharacterDomainEnabled())
+            {
+                return;
+            }
 
-        CharacterDropManager.TrackCharacterDropInstance(__instance);
+            CharacterDropManager.TrackCharacterDropInstance(__instance);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("CharacterDrop.Start", sample);
+        }
     }
 }
 
@@ -106,7 +116,15 @@ internal static class ZDOManCreateNewZdoDespawnPatch
 
     private static void Postfix(int prefabHashIn, ZDO __result)
     {
-        DespawnRulesManager.QueueCreatedDespawnTarget(prefabHashIn, __result);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            DespawnRulesManager.QueueCreatedDespawnTarget(prefabHashIn, __result);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("ZDOMan.CreateNewZDO.despawn", sample);
+        }
     }
 }
 
@@ -115,10 +133,18 @@ internal static class CharacterAwakeBossRulesPatch
 {
     private static void Postfix(Character __instance)
     {
-        BossRulesManager.TrackBossCharacter(__instance);
-        if (PluginSettingsFacade.IsCharacterDomainEnabled())
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            DespawnRulesManager.TryTrackLoadedDespawnTarget(__instance);
+            BossRulesManager.TrackBossCharacter(__instance);
+            if (PluginSettingsFacade.IsCharacterDomainEnabled())
+            {
+                DespawnRulesManager.TryTrackLoadedDespawnTarget(__instance);
+            }
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("Character.Awake", sample);
         }
     }
 }

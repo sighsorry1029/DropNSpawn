@@ -52,43 +52,25 @@ internal sealed class PluginBootstrapCoordinator
             DropNSpawnPlugin.Toggle.On,
             "If on, the configuration is locked and can be changed by server admins only.",
             configManagerOrder: 800);
-        PluginBoundSettings.EnableCharacterOverrides = _host.BindConfigEntry(
-            "5 - Domains",
-            "Enable Character Overrides",
-            GetLegacyDomainToggleDefault("Enable Character Overrides", DropNSpawnPlugin.Toggle.On),
-            "If off, DropNSpawn character YAML files stay on disk but CharacterDrop runtime overrides are not applied and existing character changes are restored to vanilla. Turn this off with Enable Object when using Drop That!. Turn this off when using Spawner Tweaks creature overrides.",
-            synchronizedSetting: true,
+        PluginBoundSettings.RotateForsakenPowerShortcut = _host.BindConfigEntry(
+            "1 - General",
+            "Rotate Forsaken Power Shortcut",
+            new KeyboardShortcut(KeyCode.G),
+            new ConfigDescription(
+                "Shortcut used to rotate through unlocked Forsaken Powers when Remote Forsaken Power Selection is enabled. This setting is client-side only.",
+                new DropNSpawnPlugin.AcceptableShortcuts()),
+            synchronizedSetting: false,
             configManagerOrder: 700);
-        PluginBoundSettings.EnableObjectOverrides = _host.BindConfigEntry(
-            "5 - Domains",
-            "Enable Object Overrides",
-            GetLegacyDomainToggleDefault("Enable Object Overrides", DropNSpawnPlugin.Toggle.On),
-            "If off, DropNSpawn object YAML files stay on disk but object runtime overrides are not applied and existing object changes are restored to vanilla. Turn this off with Enable Character when using Drop That!. Turn this off when using Spawner Tweaks features for Chests or Pickables.",
-            synchronizedSetting: true,
-            configManagerOrder: 600);
-        PluginBoundSettings.EnableSpawnerOverrides = _host.BindConfigEntry(
-            "5 - Domains",
-            "Enable Spawner Overrides",
-            GetLegacyDomainToggleDefault("Enable Spawner Overrides", DropNSpawnPlugin.Toggle.On),
-            "If off, DropNSpawn SpawnArea and CreatureSpawner runtime overrides are not applied and existing spawner changes are restored to vanilla. Turn this off with Enable SpawnSystem when using Spawn That!. Turn this off when using Spawner Tweaks Spawn points or Spawners features.",
-            synchronizedSetting: true,
-            configManagerOrder: 500);
+        PluginBoundSettings.DebugRuntimeWorkProfiling = _host.BindConfigEntry(
+            "1 - General",
+            "Debug Runtime Work Profiling",
+            DropNSpawnPlugin.Toggle.Off,
+            "If on, writes one local Info log per second summarizing runtime queue work and immediate Harmony hook costs, including pending counts, processed steps, total time, and max step/hook time.",
+            synchronizedSetting: false,
+            configManagerOrder: 50);
         SpawnerGlobalConfig.Bind(_host);
-        PluginBoundSettings.EnableLocationOverrides = _host.BindConfigEntry(
-            "5 - Domains",
-            "Enable Location Overrides",
-            GetLegacyDomainToggleDefault("Enable Location Overrides", DropNSpawnPlugin.Toggle.On),
-            "If off, DropNSpawn location runtime overrides for OfferingBowl, ItemStand, and Vegvisir are not applied and existing location changes are restored to vanilla. Turn this off when using Spawner Tweaks Boss altars or Item stands features.",
-            synchronizedSetting: true,
-            configManagerOrder: 400);
-        PluginBoundSettings.EnableSpawnSystemOverrides = _host.BindConfigEntry(
-            "5 - Domains",
-            "Enable SpawnSystem Overrides",
-            GetLegacyDomainToggleDefault("Enable SpawnSystem Overrides", DropNSpawnPlugin.Toggle.On),
-            "If off, DropNSpawn world SpawnSystem runtime overrides and extended global key handling are not applied and existing SpawnSystem changes are restored to vanilla. Turn this off for Expand World Spawns. Turn this off with Enable Spawner when using Spawn That! world spawning.",
-            synchronizedSetting: true,
-            configManagerOrder: 300);
-        RemoveOrphanedConfigEntry("1 - General", "Afternoon Start Fraction");
+        LocationRunestoneGlobalPinsConfig.Bind(_host);
+        LocationVegvisirGlobalEffectsConfig.Bind(_host);
         PluginBoundSettings.ShowLocationProxyOfferingBowlHoverInfo = _host.BindConfigEntry(
             "2 - Boss",
             "Show LocationProxy Offering Bowl Hover Info",
@@ -111,44 +93,47 @@ internal sealed class PluginBootstrapCoordinator
         BossRulesConfig.Bind(_host);
         DespawnRulesConfig.Bind(_host);
         CharacterDropGlobalConfig.Bind(_host);
-        LocationRunestoneGlobalPinsConfig.Bind(_host);
 
-        PluginBoundSettings.ReferenceUpdateMode = _host.BindConfigEntry(
-            "4 - Client",
-            "Reference Update Mode",
-            DropNSpawnPlugin.ReferenceUpdateMode.AutoUpdate,
-            $"AutoUpdate automatically creates missing reference YAML files and updates existing ones, except {DropNSpawnPlugin.YamlFilePrefix}_spawner.locations.reference.yml, which is only auto-created when missing and never auto-updated afterwards. {DropNSpawnPlugin.YamlFilePrefix}_spawnsystem.reference.yml is always manual-export-only. ManualUpdate automatically creates missing reference YAML files but updates existing ones only when you run dns:reference, while {DropNSpawnPlugin.YamlFilePrefix}_spawnsystem.reference.yml still remains manual-export-only.",
-            synchronizedSetting: false);
-        PluginBoundSettings.RotateForsakenPowerShortcut = _host.BindConfigEntry(
-            "4 - Client",
-            "Rotate Forsaken Power Shortcut",
-            new KeyboardShortcut(KeyCode.G),
-            new ConfigDescription(
-                "Shortcut used to rotate through unlocked Forsaken Powers when Remote Forsaken Power Selection is enabled. This setting is client-side only.",
-                new DropNSpawnPlugin.AcceptableShortcuts()),
-            synchronizedSetting: false);
+        BindDomainConfigurationEntries();
     }
 
-    private DropNSpawnPlugin.Toggle GetLegacyDomainToggleDefault(string name, DropNSpawnPlugin.Toggle fallback)
+    private void BindDomainConfigurationEntries()
     {
-        ConfigDefinition legacyDefinition = new("1 - General", name);
-        ConfigEntry<DropNSpawnPlugin.Toggle> legacyEntry = _host.Config.Bind(
-            legacyDefinition,
-            fallback,
-            new ConfigDescription("Legacy domain toggle migrated to 5 - Domains."));
-        DropNSpawnPlugin.Toggle value = legacyEntry.Value;
-        _host.Config.Remove(legacyDefinition);
-        return value;
-    }
-
-    private void RemoveOrphanedConfigEntry(string section, string key)
-    {
-        PropertyInfo? orphanedEntriesProperty = typeof(ConfigFile).GetProperty(
-            "OrphanedEntries",
-            BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        object? orphanedEntries = orphanedEntriesProperty?.GetValue(_host.Config);
-        MethodInfo? removeMethod = orphanedEntries?.GetType().GetMethod("Remove", new[] { typeof(ConfigDefinition) });
-        removeMethod?.Invoke(orphanedEntries, new object[] { new ConfigDefinition(section, key) });
+        PluginBoundSettings.EnableCharacterOverrides = _host.BindConfigEntry(
+            "4 - Domains",
+            "Enable Character Overrides",
+            DropNSpawnPlugin.Toggle.On,
+            "If off, DropNSpawn character YAML files stay on disk but CharacterDrop runtime overrides are not applied and existing character changes are restored to vanilla. Turn this off with Enable Object when using Drop That!. Turn this off when using Spawner Tweaks creature overrides.",
+            synchronizedSetting: true,
+            configManagerOrder: 700);
+        PluginBoundSettings.EnableObjectOverrides = _host.BindConfigEntry(
+            "4 - Domains",
+            "Enable Object Overrides",
+            DropNSpawnPlugin.Toggle.On,
+            "If off, DropNSpawn object YAML files stay on disk but object runtime overrides are not applied and existing object changes are restored to vanilla. Turn this off with Enable Character when using Drop That!. Turn this off when using Spawner Tweaks features for Chests or Pickables.",
+            synchronizedSetting: true,
+            configManagerOrder: 600);
+        PluginBoundSettings.EnableSpawnerOverrides = _host.BindConfigEntry(
+            "4 - Domains",
+            "Enable Spawner Overrides",
+            DropNSpawnPlugin.Toggle.On,
+            "If off, DropNSpawn SpawnArea and CreatureSpawner runtime overrides are not applied and existing spawner changes are restored to vanilla. Turn this off with Enable SpawnSystem when using Spawn That!. Turn this off when using Spawner Tweaks Spawn points or Spawners features.",
+            synchronizedSetting: true,
+            configManagerOrder: 500);
+        PluginBoundSettings.EnableLocationOverrides = _host.BindConfigEntry(
+            "4 - Domains",
+            "Enable Location Overrides",
+            DropNSpawnPlugin.Toggle.On,
+            "If off, DropNSpawn location runtime behavior for OfferingBowl, ItemStand, Vegvisir global effects, and RuneStone global pins is not applied and existing location changes are restored to vanilla. Turn this off when using Spawner Tweaks Boss altars or Item stands features.",
+            synchronizedSetting: true,
+            configManagerOrder: 400);
+        PluginBoundSettings.EnableSpawnSystemOverrides = _host.BindConfigEntry(
+            "4 - Domains",
+            "Enable SpawnSystem Overrides",
+            DropNSpawnPlugin.Toggle.On,
+            "If off, DropNSpawn world SpawnSystem runtime overrides and extended global key handling are not applied and existing SpawnSystem changes are restored to vanilla. Turn this off for Expand World Spawns. Turn this off with Enable Spawner when using Spawn That! world spawning.",
+            synchronizedSetting: true,
+            configManagerOrder: 300);
     }
 
     private void InitializeCoordinators()

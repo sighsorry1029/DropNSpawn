@@ -128,7 +128,7 @@ internal static partial class SpawnSystemManager
 
     private static CompiledSpawnSystemTable? BuildVanillaCompiledTableCore(int gameDataSignature)
     {
-        List<SpawnSystemList> sourceLists = GetVanillaSourceSpawnLists();
+        List<SpawnSystemList> sourceLists = GetVanillaSourceSpawnLists(out bool referenceSourceTrusted);
         if (sourceLists.Count == 0)
         {
             return null;
@@ -137,7 +137,8 @@ internal static partial class SpawnSystemManager
         CompiledSpawnSystemTable table = new()
         {
             GameDataSignature = gameDataSignature,
-            Signature = $"vanilla:{gameDataSignature.ToString(CultureInfo.InvariantCulture)}"
+            Signature = $"vanilla:{gameDataSignature.ToString(CultureInfo.InvariantCulture)}",
+            ReferenceSourceTrusted = referenceSourceTrusted
         };
 
         foreach (SpawnSystemList sourceList in sourceLists)
@@ -177,9 +178,16 @@ internal static partial class SpawnSystemManager
 
     private static List<SpawnSystemList> GetVanillaSourceSpawnListsCore()
     {
+        return GetVanillaSourceSpawnListsCore(out _);
+    }
+
+    private static List<SpawnSystemList> GetVanillaSourceSpawnListsCore(out bool referenceSourceTrusted)
+    {
+        referenceSourceTrusted = false;
         SpawnSystem? zoneCtrlSpawnSystem = GetZoneCtrlPrefabSpawnSystem();
         if (zoneCtrlSpawnSystem != null)
         {
+            referenceSourceTrusted = true;
             return zoneCtrlSpawnSystem.m_spawnLists
                 .Where(spawnList => spawnList != null)
                 .ToList();

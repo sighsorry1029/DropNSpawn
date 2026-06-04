@@ -4,7 +4,7 @@ internal static partial class ExampleContentWriter
 {
     private const string SpawnerConditionContent = @"# Spawner-domain coexistence samples.
 # Safe here as a .sample.yml file. Copy rows into the active override file, or rename this file to a DNS_<domain>_*.yml name to load it.
-# Use top-level `location` to scope one location-bound spawner.
+# Use top-level `locations` to scope one location-bound spawner to one or more locations.
 # Only the most specific passing entry is applied.
 
 - prefab: Spawner_GreydwarfNest
@@ -18,7 +18,7 @@ internal static partial class ExampleContentWriter
 
 - prefab: Spawner_GreydwarfNest
   enabled: true
-  location: Greydwarf_camp1
+  locations: [Greydwarf_camp1]
   spawnArea:
     spawnInterval: 15
     maxNear: 6

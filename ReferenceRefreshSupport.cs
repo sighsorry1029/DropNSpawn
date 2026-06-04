@@ -125,7 +125,7 @@ internal static class ReferenceRefreshSupport
             return false;
         }
 
-        string statePath = ResolveAutoUpdateStatePath(stateKey);
+        string statePath = GetAutoUpdateStatePath(stateKey);
         if (!File.Exists(statePath))
         {
             return false;
@@ -168,7 +168,7 @@ internal static class ReferenceRefreshSupport
             return false;
         }
 
-        string statePath = ResolveAutoUpdateStatePath(stateKey);
+        string statePath = GetAutoUpdateStatePath(stateKey);
         if (!File.Exists(statePath))
         {
             return false;
@@ -217,20 +217,6 @@ internal static class ReferenceRefreshSupport
                          (precheckSignature ?? "").Trim() + Environment.NewLine +
                          (logicVersion ?? "").Trim() + Environment.NewLine;
         GeneratedFileWriter.WriteAllTextIfChanged(statePath, content);
-
-        string legacyStatePath = GetLegacyAutoUpdateStatePath(stateKey);
-        if (!string.Equals(statePath, legacyStatePath, StringComparison.OrdinalIgnoreCase) &&
-            File.Exists(legacyStatePath))
-        {
-            try
-            {
-                File.Delete(legacyStatePath);
-            }
-            catch
-            {
-                // Best-effort cleanup only.
-            }
-        }
     }
 
     internal static string ComputeStableHash(string? value)
@@ -251,43 +237,6 @@ internal static class ReferenceRefreshSupport
     {
         string sanitizedKey = SanitizeFileName(stateKey);
         return Path.Combine(GetAutoUpdateStateDirectoryPath(), $".reference-state.{sanitizedKey}.txt");
-    }
-
-    private static string GetLegacyAutoUpdateStatePath(string stateKey)
-    {
-        string sanitizedKey = SanitizeFileName(stateKey);
-        return Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, $".reference-state.{sanitizedKey}.txt");
-    }
-
-    private static string ResolveAutoUpdateStatePath(string stateKey)
-    {
-        string currentPath = GetAutoUpdateStatePath(stateKey);
-        if (File.Exists(currentPath))
-        {
-            return currentPath;
-        }
-
-        string legacyPath = GetLegacyAutoUpdateStatePath(stateKey);
-        if (!File.Exists(legacyPath))
-        {
-            return currentPath;
-        }
-
-        try
-        {
-            string? directoryPath = Path.GetDirectoryName(currentPath);
-            if (!string.IsNullOrWhiteSpace(directoryPath))
-            {
-                Directory.CreateDirectory(directoryPath);
-            }
-
-            File.Move(legacyPath, currentPath);
-            return currentPath;
-        }
-        catch
-        {
-            return legacyPath;
-        }
     }
 
     private static string GetAutoUpdateStateDirectoryPath()

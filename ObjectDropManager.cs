@@ -23,30 +23,34 @@ internal static partial class ObjectDropManager
     private const string ReferenceAutoUpdateStateKey = "object";
     private const string LocationReferenceAutoUpdateStateKey = "object.locations";
     internal static readonly DomainModuleDefinition<PrefabConfigurationEntry> Module =
-        new(
-            "object",
-            DropNSpawnPlugin.ReloadDomain.Object,
-            "object_yaml",
-            100,
-            ShouldReloadForPath,
-            ReloadConfiguration,
-            Initialize,
-            OnGameDataReady,
-            HandleExpandWorldDataReady,
-            dtoVersion: 7,
-            transportProfile: DomainTransportProfile.LargeConfig,
-            displayName: "object",
-            cacheDirectoryName: "object",
-            clientRequestPriority: 100,
-            keySelector: entry => entry.RuleId,
-            applyPayloadAction: ApplySyncedPayload,
-            workKinds: DomainWorkKinds.Runtime | DomainWorkKinds.SnapshotBuild | DomainWorkKinds.Reconcile,
-            hasPendingSnapshotBuildWork: HasPendingSnapshotBuildWork,
-            processPendingSnapshotBuildStep: ProcessPendingSnapshotBuildStep,
-            hasPendingReconcileWork: HasPendingReconcileWork,
-            processPendingReconcileStep: ProcessQueuedReconcileStep,
-            beforeClientManifestChanged: MarkSyncedPayloadPending,
-            onClientAuthorityCutover: EnterPendingSyncedPayloadState);
+        new(new DomainModuleOptions<PrefabConfigurationEntry>
+        {
+            DomainKey = "object",
+            ReloadDomain = DropNSpawnPlugin.ReloadDomain.Object,
+            ManifestSettingKey = "object_yaml",
+            ManifestPriority = 100,
+            ShouldReloadForPath = ShouldReloadForPath,
+            Reload = ReloadConfiguration,
+            InitializeRuntime = Initialize,
+            OnGameDataReady = OnGameDataReady,
+            HandleExpandWorldDataReady = HandleExpandWorldDataReady,
+            DtoVersion = 7,
+            TransportProfile = DomainTransportProfile.LargeConfig,
+            DisplayName = "object",
+            CacheDirectoryName = "object",
+            ClientRequestPriority = 100,
+            KeySelector = entry => entry.RuleId,
+            ApplyPayloadAction = ApplySyncedPayload,
+            WorkKinds = DomainWorkKinds.Runtime | DomainWorkKinds.SnapshotBuild | DomainWorkKinds.Reconcile,
+            HasPendingSnapshotBuildWork = HasPendingSnapshotBuildWork,
+            GetPendingSnapshotBuildWorkCount = GetPendingSnapshotBuildWorkCount,
+            ProcessPendingSnapshotBuildStep = ProcessPendingSnapshotBuildStep,
+            HasPendingReconcileWork = HasPendingReconcileWork,
+            GetPendingReconcileWorkCount = GetPendingReconcileWorkCount,
+            ProcessPendingReconcileStep = ProcessQueuedReconcileStep,
+            BeforeClientManifestChanged = MarkSyncedPayloadPending,
+            OnClientAuthorityCutover = EnterPendingSyncedPayloadState
+        });
     internal static DomainDescriptor<PrefabConfigurationEntry> Descriptor => Module.DescriptorTyped;
     internal static DomainTransportMetadata<PrefabConfigurationEntry> TransportMetadata => Module.TransportMetadataTyped;
 
@@ -96,18 +100,6 @@ internal static partial class ObjectDropManager
     {
         public GroupConditionalApplyPlan Plan { get; set; } = null!;
         public LinkedListNode<string> LruNode { get; set; } = null!;
-    }
-
-    private readonly struct StaticObjectMatchCacheEntry
-    {
-        public StaticObjectMatchCacheEntry(int epoch, bool hasPotentialStaticMatch)
-        {
-            Epoch = epoch;
-            HasPotentialStaticMatch = hasPotentialStaticMatch;
-        }
-
-        public int Epoch { get; }
-        public bool HasPotentialStaticMatch { get; }
     }
 
     [Flags]
@@ -372,12 +364,14 @@ internal static partial class ObjectDropManager
         .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitDefaults)
         .Build();
 
-    private static readonly List<PrefabSnapshot> Snapshots = new();
-    private static readonly Dictionary<string, PrefabSnapshot> SnapshotsByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, List<PrefabConfigurationEntry>> ActiveEntriesByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, List<PrefabConfigurationEntry>> VneiEntriesByPrefab = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly ObjectSnapshotRuntimeState SnapshotState = new();
+    private static List<PrefabSnapshot> Snapshots => SnapshotState.Snapshots;
+    private static Dictionary<string, PrefabSnapshot> SnapshotsByPrefab => SnapshotState.SnapshotsByPrefab;
+    private static readonly ObjectConfigurationRuntimeState RuntimeState = new();
+    private static Dictionary<string, List<PrefabConfigurationEntry>> ActiveEntriesByPrefab => RuntimeState.ActiveEntriesByPrefab;
+    private static Dictionary<string, List<PrefabConfigurationEntry>> VneiEntriesByPrefab => RuntimeState.VneiEntriesByPrefab;
     private static readonly HashSet<string> MissingComponentWarnings = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> InvalidEntryWarnings = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly InvalidEntryDiagnostics InvalidEntryWarnings = new();
     private static readonly int DestructibleLazyScalarSignatureKey = $"{DropNSpawnPlugin.ModName}.destructible_scalar_signature".GetStableHashCode();
     private static readonly int MineRockLazyScalarSignatureKey = $"{DropNSpawnPlugin.ModName}.minerock_scalar_signature".GetStableHashCode();
     private static readonly int MineRock5LazyScalarSignatureKey = $"{DropNSpawnPlugin.ModName}.minerock5_scalar_signature".GetStableHashCode();
@@ -389,15 +383,42 @@ internal static partial class ObjectDropManager
     private static readonly MethodInfo? MineRock5UpdateMeshMethod = AccessTools.Method(typeof(MineRock5), "UpdateMesh");
     private static readonly FieldInfo? MineRock5HitAreaHealthField = AccessTools.Field(typeof(MineRock5).GetNestedType("HitArea", BindingFlags.NonPublic), "m_health");
 
-    private static List<PrefabConfigurationEntry> _configuration = new();
-    private static string _configurationSignature = "";
+    private static List<PrefabConfigurationEntry> _configuration
+    {
+        get => RuntimeState.Configuration;
+        set => RuntimeState.Configuration = value;
+    }
+
+    private static string _configurationSignature
+    {
+        get => RuntimeState.ConfigurationSignature;
+        set => RuntimeState.ConfigurationSignature = value;
+    }
+
     private static DomainLoadState LoadState => ConfigurationRuntime.LoadState;
     private static bool _initialized;
     private static int? _lastProcessedSnapshotSignature;
     private static int? _lastProcessedGameDataSignature;
-    private static ObjectRuntimeDropConfigurationState _runtimeDropConfigurationState = ObjectRuntimeDropConfigurationState.Empty;
-    private static string _runtimeDropConfigurationSignature = "";
-    private static int? _runtimeDropConfigurationGameDataSignature;
+    private static readonly ObjectRuntimeDropState DropRuntimeState = new();
+
+    private static ObjectRuntimeDropConfigurationState _runtimeDropConfigurationState
+    {
+        get => DropRuntimeState.Configuration;
+        set => DropRuntimeState.Configuration = value;
+    }
+
+    private static string _runtimeDropConfigurationSignature
+    {
+        get => DropRuntimeState.ConfigurationSignature;
+        set => DropRuntimeState.ConfigurationSignature = value;
+    }
+
+    private static int? _runtimeDropConfigurationGameDataSignature
+    {
+        get => DropRuntimeState.GameDataSignature;
+        set => DropRuntimeState.GameDataSignature = value;
+    }
+
     private static int _cachedGameDataSignatureFrame = -1;
     private static int _cachedGameDataSignatureValue;
     private static int _cachedSnapshotSignatureFrame = -1;
@@ -621,6 +642,20 @@ internal static partial class ObjectDropManager
         }
     }
 
+    internal static int GetPendingSnapshotBuildWorkCount()
+    {
+        lock (Sync)
+        {
+            if (_pendingSnapshotBuild == null)
+            {
+                return 0;
+            }
+
+            int remainingPrefabs = Math.Max(0, _pendingSnapshotBuild.Prefabs.Count - _pendingSnapshotBuild.NextIndex);
+            return Math.Max(1, remainingPrefabs);
+        }
+    }
+
     internal static bool ProcessPendingSnapshotBuildStep(float deadline)
     {
         PendingSnapshotBuildState? buildState;
@@ -674,45 +709,6 @@ internal static partial class ObjectDropManager
         return true;
     }
 
-    internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
-    {
-        lock (Sync)
-        {
-            path = FullScaffoldConfigurationPath;
-            error = "";
-
-            if (!IsGameDataReady() && Snapshots.Count == 0)
-            {
-                error = "Object game data is not ready yet.";
-                return false;
-            }
-
-            CaptureSnapshotsIfNeeded();
-            Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-            File.WriteAllText(path, BuildFullScaffoldConfigurationTemplate());
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Wrote object full scaffold configuration to {path}.");
-            return true;
-        }
-    }
-
-    internal static void RefreshReferenceConfigurationFile()
-    {
-        lock (Sync)
-        {
-            if (!IsGameDataReady())
-            {
-                return;
-            }
-
-            CaptureSnapshotsIfNeeded();
-            string referenceContent = BuildReferenceConfigurationTemplate();
-            string locationReferenceContent = BuildLocationReferenceConfigurationTemplate();
-            WriteReferenceConfigurationFile(referenceContent, $"Updated object reference configurations at {ReferenceConfigurationPath} and {LocationReferenceConfigurationPath}.");
-            WriteLocationReferenceConfigurationFile(locationReferenceContent);
-            ReferenceRefreshSupport.RecordAutoUpdateState(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, ComputeReferenceSourceSignature(), logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-        }
-    }
-
     private static bool IsGameDataReady()
     {
         return ZNetScene.instance != null && ObjectDB.instance != null;
@@ -726,62 +722,45 @@ internal static partial class ObjectDropManager
         }
 
         string currentSourceSignature = ComputeReferenceSourceSignature();
-        bool referenceFileExists = File.Exists(ReferenceConfigurationPath);
-        bool locationReferenceFileExists = File.Exists(LocationReferenceConfigurationPath);
-        bool shouldCreateMissingFiles = PluginSettingsFacade.ShouldAutoCreateMissingReferenceFiles();
-        bool shouldCreatePrimary = !referenceFileExists && shouldCreateMissingFiles;
-        bool shouldCreateLocation = !locationReferenceFileExists && shouldCreateMissingFiles;
-
-        if (shouldCreatePrimary || shouldCreateLocation)
-        {
-            CaptureSnapshotsIfNeeded();
-            if (shouldCreatePrimary)
-            {
-                WriteReferenceConfigurationFile(BuildReferenceConfigurationTemplate(), $"Created object reference configuration at {ReferenceConfigurationPath}.");
-                ReferenceRefreshSupport.RecordAutoUpdateState(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature, logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-            }
-
-            if (shouldCreateLocation)
-            {
-                WriteLocationReferenceConfigurationFile(BuildLocationReferenceConfigurationTemplate());
-                DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Created object location reference configuration at {LocationReferenceConfigurationPath}.");
-                ReferenceRefreshSupport.RecordAutoUpdateState(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, currentSourceSignature, logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-            }
-            return;
-        }
-
-        if (!PluginSettingsFacade.ShouldAutoUpdateReferenceFiles())
-        {
-            return;
-        }
-
-        bool shouldRewritePrimary = !ReferenceRefreshSupport.ShouldSkipAutoUpdate(
+        bool shouldWritePrimary = ReferenceArtifactLifecycle.TryPlanUpdate(
             ReferenceAutoUpdateStateKey,
             ReferenceConfigurationPath,
             currentSourceSignature,
-            ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-        bool shouldRewriteLocation = !ReferenceRefreshSupport.ShouldSkipAutoUpdate(
+            out ReferenceArtifactUpdateKind primaryUpdateKind);
+        bool shouldWriteLocation = ReferenceArtifactLifecycle.TryPlanUpdate(
             LocationReferenceAutoUpdateStateKey,
             LocationReferenceConfigurationPath,
             currentSourceSignature,
-            ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-        if (!shouldRewritePrimary && !shouldRewriteLocation)
+            out ReferenceArtifactUpdateKind locationUpdateKind);
+        bool isCreatingAnyReference = primaryUpdateKind == ReferenceArtifactUpdateKind.Created ||
+                                      locationUpdateKind == ReferenceArtifactUpdateKind.Created;
+
+        if (isCreatingAnyReference)
+        {
+            shouldWritePrimary = primaryUpdateKind == ReferenceArtifactUpdateKind.Created;
+            shouldWriteLocation = locationUpdateKind == ReferenceArtifactUpdateKind.Created;
+        }
+
+        if (!shouldWritePrimary && !shouldWriteLocation)
         {
             return;
         }
 
         CaptureSnapshotsIfNeeded();
-        if (shouldRewritePrimary)
+        if (shouldWritePrimary)
         {
-            WriteReferenceConfigurationFile(BuildReferenceConfigurationTemplate(), $"Updated object reference configuration at {ReferenceConfigurationPath}.");
-            ReferenceRefreshSupport.RecordAutoUpdateState(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature, logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
+            WriteReferenceConfigurationFile(
+                BuildReferenceConfigurationTemplate(),
+                $"{ReferenceArtifactLifecycle.FormatAction(primaryUpdateKind)} object reference configuration at {ReferenceConfigurationPath}.");
+            ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature);
         }
 
-        if (shouldRewriteLocation)
+        if (shouldWriteLocation)
         {
             WriteLocationReferenceConfigurationFile(BuildLocationReferenceConfigurationTemplate());
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Updated object location reference configuration at {LocationReferenceConfigurationPath}.");
-            ReferenceRefreshSupport.RecordAutoUpdateState(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, currentSourceSignature, logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
+            DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
+                $"{ReferenceArtifactLifecycle.FormatAction(locationUpdateKind)} object location reference configuration at {LocationReferenceConfigurationPath}.");
+            ReferenceArtifactLifecycle.RecordUpdate(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, currentSourceSignature);
         }
     }
 
@@ -800,9 +779,10 @@ internal static partial class ObjectDropManager
             return false;
         }
 
-        Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-        File.WriteAllText(PrimaryOverrideConfigurationPathYml, BuildPrimaryOverrideConfigurationTemplate());
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Created object override configuration at {PrimaryOverrideConfigurationPathYml}.");
+        GeneratedArtifactWriter.WriteTextAlways(
+            PrimaryOverrideConfigurationPathYml,
+            BuildPrimaryOverrideConfigurationTemplate(),
+            $"Created object override configuration at {PrimaryOverrideConfigurationPathYml}.");
         return true;
     }
 
@@ -865,13 +845,7 @@ internal static partial class ObjectDropManager
             return;
         }
 
-        Snapshots.Clear();
-        Snapshots.AddRange(buildState.Snapshots);
-        SnapshotsByPrefab.Clear();
-        foreach ((string prefabName, PrefabSnapshot snapshot) in buildState.SnapshotsByPrefab)
-        {
-            SnapshotsByPrefab[prefabName] = snapshot;
-        }
+        SnapshotState.ReplaceWith(buildState);
 
         _pendingSnapshotBuild = null;
         CompleteGameDataReadyLocked(buildState.Source, buildState.GameDataSignature, buildState.SnapshotSignature);
@@ -908,15 +882,11 @@ internal static partial class ObjectDropManager
     private static void ResetLoadedConfigurationState()
     {
         ClearQueuedReconcileState();
-        ActiveEntriesByPrefab.Clear();
+        RuntimeState.Reset();
         PrefabProfileCatalogState.ClearCurrentProfiles();
-        VneiEntriesByPrefab.Clear();
         MissingComponentWarnings.Clear();
         InvalidEntryWarnings.Clear();
-        _runtimeDropConfigurationState = ObjectRuntimeDropConfigurationState.Empty;
-        _runtimeDropConfigurationSignature = "";
-        _runtimeDropConfigurationGameDataSignature = null;
-        _configuration = new List<PrefabConfigurationEntry>();
+        DropRuntimeState.Reset();
         Volatile.Write(ref _synchronizedPayloadReady, false);
     }
 
@@ -1008,7 +978,7 @@ internal static partial class ObjectDropManager
         List<PrefabConfigurationEntry> configuration,
         string sourceName)
     {
-        using InvalidEntryWarningSuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(sourceName);
+        using InvalidEntryDiagnostics.SuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(sourceName);
         SyncedObjectConfigurationState state = new();
         foreach (PrefabConfigurationEntry entry in CloneAndNormalizeConfigurationEntries(configuration, sourceName))
         {
@@ -1298,32 +1268,7 @@ internal static partial class ObjectDropManager
 
     private static void NormalizeObjectConditions(ConditionsDefinition? conditions, string context)
     {
-        if (conditions == null)
-        {
-            return;
-        }
-
-        if (conditions.Level?.HasValues() == true ||
-            conditions.MinLevel.HasValue ||
-            conditions.MaxLevel.HasValue)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.level, but level filters are only valid for character-drop conditions. The key was ignored.");
-            conditions.Level = null;
-            conditions.MinLevel = null;
-            conditions.MaxLevel = null;
-        }
-
-        if (conditions.States?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.states, but state filters are only valid for character-drop conditions. The key was ignored.");
-            conditions.States = null;
-        }
-
-        if (conditions.Factions?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.factions, but faction filters are only valid for character-drop conditions. The key was ignored.");
-            conditions.Factions = null;
-        }
+        ConditionDialectSupport.StripUnsupportedObjectDropFields(conditions, context, WarnInvalidEntry);
     }
 
     private static string BuildRuleId(PrefabConfigurationEntry entry)
@@ -2550,8 +2495,7 @@ internal static partial class ObjectDropManager
 
     private static void RefreshSnapshots()
     {
-        Snapshots.Clear();
-        SnapshotsByPrefab.Clear();
+        SnapshotState.Clear();
         CaptureSnapshotsIfNeeded();
     }
 

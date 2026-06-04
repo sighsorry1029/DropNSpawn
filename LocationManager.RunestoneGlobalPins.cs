@@ -14,7 +14,7 @@ internal static partial class LocationManager
     private static readonly ConditionalWeakTable<RuneStone, RunestoneGlobalPinsRollState> RunestoneGlobalPinsRolls = new();
     private static readonly object RunestoneGlobalPinsLock = new();
     private static readonly System.Random RunestoneGlobalPinsRandom = new();
-    private static readonly Dictionary<string, string> RunestoneGlobalPinDiscoverLabels = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, string> RunestoneGlobalPinDefaultPinNames = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> RunestoneGlobalPinWarningLogs = new(StringComparer.OrdinalIgnoreCase);
     private static RunestoneGlobalPinLocationIndex? RunestoneGlobalPinLocationIndexCache;
     private static readonly FieldInfo? MinimapPinsField = AccessTools.Field(typeof(Minimap), "m_pins");
@@ -377,13 +377,13 @@ internal static partial class LocationManager
 
     private static string GetRunestoneGlobalPinDefaultPinName(string locationName)
     {
-        string discoverLabel = GetRunestoneGlobalPinDiscoverLabel(locationName);
-        return discoverLabel.Length > 0 ? discoverLabel : locationName;
+        string configuredName = GetRunestoneGlobalPinConfiguredDefaultName(locationName);
+        return configuredName.Length > 0 ? configuredName : locationName;
     }
 
-    private static string GetRunestoneGlobalPinDiscoverLabel(string locationName)
+    private static string GetRunestoneGlobalPinConfiguredDefaultName(string locationName)
     {
-        if (RunestoneGlobalPinDiscoverLabels.TryGetValue(locationName, out string? cached))
+        if (RunestoneGlobalPinDefaultPinNames.TryGetValue(locationName, out string? cached))
         {
             return cached;
         }
@@ -403,7 +403,7 @@ internal static partial class LocationManager
                 location.m_prefab.Load();
                 try
                 {
-                    label = (location.m_prefab.Asset?.GetComponent<Location>()?.m_discoverLabel ?? "").Trim();
+                    label = GetRunestoneGlobalPinConfiguredDefaultName(location.m_prefab.Asset);
                 }
                 finally
                 {
@@ -414,8 +414,33 @@ internal static partial class LocationManager
             }
         }
 
-        RunestoneGlobalPinDiscoverLabels[locationName] = label;
+        RunestoneGlobalPinDefaultPinNames[locationName] = label;
         return label;
+    }
+
+    private static string GetRunestoneGlobalPinConfiguredDefaultName(GameObject? locationPrefab)
+    {
+        if (locationPrefab == null)
+        {
+            return "";
+        }
+
+        string discoverLabel = (locationPrefab.GetComponent<Location>()?.m_discoverLabel ?? "").Trim();
+        if (discoverLabel.Length > 0)
+        {
+            return discoverLabel;
+        }
+
+        foreach (Teleport teleport in locationPrefab.GetComponentsInChildren<Teleport>(includeInactive: true))
+        {
+            string enterText = (teleport?.m_enterText ?? "").Trim();
+            if (enterText.Length > 0)
+            {
+                return enterText;
+            }
+        }
+
+        return "";
     }
 
     private static Minimap.PinType ParseRunestoneGlobalPinType(string? rawPinType, string locationName)

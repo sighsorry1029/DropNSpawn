@@ -18,7 +18,7 @@ internal static partial class SpawnerManager
         for (int index = entries.Count - 1; index >= 0; index--)
         {
             SpawnerConfigurationEntry entry = entries[index];
-            if (entry.Location != null)
+            if (HasLocationSelector(entry))
             {
                 continue;
             }
@@ -193,7 +193,7 @@ internal static partial class SpawnerManager
             return matches;
         }
 
-        bool requiresLocationSelector = entries.Any(candidate => !string.IsNullOrWhiteSpace(candidate.Location));
+        bool requiresLocationSelector = entries.Any(HasLocationSelector);
         string resolvedLocationPrefab = "";
         string sourceLabel = "";
         bool hasResolvedLocation = !requiresLocationSelector || TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab, out sourceLabel);
@@ -305,7 +305,7 @@ internal static partial class SpawnerManager
                 return false;
             }
 
-            usesSelector |= !string.IsNullOrWhiteSpace(entry.Location);
+            usesSelector |= HasLocationSelector(entry);
             usesConditionLocation |= conditions?.Locations?.Any(name => !string.IsNullOrWhiteSpace(name)) == true;
             usesBiome |= conditions?.ResolvedBiomeMask.HasValue == true || conditions?.Biomes?.Any(name => !string.IsNullOrWhiteSpace(name)) == true;
             usesInDungeon |= conditions?.InDungeon.HasValue == true;
@@ -372,7 +372,7 @@ internal static partial class SpawnerManager
         SharedMatchingEntryTemplate template = new()
         {
             ConfigPrefabName = configPrefabName,
-            UsesLocationSelector = entries.Any(entry => !string.IsNullOrWhiteSpace(entry.Location)),
+            UsesLocationSelector = entries.Any(HasLocationSelector),
             ResolvedLocationKey = resolvedLocationKey
         };
 

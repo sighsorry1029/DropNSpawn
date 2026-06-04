@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 
@@ -10,7 +11,7 @@ namespace DropNSpawn;
 internal sealed class PluginRuntimeWorkCoordinator
 {
     private const float GameDataRefreshDebounceSeconds = 0.1f;
-    private const float ReconcileQueueFrameBudgetSeconds = 0.002f;
+    private const float RuntimeWorkFrameBudgetSeconds = 0.001f;
     private const int WorkLaneCount = 3;
 
     private readonly DropNSpawnPlugin _host;
@@ -41,22 +42,26 @@ internal sealed class PluginRuntimeWorkCoordinator
 
     internal void ProcessUpdateFrame()
     {
+        RuntimeWorkProfiler.Update(Time.realtimeSinceStartup);
         ProcessStandaloneRuntimeTicks();
         ObserveExpandWorldDataReadyTransition();
         if (!NetworkPayloadSyncSupport.HasPendingWork() &&
             !HasPendingSnapshotBuildWork() &&
             !HasPendingReconcileWork())
         {
+            RuntimeWorkProfiler.Update(Time.realtimeSinceStartup);
             return;
         }
 
-        float deadline = Time.realtimeSinceStartup + ReconcileQueueFrameBudgetSeconds;
+        float deadline = Time.realtimeSinceStartup + RuntimeWorkFrameBudgetSeconds;
         int idlePasses = 0;
         while (Time.realtimeSinceStartup < deadline && idlePasses < 5)
         {
             bool processed = ProcessNextPendingWorkLane(deadline);
             idlePasses = processed ? 0 : idlePasses + 1;
         }
+
+        RuntimeWorkProfiler.Update(Time.realtimeSinceStartup);
     }
 
     private static void ProcessStandaloneRuntimeTicks()
@@ -178,7 +183,13 @@ internal sealed class PluginRuntimeWorkCoordinator
             }
 
             _snapshotBuildRoundRobinCursor = (domainIndex + 1) % DomainRegistry.SnapshotBuildDomains.Length;
-            return domain.ProcessPendingSnapshotBuildStep(deadline);
+            return ProcessProfiledDomainWork(
+                domain,
+                RuntimeWorkProfileKind.SnapshotBuild,
+                domain.GetPendingSnapshotBuildWorkCount,
+                domain.HasPendingSnapshotBuildWork,
+                domain.ProcessPendingSnapshotBuildStep,
+                deadline);
         }
 
         return false;
@@ -198,10 +209,32 @@ internal sealed class PluginRuntimeWorkCoordinator
     {
         return lane switch
         {
-            0 => NetworkPayloadSyncSupport.ProcessPendingWork(deadline),
+            0 => ProcessProfiledNetworkPayloadWork(deadline),
             1 => ProcessNextPendingSnapshotBuildStep(deadline),
             _ => ProcessNextQueuedReconcileStep(deadline)
         };
+    }
+
+    private static bool ProcessProfiledNetworkPayloadWork(float deadline)
+    {
+        if (!RuntimeWorkProfiler.IsEnabled())
+        {
+            return NetworkPayloadSyncSupport.ProcessPendingWork(deadline);
+        }
+
+        int pendingBefore = NetworkPayloadSyncSupport.GetPendingWorkCount();
+        float startedAt = Time.realtimeSinceStartup;
+        bool processed = NetworkPayloadSyncSupport.ProcessPendingWork(deadline);
+        float elapsedSeconds = Time.realtimeSinceStartup - startedAt;
+        int pendingAfter = NetworkPayloadSyncSupport.GetPendingWorkCount();
+        RuntimeWorkProfiler.Record(
+            "network",
+            RuntimeWorkProfileKind.NetworkPayload,
+            processed,
+            pendingBefore,
+            pendingAfter,
+            elapsedSeconds);
+        return processed;
     }
 
     private bool ProcessNextQueuedReconcileStep(float deadline)
@@ -218,10 +251,54 @@ internal sealed class PluginRuntimeWorkCoordinator
             }
 
             _reconcileRoundRobinCursor = (domainIndex + 1) % DomainRegistry.ReconcileDomains.Length;
-            return domain.ProcessPendingReconcileStep(deadline);
+            return ProcessProfiledDomainWork(
+                domain,
+                RuntimeWorkProfileKind.Reconcile,
+                domain.GetPendingReconcileWorkCount,
+                domain.HasPendingReconcileWork,
+                domain.ProcessPendingReconcileStep,
+                deadline);
         }
 
         return false;
+    }
+
+    private static bool ProcessProfiledDomainWork(
+        DomainDescriptor domain,
+        RuntimeWorkProfileKind kind,
+        Func<int>? countPendingWork,
+        Func<bool>? hasPendingWork,
+        Func<float, bool> processStep,
+        float deadline)
+    {
+        if (!RuntimeWorkProfiler.IsEnabled())
+        {
+            return processStep(deadline);
+        }
+
+        int pendingBefore = GetPendingWorkCount(countPendingWork, hasPendingWork);
+        float startedAt = Time.realtimeSinceStartup;
+        bool processed = processStep(deadline);
+        float elapsedSeconds = Time.realtimeSinceStartup - startedAt;
+        int pendingAfter = GetPendingWorkCount(countPendingWork, hasPendingWork);
+        RuntimeWorkProfiler.Record(
+            domain.DomainKey,
+            kind,
+            processed,
+            pendingBefore,
+            pendingAfter,
+            elapsedSeconds);
+        return processed;
+    }
+
+    private static int GetPendingWorkCount(Func<int>? countPendingWork, Func<bool>? hasPendingWork)
+    {
+        if (countPendingWork != null)
+        {
+            return Math.Max(0, countPendingWork());
+        }
+
+        return hasPendingWork?.Invoke() == true ? 1 : 0;
     }
 
     private bool HasPendingReconcileWork()

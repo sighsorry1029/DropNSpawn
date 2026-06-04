@@ -26,6 +26,17 @@ internal static partial class ObjectDropManager
                    (!highPriorityOnly && _pendingLowPriorityObjectReconcileGroups.Count > 0);
         }
 
+        public int GetPendingWorkCount()
+        {
+            int count = 0;
+            foreach (PendingObjectReconcileGroupState groupState in _pendingObjectReconcileGroups.Values)
+            {
+                count += groupState.Items.Count;
+            }
+
+            return count;
+        }
+
         public bool TryGetGroupState(string groupKey, out PendingObjectReconcileGroupState groupState)
         {
             return _pendingObjectReconcileGroups.TryGetValue(groupKey, out groupState);

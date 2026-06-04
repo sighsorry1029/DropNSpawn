@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 
 namespace DropNSpawn;
@@ -72,11 +71,59 @@ internal static partial class ObjectDropManager
         return PrefabOutputSections.SerializeReferenceSections(sections, Serializer);
     }
 
+    internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
+    {
+        string content;
+        string logMessage;
+        lock (Sync)
+        {
+            path = FullScaffoldConfigurationPath;
+            error = "";
+
+            if (!IsGameDataReady() && Snapshots.Count == 0)
+            {
+                error = "Object game data is not ready yet.";
+                return false;
+            }
+
+            CaptureSnapshotsIfNeeded();
+            content = BuildFullScaffoldConfigurationTemplate();
+            logMessage = $"Wrote object full scaffold configuration to {path}.";
+        }
+
+        GeneratedArtifactWriter.WriteTextAlways(path, content, logMessage);
+        return true;
+    }
+
+    internal static void RefreshReferenceConfigurationFile()
+    {
+        string referenceContent;
+        string locationReferenceContent;
+        string sourceSignature;
+        string logMessage;
+        lock (Sync)
+        {
+            if (!IsGameDataReady())
+            {
+                return;
+            }
+
+            CaptureSnapshotsIfNeeded();
+            referenceContent = BuildReferenceConfigurationTemplate();
+            locationReferenceContent = BuildLocationReferenceConfigurationTemplate();
+            sourceSignature = ComputeReferenceSourceSignature();
+            logMessage = $"Updated object reference configurations at {ReferenceConfigurationPath} and {LocationReferenceConfigurationPath}.";
+        }
+
+        WriteReferenceConfigurationFile(referenceContent, logMessage);
+        WriteLocationReferenceConfigurationFile(locationReferenceContent);
+        ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, sourceSignature);
+        ReferenceArtifactLifecycle.RecordUpdate(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, sourceSignature);
+    }
+
     private static void WriteReferenceConfigurationFile(string content, string logMessage)
     {
-        Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-        GeneratedFileWriter.WriteAllTextIfChanged(ReferenceConfigurationPath, content);
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(logMessage);
+        GeneratedArtifactWriter.WriteText(ReferenceConfigurationPath, content, logMessage);
     }
 
     private static string BuildLocationReferenceConfigurationTemplate()
@@ -142,7 +189,6 @@ internal static partial class ObjectDropManager
 
     private static void WriteLocationReferenceConfigurationFile(string content)
     {
-        Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-        GeneratedFileWriter.WriteAllTextIfChanged(LocationReferenceConfigurationPath, content);
+        GeneratedArtifactWriter.WriteText(LocationReferenceConfigurationPath, content);
     }
 }

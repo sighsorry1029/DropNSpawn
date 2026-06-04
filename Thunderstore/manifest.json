@@ -1,8 +1,8 @@
 {
   "name": "DropNSpawn",
-  "version_number": "1.2.2",
+  "version_number": "1.2.3",
   "website_url": "https://discord.com/invite/VFRJcPwUdm",
-  "description": "Configure all drops, spawns and boss locations. Remote selection of forsaken powers. Hover an altar to see the offering and summonable boss. Boss despawn rules. RuneStones can work like Vegvisirs. Vegvisir supports weighted random location pinning.",
+  "description": "Configure drops, spawns, boss locations, despawn rules, RuneStone global pins, Vegvisir global effects, remote Forsaken power selection, and altar hover info.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333",
     "JereKuusela-Expand_World_Data-1.63.0"

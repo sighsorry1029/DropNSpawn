@@ -107,7 +107,9 @@ internal static partial class CharacterDropManager
         int amountMin = Math.Max(1, definition.AmountMin ?? 1);
         int amountMax = Math.Max(amountMin, definition.AmountMax ?? definition.AmountMin ?? 1);
         float chance = Mathf.Clamp01(definition.Chance ?? 1f);
-        string fingerprint = BuildDropRowFingerprint(definition);
+        string fingerprint = BuildDropRowFingerprint(
+            definition,
+            GetEffectiveCharacterDropLevelMultiplier(definition, prefab));
         if (!seen.Add(fingerprint))
         {
             return;

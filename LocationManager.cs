@@ -16,32 +16,32 @@ namespace DropNSpawn;
 internal static partial class LocationManager
 {
     private const string ReferenceAutoUpdateStateKey = "location";
-    private static readonly ConditionalWeakTable<RuneStone, RunestonePinChanceState> RunestonePinChanceRolls = new();
-    private static readonly object RunestonePinChanceLock = new();
-    private static readonly System.Random RunestonePinChanceRandom = new();
     internal static readonly DomainModuleDefinition<LocationConfigurationEntry> Module =
-        new(
-            "location",
-            DropNSpawnPlugin.ReloadDomain.Location,
-            "location_yaml",
-            97,
-            ShouldReloadForPath,
-            ReloadConfiguration,
-            Initialize,
-            OnGameDataReady,
-            HandleExpandWorldDataReady,
-            dtoVersion: 12,
-            transportProfile: DomainTransportProfile.SmallConfig,
-            displayName: "location",
-            cacheDirectoryName: "location",
-            clientRequestPriority: 20,
-            keySelector: entry => entry.RuleId,
-            applyPayloadAction: ApplySyncedPayload,
-            workKinds: DomainWorkKinds.Runtime | DomainWorkKinds.Reconcile,
-            hasPendingReconcileWork: HasPendingReconcileWork,
-            processPendingReconcileStep: ProcessQueuedReconcileStep,
-            beforeClientManifestChanged: MarkSyncedPayloadPending,
-            onClientAuthorityCutover: EnterPendingSyncedPayloadState);
+        new(new DomainModuleOptions<LocationConfigurationEntry>
+        {
+            DomainKey = "location",
+            ReloadDomain = DropNSpawnPlugin.ReloadDomain.Location,
+            ManifestSettingKey = "location_yaml",
+            ManifestPriority = 97,
+            ShouldReloadForPath = ShouldReloadForPath,
+            Reload = ReloadConfiguration,
+            InitializeRuntime = Initialize,
+            OnGameDataReady = OnGameDataReady,
+            HandleExpandWorldDataReady = HandleExpandWorldDataReady,
+            DtoVersion = 16,
+            TransportProfile = DomainTransportProfile.SmallConfig,
+            DisplayName = "location",
+            CacheDirectoryName = "location",
+            ClientRequestPriority = 20,
+            KeySelector = entry => entry.RuleId,
+            ApplyPayloadAction = ApplySyncedPayload,
+            WorkKinds = DomainWorkKinds.Runtime | DomainWorkKinds.Reconcile,
+            HasPendingReconcileWork = HasPendingReconcileWork,
+            GetPendingReconcileWorkCount = GetPendingReconcileWorkCount,
+            ProcessPendingReconcileStep = ProcessQueuedReconcileStep,
+            BeforeClientManifestChanged = MarkSyncedPayloadPending,
+            OnClientAuthorityCutover = EnterPendingSyncedPayloadState
+        });
     internal static DomainDescriptor<LocationConfigurationEntry> Descriptor => Module.DescriptorTyped;
     internal static DomainTransportMetadata<LocationConfigurationEntry> TransportMetadata => Module.TransportMetadataTyped;
     private static readonly int OfferingBowlLastUseTicksKey = $"{DropNSpawnPlugin.ModName}.offering_bowl_last_use_ticks".GetStableHashCode();
@@ -78,63 +78,6 @@ internal static partial class LocationManager
         public float ItemStandMaxRange { get; set; }
     }
 
-    private sealed class VegvisirTargetSnapshot
-    {
-        public string LocationName { get; set; } = "";
-        public string PinName { get; set; } = "";
-        public string PinType { get; set; } = "";
-        public bool DiscoverAll { get; set; }
-        public bool ShowMap { get; set; }
-    }
-
-    private sealed class VegvisirSnapshot
-    {
-        public string Name { get; set; } = "";
-        public string UseText { get; set; } = "";
-        public string HoverName { get; set; } = "";
-        public string SetsGlobalKey { get; set; } = "";
-        public string SetsPlayerKey { get; set; } = "";
-        public List<VegvisirTargetSnapshot> Locations { get; set; } = new();
-    }
-
-    private sealed class PathScopedVegvisirSnapshot
-    {
-        public string Path { get; set; } = "";
-        public VegvisirSnapshot Snapshot { get; set; } = new();
-    }
-
-    private sealed class RunestoneTextSnapshot
-    {
-        public string Topic { get; set; } = "";
-        public string Label { get; set; } = "";
-        public string Text { get; set; } = "";
-    }
-
-    private sealed class RunestoneSnapshot
-    {
-        public string Name { get; set; } = "";
-        public string Topic { get; set; } = "";
-        public string Label { get; set; } = "";
-        public string Text { get; set; } = "";
-        public List<RunestoneTextSnapshot> RandomTexts { get; set; } = new();
-        public string LocationName { get; set; } = "";
-        public string PinName { get; set; } = "";
-        public string PinType { get; set; } = "";
-        public bool ShowMap { get; set; }
-    }
-
-    private sealed class RunestonePinChanceState
-    {
-        public string RollKey { get; set; } = "";
-        public bool AllowsPin { get; set; } = true;
-    }
-
-    private sealed class PathScopedRunestoneSnapshot
-    {
-        public string Path { get; set; } = "";
-        public RunestoneSnapshot Snapshot { get; set; } = new();
-    }
-
     private sealed class PathScopedOfferingBowlSnapshot
     {
         public string Path { get; set; } = "";
@@ -165,8 +108,6 @@ internal static partial class LocationManager
         public string Prefab { get; set; } = "";
         public OfferingBowlSnapshot? OfferingBowl { get; set; }
         public List<PathScopedItemStandSnapshot> ItemStands { get; set; } = new();
-        public List<PathScopedVegvisirSnapshot> Vegvisirs { get; set; } = new();
-        public List<PathScopedRunestoneSnapshot> Runestones { get; set; } = new();
     }
 
     private sealed class LiveLocationSnapshot
@@ -174,8 +115,6 @@ internal static partial class LocationManager
         public string Prefab { get; set; } = "";
         public PathScopedOfferingBowlSnapshot? OfferingBowl { get; set; }
         public List<PathScopedItemStandSnapshot> ItemStands { get; set; } = new();
-        public List<PathScopedVegvisirSnapshot> Vegvisirs { get; set; } = new();
-        public List<PathScopedRunestoneSnapshot> Runestones { get; set; } = new();
     }
 
     private sealed class SyncedLocationConfigurationState
@@ -191,8 +130,6 @@ internal static partial class LocationManager
         public string Prefab { get; set; } = "";
         public string? OfferingBowlPath { get; set; }
         public List<string> ItemStandPaths { get; set; } = new();
-        public List<string> VegvisirPaths { get; set; } = new();
-        public List<string> RunestonePaths { get; set; } = new();
     }
 
     private sealed class LocationRuntimeComponents
@@ -201,12 +138,9 @@ internal static partial class LocationManager
         public List<OfferingBowl> OfferingBowls { get; } = new();
         public OfferingBowl? PrimaryOfferingBowl { get; set; }
         public List<ItemStand> ItemStands { get; } = new();
-        public List<Vegvisir> Vegvisirs { get; } = new();
         public List<RuneStone> Runestones { get; } = new();
         public Dictionary<string, OfferingBowl> OfferingBowlsByPath { get; set; } = new(StringComparer.Ordinal);
         public Dictionary<string, ItemStand> ItemStandsByPath { get; set; } = new(StringComparer.Ordinal);
-        public Dictionary<string, Vegvisir> VegvisirsByPath { get; set; } = new(StringComparer.Ordinal);
-        public Dictionary<string, RuneStone> RunestonesByPath { get; set; } = new(StringComparer.Ordinal);
         public List<ItemStand> RelevantItemStands { get; set; } = new();
     }
 
@@ -472,49 +406,58 @@ internal static partial class LocationManager
 
     private static readonly List<LocationSnapshot> Snapshots = new();
     private static readonly Dictionary<string, LocationSnapshot> SnapshotsByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, List<LocationConfigurationEntry>> ActiveEntriesByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<int, string> LocationPrefabNamesByHash = new();
-    private static readonly Dictionary<LocationProxy, string> RuntimeLocationProxyPrefabsByInstance = new();
-    private static readonly Dictionary<ZDOID, string> RuntimeLocationProxyPrefabsByZdoId = new();
-    private static readonly ConditionalWeakTable<LocationProxy, LocationProxyObservationState> LocationProxyObservationStates = new();
-    private static readonly ConditionalWeakTable<Location, LocationAliasRefreshRequestState> LocationAliasRefreshRequestStates = new();
+    private static readonly LocationConfigurationRuntimeState RuntimeState = new();
+    private static readonly LocationLiveRuntimeState LiveRuntimeState = new();
+    private static Dictionary<string, List<LocationConfigurationEntry>> ActiveEntriesByPrefab => RuntimeState.ActiveEntriesByPrefab;
+    private static Dictionary<int, string> LocationPrefabNamesByHash => LiveRuntimeState.LocationPrefabNamesByHash;
+    private static Dictionary<LocationProxy, string> RuntimeLocationProxyPrefabsByInstance => LiveRuntimeState.RuntimeLocationProxyPrefabsByInstance;
+    private static Dictionary<ZDOID, string> RuntimeLocationProxyPrefabsByZdoId => LiveRuntimeState.RuntimeLocationProxyPrefabsByZdoId;
+    private static ConditionalWeakTable<LocationProxy, LocationProxyObservationState> LocationProxyObservationStates => LiveRuntimeState.LocationProxyObservationStates;
+    private static ConditionalWeakTable<Location, LocationAliasRefreshRequestState> LocationAliasRefreshRequestStates => LiveRuntimeState.LocationAliasRefreshRequestStates;
     private const string LocationProxyResolvedPrefabZdoKey = "DropNSpawn Location Prefab";
-    private static readonly HashSet<string> InvalidEntryWarnings = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly InvalidEntryDiagnostics InvalidEntryWarnings = new();
     private static readonly HashSet<string> DuplicateComponentWarnings = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> ItemStandDiagnosticLogs = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> LocationDiagnosticLogs = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> RedundantLocationConditionWarnings = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> VegvisirWarningLogs = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> RunestoneWarningLogs = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<ItemStand, ItemStandSnapshot> LooseItemStandSnapshots = new();
-    private static readonly Dictionary<Location, LiveLocationSnapshot> LiveLocationSnapshots = new();
-    private static readonly Dictionary<string, LocationComponentCatalog> CatalogsByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, HashSet<Location>> LiveLocationsByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<Location, string> LiveLocationPrefabsByInstance = new();
-    private static readonly HashSet<LocationProxy> TrackedLocationProxies = new();
-    private static readonly ConditionalWeakTable<OfferingBowl, LooseOfferingBowlOverrideState> LooseOfferingBowlOverrideStates = new();
-    private static readonly Dictionary<string, List<AuthoredItemStandSlotTemplate>> AuthoredItemStandSlotsByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, List<LocationConfigurationEntry>> LooseItemStandEntriesByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<ItemStand, string> TrackedLooseItemStandPrefabs = new();
-    private static readonly Dictionary<ItemStand, string> LooseItemStandAuthoredPathsByInstance = new();
-    private static readonly RingBufferQueue<PendingLocationReconcile> PendingLocationReconciles = new();
-    private static readonly HashSet<int> PendingLocationReconcileIds = new();
-    private static readonly Dictionary<int, int> SuppressedQueuedLocationReconciles = new();
-    private static readonly RingBufferQueue<PendingLocationRootReconcile> PendingLocationRootReconciles = new();
-    private static readonly HashSet<int> PendingLocationRootReconcileIds = new();
-    private static readonly RingBufferQueue<PendingLooseOfferingBowlOverride> PendingLooseOfferingBowlOverrides = new();
-    private static readonly HashSet<int> PendingLooseOfferingBowlOverrideIds = new();
-    private static readonly ScheduledFrameQueue<ZDOID> PendingLocationProxyAliasZdoFlushIds = new();
-    private static readonly Dictionary<ZDOID, PendingLocationProxyAliasZdoFlush> PendingLocationProxyAliasZdoFlushes = new();
-    private static readonly Dictionary<ZDOID, int> PendingLocationProxyAliasZdoFlushEnqueuedDueFrames = new();
-    private static readonly ScheduledFrameQueue<PendingLocationProxyObservation> PendingLocationProxyObservations = new();
-    private static readonly HashSet<int> PendingLocationProxyObservationIds = new();
-    private static readonly List<string> PendingLocationProxyCreationPrefabs = new();
-    private static readonly HashSet<string> PendingRuntimeLocationProxyAliasDemands = new(StringComparer.OrdinalIgnoreCase);
+    private static Dictionary<ItemStand, ItemStandSnapshot> LooseItemStandSnapshots => LiveRuntimeState.LooseItemStandSnapshots;
+    private static Dictionary<Location, LiveLocationSnapshot> LiveLocationSnapshots => LiveRuntimeState.LiveLocationSnapshots;
+    private static Dictionary<string, LocationComponentCatalog> CatalogsByPrefab => LiveRuntimeState.CatalogsByPrefab;
+    private static Dictionary<string, HashSet<Location>> LiveLocationsByPrefab => LiveRuntimeState.LiveLocationsByPrefab;
+    private static Dictionary<Location, string> LiveLocationPrefabsByInstance => LiveRuntimeState.LiveLocationPrefabsByInstance;
+    private static HashSet<LocationProxy> TrackedLocationProxies => LiveRuntimeState.TrackedLocationProxies;
+    private static ConditionalWeakTable<OfferingBowl, LooseOfferingBowlOverrideState> LooseOfferingBowlOverrideStates => LiveRuntimeState.LooseOfferingBowlOverrideStates;
+    private static Dictionary<string, List<AuthoredItemStandSlotTemplate>> AuthoredItemStandSlotsByPrefab => LiveRuntimeState.AuthoredItemStandSlotsByPrefab;
+    private static Dictionary<string, List<LocationConfigurationEntry>> LooseItemStandEntriesByPrefab => RuntimeState.LooseItemStandEntriesByPrefab;
+    private static Dictionary<ItemStand, string> TrackedLooseItemStandPrefabs => LiveRuntimeState.TrackedLooseItemStandPrefabs;
+    private static Dictionary<ItemStand, string> LooseItemStandAuthoredPathsByInstance => LiveRuntimeState.LooseItemStandAuthoredPathsByInstance;
+    private static readonly LocationPendingRuntimeState PendingRuntimeState = new();
+    private static InstanceReconcileQueue<Location, PendingLocationReconcile> PendingLocationReconciles => PendingRuntimeState.LocationReconciles;
+    private static Dictionary<int, int> SuppressedQueuedLocationReconciles => PendingRuntimeState.SuppressedLocationReconciles;
+    private static RingBufferQueue<PendingLocationRootReconcile> PendingLocationRootReconciles => PendingRuntimeState.LocationRootReconciles;
+    private static HashSet<int> PendingLocationRootReconcileIds => PendingRuntimeState.LocationRootReconcileIds;
+    private static InstanceReconcileQueue<OfferingBowl, PendingLooseOfferingBowlOverride> PendingLooseOfferingBowlOverrides => PendingRuntimeState.LooseOfferingBowlOverrides;
+    private static ScheduledFrameQueue<ZDOID> PendingLocationProxyAliasZdoFlushIds => PendingRuntimeState.LocationProxyAliasZdoFlushIds;
+    private static Dictionary<ZDOID, PendingLocationProxyAliasZdoFlush> PendingLocationProxyAliasZdoFlushes => PendingRuntimeState.LocationProxyAliasZdoFlushes;
+    private static Dictionary<ZDOID, int> PendingLocationProxyAliasZdoFlushEnqueuedDueFrames => PendingRuntimeState.LocationProxyAliasZdoFlushEnqueuedDueFrames;
+    private static ScheduledFrameQueue<PendingLocationProxyObservation> PendingLocationProxyObservations => PendingRuntimeState.LocationProxyObservations;
+    private static HashSet<int> PendingLocationProxyObservationIds => PendingRuntimeState.LocationProxyObservationIds;
+    private static List<string> PendingLocationProxyCreationPrefabs => PendingRuntimeState.LocationProxyCreationPrefabs;
+    private static HashSet<string> PendingRuntimeLocationProxyAliasDemands => PendingRuntimeState.RuntimeLocationProxyAliasDemands;
     private const int LocationAliasRefreshInteractionCooldownFrames = 30;
 
-    private static List<LocationConfigurationEntry> _configuration = new();
-    private static string _configurationSignature = "";
+    private static List<LocationConfigurationEntry> _configuration
+    {
+        get => RuntimeState.Configuration;
+        set => RuntimeState.Configuration = value;
+    }
+
+    private static string _configurationSignature
+    {
+        get => RuntimeState.ConfigurationSignature;
+        set => RuntimeState.ConfigurationSignature = value;
+    }
+
     private static bool _initialized;
     private static bool _snapshotsCaptured;
     private static int? _lastProcessedGameDataSignature;
@@ -526,12 +469,36 @@ internal static partial class LocationManager
     private static bool _lastAppliedSynchronizedPayloadReady;
     private static bool _synchronizedPayloadReady;
     private static int? _lastCommittedAuthorityEpoch;
-    private static int _reconcileQueueEpoch;
-    private static bool _needsRuntimeLocationProxyObservation;
-    private static int _locationProxyObservationDemandEpoch;
-    private static int _runtimeLocationAliasEpoch;
-    private static int _locationProxyAliasFlushBudgetFrame = int.MinValue;
-    private static int _locationProxyAliasFlushesSentThisFrame;
+    private static int _reconcileQueueEpoch => PendingRuntimeState.ReconcileQueueEpoch;
+    private static bool _needsRuntimeLocationProxyObservation
+    {
+        get => PendingRuntimeState.NeedsRuntimeLocationProxyObservation;
+        set => PendingRuntimeState.NeedsRuntimeLocationProxyObservation = value;
+    }
+
+    private static int _locationProxyObservationDemandEpoch
+    {
+        get => PendingRuntimeState.LocationProxyObservationDemandEpoch;
+        set => PendingRuntimeState.LocationProxyObservationDemandEpoch = value;
+    }
+
+    private static int _runtimeLocationAliasEpoch
+    {
+        get => LiveRuntimeState.RuntimeLocationAliasEpoch;
+        set => LiveRuntimeState.RuntimeLocationAliasEpoch = value;
+    }
+
+    private static int _locationProxyAliasFlushBudgetFrame
+    {
+        get => PendingRuntimeState.LocationProxyAliasFlushBudgetFrame;
+        set => PendingRuntimeState.LocationProxyAliasFlushBudgetFrame = value;
+    }
+
+    private static int _locationProxyAliasFlushesSentThisFrame
+    {
+        get => PendingRuntimeState.LocationProxyAliasFlushesSentThisFrame;
+        set => PendingRuntimeState.LocationProxyAliasFlushesSentThisFrame = value;
+    }
 
     private static string ReferenceConfigurationPath => Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, $"{PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.reference.yml");
     private static string PrimaryOverrideConfigurationPathYml => Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, $"{PluginSettingsFacade.GetYamlDomainFilePrefix("location")}.yml");
@@ -797,13 +764,7 @@ internal static partial class LocationManager
                 return;
             }
 
-            int instanceId = location!.GetInstanceID();
-            if (!PendingLocationReconcileIds.Add(instanceId))
-            {
-                return;
-            }
-
-            PendingLocationReconciles.Enqueue(new PendingLocationReconcile(location, instanceId, _reconcileQueueEpoch));
+            PendingLocationReconciles.TryQueue(location, _reconcileQueueEpoch);
         }
     }
 
@@ -994,7 +955,7 @@ internal static partial class LocationManager
 
         if (changed && queueLocationReconciles)
         {
-            QueueLocationReconcilesUnderProxyInternal(proxy);
+            QueueSpawnedLocationRootReconcile(proxy.gameObject);
         }
 
         if (changed)
@@ -1293,32 +1254,6 @@ internal static partial class LocationManager
         return false;
     }
 
-    private static void QueueLocationReconcilesUnderProxyInternal(LocationProxy proxy)
-    {
-        if (proxy == null || proxy.gameObject == null)
-        {
-            return;
-        }
-
-        List<Location> locations = new();
-        CollectLocationsUnderRoot(proxy.transform, locations);
-        foreach (Location location in locations)
-        {
-            if (location == null || location.gameObject == null)
-            {
-                continue;
-            }
-
-            int instanceId = location.GetInstanceID();
-            if (!PendingLocationReconcileIds.Add(instanceId))
-            {
-                continue;
-            }
-
-            PendingLocationReconciles.Enqueue(new PendingLocationReconcile(location, instanceId, _reconcileQueueEpoch));
-        }
-    }
-
     internal static void MaybeQueueRuntimeLocationAliasRefresh(Component? component)
     {
         lock (Sync)
@@ -1414,87 +1349,105 @@ internal static partial class LocationManager
     {
         lock (Sync)
         {
-            int currentFrame = Time.frameCount;
-            return PendingLocationReconciles.Count > 0 ||
-                   PendingLocationRootReconciles.Count > 0 ||
-                   HasPendingLooseLocationOverrideWorkLocked() ||
-                   (PendingLocationProxyObservationIds.Count > 0 &&
-                    PendingLocationProxyObservations.HasDueItems(currentFrame)) ||
-                   (PendingLocationProxyAliasZdoFlushes.Count > 0 &&
-                    PendingLocationProxyAliasZdoFlushIds.HasDueItems(currentFrame));
+            return HasPendingReconcileWorkLocked();
         }
+    }
+
+    internal static int GetPendingReconcileWorkCount()
+    {
+        lock (Sync)
+        {
+            return GetPendingReconcileWorkCountLocked();
+        }
+    }
+
+    private static bool HasPendingReconcileWorkLocked()
+    {
+        return PendingRuntimeState.HasPendingReconcileWork(
+            Time.frameCount,
+            HasPendingLooseLocationOverrideWorkLocked());
+    }
+
+    private static int GetPendingReconcileWorkCountLocked()
+    {
+        return PendingRuntimeState.GetPendingReconcileWorkCount();
     }
 
     internal static bool ProcessQueuedReconcileStep(float deadline)
     {
         lock (Sync)
         {
-            if (Time.realtimeSinceStartup >= deadline)
-            {
-                return false;
-            }
-
-            if (TryProcessPendingLocationProxyAliasZdoFlushLocked(deadline))
-            {
-                return true;
-            }
-
-            if (TryProcessPendingLocationProxyObservationLocked(deadline))
-            {
-                return true;
-            }
-
-            if (!IsGameDataReady() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
-            {
-                return false;
-            }
-
-            if (PendingLocationRootReconciles.Count > 0)
-            {
-                return ProcessQueuedLocationRootStep(deadline);
-            }
-
-            while (PendingLocationReconciles.Count > 0)
-            {
-                if (!PendingLocationReconciles.TryDequeue(out PendingLocationReconcile queuedReconcile))
-                {
-                    continue;
-                }
-
-                int instanceId = queuedReconcile.LocationInstanceId;
-                PendingLocationReconcileIds.Remove(instanceId);
-                if (queuedReconcile.Epoch != _reconcileQueueEpoch || queuedReconcile.Location == null)
-                {
-                    continue;
-                }
-
-                Location location = queuedReconcile.Location;
-                if (SuppressedQueuedLocationReconciles.TryGetValue(instanceId, out int suppressedCount) && suppressedCount > 0)
-                {
-                    if (suppressedCount == 1)
-                    {
-                        SuppressedQueuedLocationReconciles.Remove(instanceId);
-                    }
-                    else
-                    {
-                        SuppressedQueuedLocationReconciles[instanceId] = suppressedCount - 1;
-                    }
-
-                    return true;
-                }
-
-                TrackLocationInstanceInternal(location);
-                if (!_initialized)
-                {
-                    Initialize();
-                }
-
-                ReconcileLocationInstanceInternal(location);
-                return true;
-            }
-
-            return TryProcessPendingLooseLocationOverrideLocked();
+            return TryProcessQueuedReconcileWorkLocked(deadline);
         }
+    }
+
+    private static bool TryProcessQueuedReconcileWorkLocked(float deadline)
+    {
+        if (Time.realtimeSinceStartup >= deadline)
+        {
+            return false;
+        }
+
+        if (TryProcessPendingLocationProxyAliasZdoFlushLocked(deadline))
+        {
+            return true;
+        }
+
+        if (TryProcessPendingLocationProxyObservationLocked(deadline))
+        {
+            return true;
+        }
+
+        if (!IsGameDataReady() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+        {
+            return false;
+        }
+
+        if (PendingLocationRootReconciles.Count > 0)
+        {
+            return ProcessQueuedLocationRootStep(deadline);
+        }
+
+        while (PendingLocationReconciles.HasPendingWork)
+        {
+            if (!PendingLocationReconciles.TryDequeueCurrent(
+                    _reconcileQueueEpoch,
+                    out Location? location,
+                    out int instanceId))
+            {
+                continue;
+            }
+
+            if (location == null)
+            {
+                continue;
+            }
+
+            if (SuppressedQueuedLocationReconciles.TryGetValue(instanceId, out int suppressedCount) && suppressedCount > 0)
+            {
+                if (suppressedCount == 1)
+                {
+                    SuppressedQueuedLocationReconciles.Remove(instanceId);
+                }
+                else
+                {
+                    SuppressedQueuedLocationReconciles[instanceId] = suppressedCount - 1;
+                }
+
+                return true;
+            }
+
+            TrackLocationInstanceInternal(location);
+            if (!_initialized)
+            {
+                Initialize();
+            }
+
+            ReconcileLocationInstanceInternal(location);
+            return true;
+        }
+
+        return TryProcessPendingLooseLocationOverrideLocked();
     }
 
     internal static void UntrackLocationInstance(Location? location)
@@ -1505,43 +1458,6 @@ internal static partial class LocationManager
             {
                 UnregisterLiveLocation(location, prefabName);
             }
-        }
-    }
-
-    internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
-    {
-        lock (Sync)
-        {
-            path = FullScaffoldConfigurationPath;
-            error = "";
-
-            if (!IsGameDataReady() && !_snapshotsCaptured)
-            {
-                error = "Location game data is not ready yet.";
-                return false;
-            }
-
-            RefreshReferenceSnapshots();
-            Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-            File.WriteAllText(path, BuildFullScaffoldConfigurationTemplate());
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Wrote location full scaffold configuration to {path}.");
-            return true;
-        }
-    }
-
-    internal static void RefreshReferenceConfigurationFile()
-    {
-        lock (Sync)
-        {
-            if (!IsGameDataReady())
-            {
-                return;
-            }
-
-            RefreshReferenceSnapshots();
-            WriteReferenceConfigurationFile(BuildReferenceConfigurationTemplate(), $"Updated location reference configuration at {ReferenceConfigurationPath}.");
-            ReferenceRefreshSupport.RecordAutoUpdateState(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, ComputeReferenceSourceSignature(), logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-            ResetReferenceSnapshots();
         }
     }
 
@@ -1607,6 +1523,19 @@ internal static partial class LocationManager
     private static IEnumerable<string> BuildConfiguredLocationResolutionKeys()
     {
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (LocationConfigurationEntry entry in _configuration)
+        {
+            if (entry.VegvisirGlobalEffects == null)
+            {
+                continue;
+            }
+
+            foreach (string key in BuildConfiguredLocationResolutionKeys(entry.VegvisirGlobalEffects, seen))
+            {
+                yield return key;
+            }
+        }
+
         foreach ((string _, List<LocationConfigurationEntry> entries) in ActiveEntriesByPrefab)
         {
             foreach (LocationConfigurationEntry entry in entries)
@@ -1631,6 +1560,28 @@ internal static partial class LocationManager
                     {
                         yield return key;
                     }
+                }
+            }
+        }
+    }
+
+    private static IEnumerable<string> BuildConfiguredLocationResolutionKeys(
+        LocationVegvisirGlobalEffectsDefinition definition,
+        HashSet<string> seen)
+    {
+        foreach (LocationVegvisirGlobalEffectsBiomeDefinition biome in definition.Biomes ?? Enumerable.Empty<LocationVegvisirGlobalEffectsBiomeDefinition>())
+        {
+            foreach (LocationVegvisirGlobalEffectDefinition effect in biome.StatusEffects ?? Enumerable.Empty<LocationVegvisirGlobalEffectDefinition>())
+            {
+                if (IsVegvisirGlobalClearStatusEffect(effect.StatusEffect))
+                {
+                    continue;
+                }
+
+                if (TryBuildResolvedStatusEffectSignatureKey(effect.StatusEffect, out string? statusEffectKey) &&
+                    seen.Add(statusEffectKey))
+                {
+                    yield return statusEffectKey;
                 }
             }
         }
@@ -1745,9 +1696,10 @@ internal static partial class LocationManager
             return false;
         }
 
-        Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-        File.WriteAllText(PrimaryOverrideConfigurationPathYml, BuildPrimaryOverrideConfigurationTemplate());
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Created location override configuration at {PrimaryOverrideConfigurationPathYml}.");
+        GeneratedArtifactWriter.WriteTextAlways(
+            PrimaryOverrideConfigurationPathYml,
+            BuildPrimaryOverrideConfigurationTemplate(),
+            $"Created location override configuration at {PrimaryOverrideConfigurationPathYml}.");
         return true;
     }
 
@@ -1759,33 +1711,20 @@ internal static partial class LocationManager
         }
 
         string currentSourceSignature = ComputeReferenceSourceSignature();
-        if (!File.Exists(ReferenceConfigurationPath))
-        {
-            if (!PluginSettingsFacade.ShouldAutoCreateMissingReferenceFiles())
-            {
-                return;
-            }
-
-            RefreshReferenceSnapshots();
-            WriteReferenceConfigurationFile(BuildReferenceConfigurationTemplate(), $"Created location reference configuration at {ReferenceConfigurationPath}.");
-            ReferenceRefreshSupport.RecordAutoUpdateState(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature, logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-            ResetReferenceSnapshots();
-            return;
-        }
-
-        if (!PluginSettingsFacade.ShouldAutoUpdateReferenceFiles())
-        {
-            return;
-        }
-
-        if (ReferenceRefreshSupport.ShouldSkipAutoUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature, ReferenceRefreshSupport.CurrentReferenceLogicVersion))
+        if (!ReferenceArtifactLifecycle.TryPlanUpdate(
+                ReferenceAutoUpdateStateKey,
+                ReferenceConfigurationPath,
+                currentSourceSignature,
+                out ReferenceArtifactUpdateKind updateKind))
         {
             return;
         }
 
         RefreshReferenceSnapshots();
-        WriteReferenceConfigurationFile(BuildReferenceConfigurationTemplate(), $"Updated location reference configuration at {ReferenceConfigurationPath}.");
-        ReferenceRefreshSupport.RecordAutoUpdateState(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature, logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
+        WriteReferenceConfigurationFile(
+            BuildReferenceConfigurationTemplate(),
+            $"{ReferenceArtifactLifecycle.FormatAction(updateKind)} location reference configuration at {ReferenceConfigurationPath}.");
+        ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature);
         ResetReferenceSnapshots();
     }
 
@@ -1805,15 +1744,11 @@ internal static partial class LocationManager
     {
         ClearQueuedReconcileState();
         ResetLocationRuntimeConfigurationState();
-        LocationPrefabNamesByHash.Clear();
-        ActiveEntriesByPrefab.Clear();
-        AuthoredItemStandSlotsByPrefab.Clear();
-        LooseItemStandEntriesByPrefab.Clear();
+        LiveRuntimeState.ClearLoadedConfigurationCaches();
+        RuntimeState.Reset();
         InvalidEntryWarnings.Clear();
         ItemStandDiagnosticLogs.Clear();
         LocationDiagnosticLogs.Clear();
-        RunestoneWarningLogs.Clear();
-        _configuration = new List<LocationConfigurationEntry>();
         Volatile.Write(ref _synchronizedPayloadReady, false);
         RefreshLocationProxyObservationDemandLocked();
     }
@@ -1831,8 +1766,7 @@ internal static partial class LocationManager
             entry.Prefab = (entry.Prefab ?? "").Trim();
             NormalizeOfferingBowlDefinition(entry.OfferingBowl);
             NormalizeItemStandDefinitions(entry.ItemStands);
-            NormalizeVegvisirDefinitions(entry.Vegvisirs);
-            NormalizeRunestoneDefinitions(entry.Runestones);
+            NormalizeVegvisirGlobalEffectsDefinition(entry.VegvisirGlobalEffects);
             NormalizeRunestoneGlobalPinsDefinition(entry.RunestoneGlobalPins);
             FinalizeNormalizedEntry(entry);
             StripRedundantLocationComponentConditions(entry, effectiveSource);
@@ -1845,14 +1779,15 @@ internal static partial class LocationManager
         List<LocationConfigurationEntry> configuration,
         string source)
     {
-        using InvalidEntryWarningSuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(source);
+        using InvalidEntryDiagnostics.SuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(source);
         SyncedLocationConfigurationState state = new();
         foreach (LocationConfigurationEntry entry in CloneAndNormalizeConfigurationEntries(configuration, source))
         {
             string effectiveSource = entry.SourcePath ?? "";
 
             bool hasRunestoneGlobalPins = HasRunestoneGlobalPinsOverride(entry.RunestoneGlobalPins);
-            if (entry.Prefab.Length == 0 && !hasRunestoneGlobalPins)
+            bool hasVegvisirGlobalEffects = HasVegvisirGlobalEffectsOverride(entry.VegvisirGlobalEffects);
+            if (entry.Prefab.Length == 0 && !hasRunestoneGlobalPins && !hasVegvisirGlobalEffects)
             {
                 WarnInvalidEntry($"Entry in '{effectiveSource}' is missing prefab.");
                 continue;
@@ -2029,39 +1964,6 @@ internal static partial class LocationManager
         }
     }
 
-    private static void LoadLocalConfiguration(List<ConfigurationLoadSupport.LocalYamlDocument> documents)
-    {
-        if (documents.Count == 0)
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo("Loaded 0 location configuration(s) from 0 override file(s).");
-            return;
-        }
-
-        int loadedFileCount = 0;
-        foreach (ConfigurationLoadSupport.LocalYamlDocument document in documents)
-        {
-            if (document.ReadError != null)
-            {
-                DropNSpawnPlugin.DropNSpawnLogger.LogError($"Failed to read {document.Path}. {document.ReadError}");
-                continue;
-            }
-
-            try
-            {
-                string yaml = document.Yaml ?? "";
-                List<LocationConfigurationEntry> configuration = ParseConfiguration(yaml);
-                MergeConfiguration(configuration, document.Path);
-                loadedFileCount++;
-            }
-            catch (Exception ex)
-            {
-                DropNSpawnPlugin.DropNSpawnLogger.LogError($"Failed to parse location YAML '{document.Path}'. Location override YAML must start with a root list like '- prefab: ...'. {ex}");
-            }
-        }
-
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Loaded {ActiveEntriesByPrefab.Count} location configuration(s) from {loadedFileCount} override file(s).");
-    }
-
     private static List<LocationConfigurationEntry> ParseConfiguration(string yaml)
     {
         if (string.IsNullOrWhiteSpace(yaml))
@@ -2070,46 +1972,6 @@ internal static partial class LocationManager
         }
 
         return Deserializer.Deserialize<List<LocationConfigurationEntry>>(yaml) ?? new List<LocationConfigurationEntry>();
-    }
-
-    private static void MergeConfiguration(List<LocationConfigurationEntry> configuration, string source)
-    {
-        foreach (LocationConfigurationEntry entry in CloneAndNormalizeConfigurationEntries(configuration, source))
-        {
-            bool hasRunestoneGlobalPins = HasRunestoneGlobalPinsOverride(entry.RunestoneGlobalPins);
-            if (entry.Prefab.Length == 0 && !hasRunestoneGlobalPins)
-            {
-                WarnInvalidEntry($"Entry in '{entry.SourcePath}' is missing prefab.");
-                continue;
-            }
-
-            if (!entry.Enabled)
-            {
-                continue;
-            }
-
-            RemoveEffectiveConfigurationEntry(entry.Prefab, entry.RuleId);
-            _configuration.Add(entry);
-
-            if (entry.Prefab.Length > 0 && HasOverride(entry))
-            {
-                GetOrCreateActiveEntries(entry.Prefab).Add(entry);
-                if (HasLooseItemStandOverride(entry.ItemStands))
-                {
-                    GetOrCreateLooseItemStandEntries(entry.Prefab).Add(entry);
-                }
-            }
-        }
-    }
-
-    private static bool RemoveEffectiveConfigurationEntry(string prefabName, string ruleId)
-    {
-        return RemoveEffectiveConfigurationEntry(
-            _configuration,
-            ActiveEntriesByPrefab,
-            LooseItemStandEntriesByPrefab,
-            prefabName,
-            ruleId);
     }
 
     private static bool RemoveEffectiveConfigurationEntry(
@@ -2174,11 +2036,6 @@ internal static partial class LocationManager
         return removed;
     }
 
-    private static List<LocationConfigurationEntry> GetOrCreateActiveEntries(string prefabName)
-    {
-        return GetOrCreateActiveEntries(ActiveEntriesByPrefab, prefabName);
-    }
-
     private static List<LocationConfigurationEntry> GetOrCreateActiveEntries(
         Dictionary<string, List<LocationConfigurationEntry>> activeEntriesByPrefab,
         string prefabName)
@@ -2190,11 +2047,6 @@ internal static partial class LocationManager
         }
 
         return entries;
-    }
-
-    private static List<LocationConfigurationEntry> GetOrCreateLooseItemStandEntries(string prefabName)
-    {
-        return GetOrCreateLooseItemStandEntries(LooseItemStandEntriesByPrefab, prefabName);
     }
 
     private static List<LocationConfigurationEntry> GetOrCreateLooseItemStandEntries(
@@ -2280,101 +2132,92 @@ internal static partial class LocationManager
         return normalized.Count == 0 ? null : normalized;
     }
 
-    private static void NormalizeVegvisirDefinitions(List<LocationVegvisirDefinition>? definitions)
-    {
-        if (definitions == null)
-        {
-            return;
-        }
-
-        foreach (LocationVegvisirDefinition definition in definitions)
-        {
-            NormalizeVegvisirDefinition(definition);
-        }
-    }
-
-    private static void NormalizeVegvisirDefinition(LocationVegvisirDefinition? definition)
+    private static void NormalizeVegvisirGlobalEffectsDefinition(LocationVegvisirGlobalEffectsDefinition? definition)
     {
         if (definition == null)
         {
             return;
         }
 
-        definition.Path = (definition.Path ?? "").Trim();
-        definition.ExpectedLocations = definition.ExpectedLocations?
-            .Select(value => (value ?? "").Trim())
-            .Where(value => value.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        definition.Name = definition.Name?.Trim();
-        definition.UseText = definition.UseText?.Trim();
-        definition.HoverName = definition.HoverName?.Trim();
-        definition.SetsGlobalKey = definition.SetsGlobalKey?.Trim();
-        definition.SetsPlayerKey = definition.SetsPlayerKey?.Trim();
-        if (definition.Locations == null)
+        if (definition.Biomes == null)
         {
             return;
         }
 
-        foreach (LocationVegvisirTargetDefinition target in definition.Locations)
+        foreach (LocationVegvisirGlobalEffectsBiomeDefinition biome in definition.Biomes)
         {
-            target.LocationName = (target.LocationName ?? "").Trim();
-            target.PinName = target.PinName?.Trim();
-            target.PinType = target.PinType?.Trim();
-            if (target.Weight.HasValue)
+            string biomeName = (biome.Biome ?? "").Trim();
+            biome.Biome = string.Equals(biomeName, nameof(Heightmap.Biome.All), StringComparison.OrdinalIgnoreCase)
+                ? null
+                : biomeName.Length > 0 ? biomeName : null;
+
+            if (biome.StatusEffects == null)
             {
-                target.Weight = Mathf.Max(0f, target.Weight.Value);
+                continue;
+            }
+
+            foreach (LocationVegvisirGlobalEffectDefinition effect in biome.StatusEffects)
+            {
+                NormalizeVegvisirGlobalEffectDefinition(effect);
             }
         }
     }
 
-    private static void NormalizeRunestoneDefinitions(List<LocationRunestoneDefinition>? definitions)
+    private static void NormalizeVegvisirGlobalEffectDefinition(LocationVegvisirGlobalEffectDefinition effect)
     {
-        if (definitions == null)
+        string rawStatusEffect = (effect.StatusEffect ?? "").Trim();
+        string[] parts = rawStatusEffect.Split(',');
+        effect.StatusEffect = parts.Length > 0 ? parts[0].Trim() : "";
+
+        if (!effect.CooldownSeconds.HasValue &&
+            parts.Length > 2 &&
+            TryParseVegvisirGlobalEffectFloat(parts[2], out float cooldownSeconds))
         {
-            return;
+            effect.CooldownSeconds = cooldownSeconds;
         }
 
-        foreach (LocationRunestoneDefinition definition in definitions)
+        if (!effect.DurationSeconds.HasValue &&
+            parts.Length > 1 &&
+            TryParseVegvisirGlobalEffectFloat(parts[1], out float durationSeconds))
         {
-            NormalizeRunestoneDefinition(definition);
+            effect.DurationSeconds = durationSeconds;
+        }
+
+        if (!effect.Weight.HasValue &&
+            parts.Length > 3 &&
+            TryParseVegvisirGlobalEffectFloat(parts[3], out float weight))
+        {
+            effect.Weight = weight;
+        }
+
+        if (string.IsNullOrWhiteSpace(effect.EffectPrefab) && parts.Length > 4)
+        {
+            effect.EffectPrefab = parts[4].Trim();
+        }
+
+        if (effect.Weight.HasValue)
+        {
+            effect.Weight = Mathf.Max(0f, effect.Weight.Value);
+        }
+
+        if (effect.DurationSeconds.HasValue && effect.DurationSeconds.Value <= 0f)
+        {
+            effect.DurationSeconds = null;
+        }
+
+        if (string.IsNullOrWhiteSpace(effect.EffectPrefab))
+        {
+            effect.EffectPrefab = null;
         }
     }
 
-    private static void NormalizeRunestoneDefinition(LocationRunestoneDefinition? definition)
+    private static bool TryParseVegvisirGlobalEffectFloat(string? rawValue, out float value)
     {
-        if (definition == null)
-        {
-            return;
-        }
-
-        definition.Path = (definition.Path ?? "").Trim();
-        definition.ExpectedLocationName = definition.ExpectedLocationName?.Trim();
-        definition.ExpectedLabel = definition.ExpectedLabel?.Trim();
-        definition.ExpectedTopic = definition.ExpectedTopic?.Trim();
-        definition.Name = definition.Name?.Trim();
-        definition.Topic = definition.Topic?.Trim();
-        definition.Label = definition.Label?.Trim();
-        definition.Text = definition.Text?.Trim();
-        definition.LocationName = definition.LocationName?.Trim();
-        definition.PinName = definition.PinName?.Trim();
-        definition.PinType = definition.PinType?.Trim();
-        if (definition.Chance.HasValue)
-        {
-            definition.Chance = Mathf.Clamp01(definition.Chance.Value);
-        }
-
-        if (definition.RandomTexts == null)
-        {
-            return;
-        }
-
-        foreach (LocationRunestoneTextDefinition text in definition.RandomTexts)
-        {
-            text.Topic = text.Topic?.Trim();
-            text.Label = text.Label?.Trim();
-            text.Text = text.Text?.Trim();
-        }
+        return float.TryParse(
+            (rawValue ?? "").Trim(),
+            NumberStyles.Float,
+            CultureInfo.InvariantCulture,
+            out value);
     }
 
     private static void NormalizeRunestoneGlobalPinsDefinition(LocationRunestoneGlobalPinsDefinition? definition)
@@ -2461,8 +2304,7 @@ internal static partial class LocationManager
             Conditions = entry.Conditions,
             OfferingBowl = entry.OfferingBowl,
             ItemStands = entry.ItemStands,
-            Vegvisirs = entry.Vegvisirs,
-            Runestones = entry.Runestones,
+            VegvisirGlobalEffects = entry.VegvisirGlobalEffects,
             RunestoneGlobalPins = entry.RunestoneGlobalPins
         };
 
@@ -2517,70 +2359,27 @@ internal static partial class LocationManager
             ? "(missing prefab)"
             : prefabName.Trim();
 
-        if (conditions.Level?.HasValues() == true ||
-            conditions.MinLevel.HasValue ||
-            conditions.MaxLevel.HasValue)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses {componentName}.conditions.level, but level filters are only valid for character conditions. The key was ignored.");
-            conditions.Level = null;
-            conditions.MinLevel = null;
-            conditions.MaxLevel = null;
-        }
-
-        if (conditions.TimeOfDay != null)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses {componentName}.conditions.timeOfDay, but location conditions are evaluated only when the location is loaded or reconciled. The key was ignored.");
-            conditions.TimeOfDay = null;
-        }
-
-        if (conditions.RequiredEnvironments?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses {componentName}.conditions.requiredEnvironments, but location conditions are evaluated only when the location is loaded or reconciled. The key was ignored.");
-            conditions.RequiredEnvironments = null;
-        }
-
-        if (conditions.RequiredGlobalKeys?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses {componentName}.conditions.requiredGlobalKeys, but location conditions are static location filters only. The key was ignored.");
-            conditions.RequiredGlobalKeys = null;
-        }
-
-        if (conditions.ForbiddenGlobalKeys?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses {componentName}.conditions.forbiddenGlobalKeys, but location conditions are static location filters only. The key was ignored.");
-            conditions.ForbiddenGlobalKeys = null;
-        }
-
-        if (conditions.States?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses {componentName}.conditions.states, but state filters are only valid for character conditions. The key was ignored.");
-            conditions.States = null;
-        }
-
-        if (conditions.Factions?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses {componentName}.conditions.factions, but faction filters are only valid for character conditions. The key was ignored.");
-            conditions.Factions = null;
-        }
-
-        if (conditions.InsidePlayerBase.HasValue)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses {componentName}.conditions.insidePlayerBase, but location conditions are static location filters only. The key was ignored.");
-            conditions.InsidePlayerBase = null;
-        }
+        ConditionDialectSupport.StripUnsupportedLocationComponentFields(
+            conditions,
+            context,
+            $"{componentName}.conditions",
+            WarnInvalidEntry);
     }
 
     private static bool HasOverride(LocationConfigurationEntry entry)
     {
         return HasOfferingBowlOverride(entry.OfferingBowl) ||
-               HasItemStandOverride(entry.ItemStands) ||
-               HasVegvisirOverride(entry.Vegvisirs) ||
-               HasRunestoneOverride(entry.Runestones);
+               HasItemStandOverride(entry.ItemStands);
     }
 
     private static bool HasRunestoneGlobalPinsOverride(LocationRunestoneGlobalPinsDefinition? definition)
     {
         return definition?.TargetLocations != null;
+    }
+
+    private static bool HasVegvisirGlobalEffectsOverride(LocationVegvisirGlobalEffectsDefinition? definition)
+    {
+        return definition?.Biomes != null;
     }
 
     private static bool HasOfferingBowlOverride(LocationOfferingBowlDefinition? definition)
@@ -2619,50 +2418,6 @@ internal static partial class LocationManager
                definition.Data != null ||
                definition.Fields != null ||
                definition.Objects != null;
-    }
-
-    private static bool HasVegvisirOverride(List<LocationVegvisirDefinition>? definitions)
-    {
-        return definitions != null && definitions.Any(HasVegvisirOverride);
-    }
-
-    private static bool HasVegvisirOverride(LocationVegvisirDefinition? definition)
-    {
-        if (definition == null)
-        {
-            return false;
-        }
-
-        return definition.Name != null ||
-               definition.UseText != null ||
-               definition.HoverName != null ||
-               definition.SetsGlobalKey != null ||
-               definition.SetsPlayerKey != null ||
-               definition.Locations != null;
-    }
-
-    private static bool HasRunestoneOverride(List<LocationRunestoneDefinition>? definitions)
-    {
-        return definitions != null && definitions.Any(HasRunestoneOverride);
-    }
-
-    private static bool HasRunestoneOverride(LocationRunestoneDefinition? definition)
-    {
-        if (definition == null)
-        {
-            return false;
-        }
-
-        return definition.Name != null ||
-               definition.Topic != null ||
-               definition.Label != null ||
-               definition.Text != null ||
-               definition.RandomTexts != null ||
-               definition.LocationName != null ||
-               definition.PinName != null ||
-               definition.PinType != null ||
-               definition.ShowMap.HasValue ||
-               definition.Chance.HasValue;
     }
 
     private static bool HasItemStandOverride(List<LocationItemStandDefinition>? definitions)
@@ -2751,43 +2506,15 @@ internal static partial class LocationManager
     private static void ResetRuntimeState(bool preserveLiveRegistries)
     {
         ClearQueuedReconcileState();
-        CatalogsByPrefab.Clear();
-        LiveLocationSnapshots.Clear();
-        LooseItemStandSnapshots.Clear();
-        TrackedLooseItemStandPrefabs.Clear();
-        LooseItemStandAuthoredPathsByInstance.Clear();
+        LiveRuntimeState.ClearRuntimeState(preserveLiveRegistries);
         PendingLocationProxyCreationPrefabs.Clear();
-
-        if (!preserveLiveRegistries)
-        {
-            LiveLocationsByPrefab.Clear();
-            LiveLocationPrefabsByInstance.Clear();
-            TrackedLocationProxies.Clear();
-            RuntimeLocationProxyPrefabsByInstance.Clear();
-            RuntimeLocationProxyPrefabsByZdoId.Clear();
-            _runtimeLocationAliasEpoch++;
-        }
 
         RefreshLocationProxyObservationDemandLocked();
     }
 
     private static void ClearQueuedReconcileState()
     {
-        _reconcileQueueEpoch++;
-        PendingLocationReconciles.Clear();
-        PendingLocationReconcileIds.Clear();
-        SuppressedQueuedLocationReconciles.Clear();
-        PendingLocationRootReconciles.Clear();
-        PendingLocationRootReconcileIds.Clear();
-        PendingLooseOfferingBowlOverrides.Clear();
-        PendingLooseOfferingBowlOverrideIds.Clear();
-        PendingLocationProxyAliasZdoFlushIds.Clear();
-        PendingLocationProxyAliasZdoFlushes.Clear();
-        PendingLocationProxyAliasZdoFlushEnqueuedDueFrames.Clear();
-        PendingLocationProxyObservations.Clear();
-        PendingLocationProxyObservationIds.Clear();
-        _locationProxyAliasFlushBudgetFrame = int.MinValue;
-        _locationProxyAliasFlushesSentThisFrame = 0;
+        PendingRuntimeState.ClearQueuedReconcileState();
     }
 
     private static void RefreshReferenceSnapshots()
@@ -2818,14 +2545,12 @@ internal static partial class LocationManager
 
         List<OfferingBowl> offeringBowlList = new();
         List<ItemStand> itemStandList = new();
-        List<Vegvisir> vegvisirList = new();
         List<RuneStone> runestoneList = new();
-        CollectLocationRuntimeComponents(rootPrefab.transform, offeringBowlList, itemStandList, vegvisirList, runestoneList);
+        CollectLocationRuntimeComponents(rootPrefab.transform, offeringBowlList, itemStandList, runestoneList);
         OfferingBowl[] offeringBowls = offeringBowlList.ToArray();
         ItemStand[] itemStands = itemStandList.ToArray();
-        Vegvisir[] vegvisirs = vegvisirList.ToArray();
-        RuneStone[] runestones = runestoneList.ToArray();
-        if (offeringBowls.Length == 0 && itemStands.Length == 0 && vegvisirs.Length == 0 && runestones.Length == 0)
+
+        if (offeringBowls.Length == 0 && itemStands.Length == 0)
         {
             return;
         }
@@ -2839,14 +2564,6 @@ internal static partial class LocationManager
             ItemStands = itemStands
                 .Select(itemStand => CapturePathScopedItemStandSnapshot(rootPrefab.transform, itemStand))
                 .OrderBy(itemStand => itemStand.Path, StringComparer.Ordinal)
-                .ToList(),
-            Vegvisirs = vegvisirs
-                .Select(vegvisir => CaptureVegvisirSnapshot(rootPrefab.transform, vegvisir))
-                .OrderBy(vegvisir => vegvisir.Path, StringComparer.Ordinal)
-                .ToList(),
-            Runestones = runestones
-                .Select(runestone => CaptureRunestoneSnapshot(rootPrefab.transform, runestone))
-                .OrderBy(runestone => runestone.Path, StringComparer.Ordinal)
                 .ToList()
         };
 
@@ -2898,69 +2615,6 @@ internal static partial class LocationManager
             UseItemStands = offeringBowl.m_useItemStands,
             ItemStandPrefix = offeringBowl.m_itemStandPrefix,
             ItemStandMaxRange = offeringBowl.m_itemstandMaxRange
-        };
-    }
-
-    private static PathScopedVegvisirSnapshot CaptureVegvisirSnapshot(Transform root, Vegvisir vegvisir)
-    {
-        return new PathScopedVegvisirSnapshot
-        {
-            Path = GetRelativePath(root, vegvisir.transform),
-            Snapshot = CaptureVegvisirSnapshot(vegvisir)
-        };
-    }
-
-    private static VegvisirSnapshot CaptureVegvisirSnapshot(Vegvisir vegvisir)
-    {
-        return new VegvisirSnapshot
-        {
-            Name = vegvisir.m_name,
-            UseText = vegvisir.m_useText,
-            HoverName = vegvisir.m_hoverName,
-            SetsGlobalKey = vegvisir.m_setsGlobalKey,
-            SetsPlayerKey = vegvisir.m_setsPlayerKey,
-            Locations = vegvisir.m_locations
-                .Select(location => new VegvisirTargetSnapshot
-                {
-                    LocationName = location.m_locationName,
-                    PinName = location.m_pinName,
-                    PinType = location.m_pinType.ToString(),
-                    DiscoverAll = location.m_discoverAll,
-                    ShowMap = location.m_showMap
-                })
-                .ToList()
-        };
-    }
-
-    private static PathScopedRunestoneSnapshot CaptureRunestoneSnapshot(Transform root, RuneStone runestone)
-    {
-        return new PathScopedRunestoneSnapshot
-        {
-            Path = GetRelativePath(root, runestone.transform),
-            Snapshot = CaptureRunestoneSnapshot(runestone)
-        };
-    }
-
-    private static RunestoneSnapshot CaptureRunestoneSnapshot(RuneStone runestone)
-    {
-        return new RunestoneSnapshot
-        {
-            Name = runestone.m_name,
-            Topic = runestone.m_topic,
-            Label = runestone.m_label,
-            Text = runestone.m_text,
-            RandomTexts = (runestone.m_randomTexts ?? new List<RuneStone.RandomRuneText>())
-                .Select(text => new RunestoneTextSnapshot
-                {
-                    Topic = text.m_topic,
-                    Label = text.m_label,
-                    Text = text.m_text
-                })
-                .ToList(),
-            LocationName = runestone.m_locationName,
-            PinName = runestone.m_pinName,
-            PinType = runestone.m_pinType.ToString(),
-            ShowMap = runestone.m_showMap
         };
     }
 
@@ -3343,38 +2997,34 @@ internal static partial class LocationManager
         Transform locationRoot = runtimeComponents?.Root ?? location.transform;
         IReadOnlyList<OfferingBowl> offeringBowls;
         IReadOnlyList<ItemStand> itemStands;
-        IReadOnlyList<Vegvisir> vegvisirs;
         IReadOnlyList<RuneStone> runestones;
         if (runtimeComponents != null)
         {
             offeringBowls = runtimeComponents.OfferingBowls;
             itemStands = runtimeComponents.ItemStands;
-            vegvisirs = runtimeComponents.Vegvisirs;
             runestones = runtimeComponents.Runestones;
         }
         else
         {
             List<OfferingBowl> offeringBowlList = new();
             List<ItemStand> itemStandList = new();
-            List<Vegvisir> vegvisirList = new();
             List<RuneStone> runestoneList = new();
-            CollectLocationRuntimeComponents(locationRoot, offeringBowlList, itemStandList, vegvisirList, runestoneList);
+            CollectLocationRuntimeComponents(locationRoot, offeringBowlList, itemStandList, runestoneList);
             offeringBowls = offeringBowlList;
             itemStands = itemStandList;
-            vegvisirs = vegvisirList;
             runestones = runestoneList;
         }
 
         OfferingBowl? offeringBowl = runtimeComponents?.PrimaryOfferingBowl ?? offeringBowls.FirstOrDefault();
-        LocationComponentCatalog catalog = GetOrCreateLocationComponentCatalog(prefabName, locationRoot, offeringBowls, itemStands, vegvisirs, runestones);
-        CaptureLiveLocationSnapshotIfNeeded(location, prefabName, locationRoot, offeringBowls, itemStands, vegvisirs, runestones);
+        LocationComponentCatalog catalog = GetOrCreateLocationComponentCatalog(prefabName, locationRoot, offeringBowls, itemStands, runestones);
+        CaptureLiveLocationSnapshotIfNeeded(location, prefabName, locationRoot, offeringBowls, itemStands, runestones);
         if (runtimeComponents != null)
         {
             RestoreLiveLocationSnapshot(location, runtimeComponents);
         }
         else
         {
-            RestoreLiveLocationSnapshot(location, locationRoot, offeringBowls, itemStands, vegvisirs, runestones);
+            RestoreLiveLocationSnapshot(location, locationRoot, offeringBowls, itemStands, runestones);
         }
 
         if (!domainEnabled)
@@ -3387,9 +3037,7 @@ internal static partial class LocationManager
             return;
         }
 
-        Dictionary<string, Vegvisir> liveVegvisirsByPath = runtimeComponents?.VegvisirsByPath ?? BuildVegvisirLookup(locationRoot, vegvisirs);
-        Dictionary<string, RuneStone> liveRunestonesByPath = runtimeComponents?.RunestonesByPath ?? BuildRunestoneLookup(locationRoot, runestones);
-        LogLocationReconcileCandidate(location, prefabName, offeringBowl, itemStands, vegvisirs.Count, runestones.Count, catalog, LiveLocationSnapshots[location]);
+        LogLocationReconcileCandidate(location, prefabName, offeringBowl, itemStands, runestones.Count, catalog, LiveLocationSnapshots[location]);
 
         List<ItemStand> relevantItemStands = runtimeComponents?.RelevantItemStands ?? GetRelevantLocationItemStands(offeringBowl, itemStands);
         Dictionary<string, ItemStand> liveItemStandsByPath = runtimeComponents?.ItemStandsByPath ?? BuildItemStandLookup(locationRoot, itemStands);
@@ -3399,8 +3047,6 @@ internal static partial class LocationManager
             offeringBowl,
             relevantItemStands,
             liveItemStandsByPath,
-            liveVegvisirsByPath,
-            liveRunestonesByPath,
             prefabName,
             locationRoot);
     }
@@ -3410,7 +3056,6 @@ internal static partial class LocationManager
         Transform locationRoot,
         IReadOnlyList<OfferingBowl> offeringBowls,
         IReadOnlyList<ItemStand> itemStands,
-        IReadOnlyList<Vegvisir> vegvisirs,
         IReadOnlyList<RuneStone> runestones)
     {
         if (CatalogsByPrefab.TryGetValue(prefabName, out LocationComponentCatalog? existingCatalog))
@@ -3428,16 +3073,6 @@ internal static partial class LocationManager
                 .Where(itemStand => itemStand != null)
                 .Select(itemStand => GetRelativePath(locationRoot, itemStand.transform))
                 .OrderBy(path => path, StringComparer.Ordinal)
-                .ToList(),
-            VegvisirPaths = vegvisirs
-                .Where(vegvisir => vegvisir != null)
-                .Select(vegvisir => GetRelativePath(locationRoot, vegvisir.transform))
-                .OrderBy(path => path, StringComparer.Ordinal)
-                .ToList(),
-            RunestonePaths = runestones
-                .Where(runestone => runestone != null)
-                .Select(runestone => GetRelativePath(locationRoot, runestone.transform))
-                .OrderBy(path => path, StringComparer.Ordinal)
                 .ToList()
         };
 
@@ -3451,11 +3086,11 @@ internal static partial class LocationManager
         Transform locationRoot,
         IReadOnlyList<OfferingBowl> offeringBowls,
         IReadOnlyList<ItemStand> itemStands,
-        IReadOnlyList<Vegvisir> vegvisirs,
         IReadOnlyList<RuneStone> runestones)
     {
-        if (LiveLocationSnapshots.ContainsKey(location))
+        if (LiveLocationSnapshots.TryGetValue(location, out LiveLocationSnapshot? existingSnapshot))
         {
+            AddMissingLiveLocationSnapshotComponents(existingSnapshot, locationRoot, offeringBowls, itemStands);
             return;
         }
 
@@ -3468,17 +3103,44 @@ internal static partial class LocationManager
                 .Select(itemStand => CapturePathScopedItemStandSnapshot(locationRoot, itemStand))
                 .OrderBy(snapshot => snapshot.Path, StringComparer.Ordinal)
                 .ToList(),
-            Vegvisirs = vegvisirs
-                .Where(vegvisir => vegvisir != null)
-                .Select(vegvisir => CaptureVegvisirSnapshot(locationRoot, vegvisir))
-                .OrderBy(snapshot => snapshot.Path, StringComparer.Ordinal)
-                .ToList(),
-            Runestones = runestones
-                .Where(runestone => runestone != null)
-                .Select(runestone => CaptureRunestoneSnapshot(locationRoot, runestone))
-                .OrderBy(snapshot => snapshot.Path, StringComparer.Ordinal)
-                .ToList()
         };
+    }
+
+    private static void AddMissingLiveLocationSnapshotComponents(
+        LiveLocationSnapshot snapshot,
+        Transform locationRoot,
+        IReadOnlyList<OfferingBowl> offeringBowls,
+        IReadOnlyList<ItemStand> itemStands)
+    {
+        if (snapshot.OfferingBowl == null && offeringBowls.Count > 0)
+        {
+            snapshot.OfferingBowl = CapturePathScopedOfferingBowlSnapshot(locationRoot, offeringBowls[0]);
+        }
+
+        HashSet<string> itemStandPaths = new(snapshot.ItemStands.Select(itemStand => itemStand.Path), StringComparer.Ordinal);
+        foreach (ItemStand itemStand in itemStands)
+        {
+            if (itemStand == null)
+            {
+                continue;
+            }
+
+            string path = GetRelativePath(locationRoot, itemStand.transform);
+            if (!itemStandPaths.Add(path))
+            {
+                continue;
+            }
+
+            snapshot.ItemStands.Add(CapturePathScopedItemStandSnapshot(locationRoot, itemStand));
+        }
+
+        if (itemStandPaths.Count > 0)
+        {
+            snapshot.ItemStands = snapshot.ItemStands
+                .OrderBy(itemStand => itemStand.Path, StringComparer.Ordinal)
+                .ToList();
+        }
+
     }
 
     private static void RestoreLiveLocationSnapshot(Location location, LocationRuntimeComponents runtimeComponents)
@@ -3502,21 +3164,6 @@ internal static partial class LocationManager
             }
         }
 
-        foreach (PathScopedVegvisirSnapshot vegvisirSnapshot in snapshot.Vegvisirs)
-        {
-            if (runtimeComponents.VegvisirsByPath.TryGetValue(vegvisirSnapshot.Path, out Vegvisir? vegvisir))
-            {
-                RestoreVegvisir(vegvisir, vegvisirSnapshot.Snapshot);
-            }
-        }
-
-        foreach (PathScopedRunestoneSnapshot runestoneSnapshot in snapshot.Runestones)
-        {
-            if (runtimeComponents.RunestonesByPath.TryGetValue(runestoneSnapshot.Path, out RuneStone? runestone))
-            {
-                RestoreRunestone(runestone, runestoneSnapshot.Snapshot);
-            }
-        }
     }
 
     private static void RestoreLiveLocationSnapshot(
@@ -3524,7 +3171,6 @@ internal static partial class LocationManager
         Transform locationRoot,
         IReadOnlyList<OfferingBowl> offeringBowls,
         IReadOnlyList<ItemStand> itemStands,
-        IReadOnlyList<Vegvisir> vegvisirs,
         IReadOnlyList<RuneStone> runestones)
     {
         if (!LiveLocationSnapshots.TryGetValue(location, out LiveLocationSnapshot? snapshot))
@@ -3548,23 +3194,6 @@ internal static partial class LocationManager
             }
         }
 
-        Dictionary<string, Vegvisir> liveVegvisirsByPath = BuildVegvisirLookup(locationRoot, vegvisirs);
-        foreach (PathScopedVegvisirSnapshot vegvisirSnapshot in snapshot.Vegvisirs)
-        {
-            if (liveVegvisirsByPath.TryGetValue(vegvisirSnapshot.Path, out Vegvisir? vegvisir))
-            {
-                RestoreVegvisir(vegvisir, vegvisirSnapshot.Snapshot);
-            }
-        }
-
-        Dictionary<string, RuneStone> liveRunestonesByPath = BuildRunestoneLookup(locationRoot, runestones);
-        foreach (PathScopedRunestoneSnapshot runestoneSnapshot in snapshot.Runestones)
-        {
-            if (liveRunestonesByPath.TryGetValue(runestoneSnapshot.Path, out RuneStone? runestone))
-            {
-                RestoreRunestone(runestone, runestoneSnapshot.Snapshot);
-            }
-        }
     }
 
     private static PathScopedOfferingBowlSnapshot CapturePathScopedOfferingBowlSnapshot(Transform root, OfferingBowl offeringBowl)
@@ -4230,7 +3859,6 @@ internal static partial class LocationManager
         string prefabName,
         OfferingBowl? offeringBowl,
         IReadOnlyList<ItemStand> itemStands,
-        int liveVegvisirCount,
         int liveRunestoneCount,
         LocationComponentCatalog catalog,
         LiveLocationSnapshot snapshot)
@@ -4247,7 +3875,7 @@ internal static partial class LocationManager
         }
 
         DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-            $"Reconciling live location: prefab='{prefabName}', object='{location.gameObject.name}', itemStandCount={itemStands.Count}, catalogItemStandCount={catalog.ItemStandPaths.Count}, snapshotItemStandCount={snapshot.ItemStands.Count}, hasOfferingBowl={offeringBowl != null}, catalogHasOfferingBowl={catalog.OfferingBowlPath != null}, liveVegvisirCount={liveVegvisirCount}, catalogVegvisirCount={catalog.VegvisirPaths.Count}, snapshotVegvisirCount={snapshot.Vegvisirs.Count}, liveRunestoneCount={liveRunestoneCount}, catalogRunestoneCount={catalog.RunestonePaths.Count}, snapshotRunestoneCount={snapshot.Runestones.Count}.");
+            $"Reconciling live location: prefab='{prefabName}', object='{location.gameObject.name}', itemStandCount={itemStands.Count}, catalogItemStandCount={catalog.ItemStandPaths.Count}, snapshotItemStandCount={snapshot.ItemStands.Count}, hasOfferingBowl={offeringBowl != null}, catalogHasOfferingBowl={catalog.OfferingBowlPath != null}, liveRunestoneCount={liveRunestoneCount}.");
     }
 
     private static string JoinDiagnosticValues(IEnumerable<string> values)
@@ -4423,177 +4051,6 @@ internal static partial class LocationManager
         }
     }
 
-    private static Dictionary<string, Vegvisir> BuildVegvisirLookup(Transform locationRoot, IEnumerable<Vegvisir> vegvisirs)
-    {
-        Dictionary<string, Vegvisir> lookup = new(StringComparer.Ordinal);
-        foreach (Vegvisir vegvisir in vegvisirs)
-        {
-            if (vegvisir == null)
-            {
-                continue;
-            }
-
-            lookup[GetRelativePath(locationRoot, vegvisir.transform)] = vegvisir;
-        }
-
-        return lookup;
-    }
-
-    private static Dictionary<string, RuneStone> BuildRunestoneLookup(Transform locationRoot, IEnumerable<RuneStone> runestones)
-    {
-        Dictionary<string, RuneStone> lookup = new(StringComparer.Ordinal);
-        foreach (RuneStone runestone in runestones)
-        {
-            if (runestone == null)
-            {
-                continue;
-            }
-
-            lookup[GetRelativePath(locationRoot, runestone.transform)] = runestone;
-        }
-
-        return lookup;
-    }
-
-    private static bool TryResolveVegvisirTarget(
-        string prefabName,
-        LocationVegvisirDefinition entry,
-        Dictionary<string, Vegvisir> liveVegvisirsByPath,
-        out Vegvisir resolvedVegvisir)
-    {
-        resolvedVegvisir = null!;
-
-        string path = entry.Path ?? "";
-        if (path.Length > 0)
-        {
-            if (!liveVegvisirsByPath.TryGetValue(path, out Vegvisir? vegvisir))
-            {
-                WarnMissingVegvisirPath(prefabName, path);
-                return false;
-            }
-
-            if (!MatchesExpectedVegvisirLocations(vegvisir, entry.ExpectedLocations))
-            {
-                WarnUnexpectedVegvisirTargets(prefabName, path, vegvisir, entry.ExpectedLocations);
-                return false;
-            }
-
-            resolvedVegvisir = vegvisir;
-            return true;
-        }
-
-        List<KeyValuePair<string, Vegvisir>> candidates = liveVegvisirsByPath
-            .Where(pair => MatchesExpectedVegvisirLocations(pair.Value, entry.ExpectedLocations))
-            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-            .ToList();
-
-        if (candidates.Count == 1)
-        {
-            resolvedVegvisir = candidates[0].Value;
-            return true;
-        }
-
-        if (candidates.Count == 0)
-        {
-            WarnUnresolvedVegvisirTarget(prefabName, entry.ExpectedLocations, liveVegvisirsByPath.Keys);
-            return false;
-        }
-
-        WarnAmbiguousVegvisirTarget(prefabName, entry.ExpectedLocations, candidates.Select(pair => pair.Key));
-        return false;
-    }
-
-    private static bool TryResolveRunestoneTarget(
-        string prefabName,
-        LocationRunestoneDefinition entry,
-        Dictionary<string, RuneStone> liveRunestonesByPath,
-        out RuneStone resolvedRunestone)
-    {
-        resolvedRunestone = null!;
-
-        string path = entry.Path ?? "";
-        if (path.Length > 0)
-        {
-            if (!liveRunestonesByPath.TryGetValue(path, out RuneStone? runestone))
-            {
-                WarnMissingRunestonePath(prefabName, path);
-                return false;
-            }
-
-            if (!MatchesExpectedRunestone(runestone, entry))
-            {
-                WarnUnexpectedRunestoneTarget(prefabName, path, runestone, entry);
-                return false;
-            }
-
-            resolvedRunestone = runestone;
-            return true;
-        }
-
-        List<KeyValuePair<string, RuneStone>> candidates = liveRunestonesByPath
-            .Where(pair => MatchesExpectedRunestone(pair.Value, entry))
-            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-            .ToList();
-
-        if (candidates.Count == 1)
-        {
-            resolvedRunestone = candidates[0].Value;
-            return true;
-        }
-
-        if (candidates.Count == 0)
-        {
-            WarnUnresolvedRunestoneTarget(prefabName, entry, liveRunestonesByPath.Keys);
-            return false;
-        }
-
-        WarnAmbiguousRunestoneTarget(prefabName, entry, candidates.Select(pair => pair.Key));
-        return false;
-    }
-
-    private static bool MatchesExpectedVegvisirLocations(Vegvisir vegvisir, List<string>? expectedLocations)
-    {
-        if (expectedLocations == null || expectedLocations.Count == 0)
-        {
-            return true;
-        }
-
-        List<string> normalizedExpected = expectedLocations
-            .Where(value => !string.IsNullOrWhiteSpace(value))
-            .Select(value => value.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        List<string> normalizedActual = vegvisir.m_locations
-            .Select(location => (location.m_locationName ?? "").Trim())
-            .Where(value => value.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        return normalizedExpected.SequenceEqual(normalizedActual, StringComparer.OrdinalIgnoreCase);
-    }
-
-    private static bool MatchesExpectedRunestone(RuneStone runestone, LocationRunestoneDefinition entry)
-    {
-        return MatchesExpectedRunestoneValue(entry.ExpectedLocationName, runestone.m_locationName) &&
-               MatchesExpectedRunestoneValue(entry.ExpectedLabel, runestone.m_label) &&
-               MatchesExpectedRunestoneValue(entry.ExpectedTopic, runestone.m_topic);
-    }
-
-    private static bool MatchesExpectedRunestoneValue(string? expected, string? actual)
-    {
-        string expectedValue = (expected ?? "").Trim();
-        if (expectedValue.Length == 0)
-        {
-            return true;
-        }
-
-        return string.Equals(expectedValue, (actual ?? "").Trim(), StringComparison.OrdinalIgnoreCase);
-    }
-
-
     private static string GetRelativePath(Transform root, Transform target)
     {
         if (target == root)
@@ -4646,334 +4103,6 @@ internal static partial class LocationManager
         }
 
         return index;
-    }
-
-    private static void RestoreVegvisir(Vegvisir vegvisir, VegvisirSnapshot snapshot)
-    {
-        vegvisir.m_name = snapshot.Name;
-        vegvisir.m_useText = snapshot.UseText;
-        vegvisir.m_hoverName = snapshot.HoverName;
-        vegvisir.m_setsGlobalKey = snapshot.SetsGlobalKey;
-        vegvisir.m_setsPlayerKey = snapshot.SetsPlayerKey;
-        vegvisir.m_locations = snapshot.Locations
-            .Select(CreateVegvisirLocation)
-            .ToList();
-    }
-
-    private static void RestoreRunestone(RuneStone runestone, RunestoneSnapshot snapshot)
-    {
-        ClearRunestonePinChanceRoll(runestone);
-        runestone.m_name = snapshot.Name;
-        runestone.m_topic = snapshot.Topic;
-        runestone.m_label = snapshot.Label;
-        runestone.m_text = snapshot.Text;
-        runestone.m_randomTexts = snapshot.RandomTexts
-            .Select(CreateRunestoneText)
-            .ToList();
-        runestone.m_locationName = snapshot.LocationName;
-        runestone.m_pinName = snapshot.PinName;
-        runestone.m_pinType = ParsePinType(snapshot.PinType, null) ?? Minimap.PinType.Boss;
-        runestone.m_showMap = snapshot.ShowMap;
-    }
-
-    private static void ApplyVegvisir(Vegvisir vegvisir, LocationVegvisirDefinition entry, string prefabName)
-    {
-        string context = $"{prefabName}@vegvisirs[{entry.Path}]";
-
-        if (entry.Name != null)
-        {
-            vegvisir.m_name = entry.Name;
-        }
-
-        if (entry.UseText != null)
-        {
-            vegvisir.m_useText = entry.UseText;
-        }
-
-        if (entry.HoverName != null)
-        {
-            vegvisir.m_hoverName = entry.HoverName;
-        }
-
-        if (entry.SetsGlobalKey != null)
-        {
-            vegvisir.m_setsGlobalKey = entry.SetsGlobalKey;
-        }
-
-        if (entry.SetsPlayerKey != null)
-        {
-            vegvisir.m_setsPlayerKey = entry.SetsPlayerKey;
-        }
-
-        if (entry.Locations != null)
-        {
-            if (entry.Locations.Any(location => location.Weight.HasValue))
-            {
-                Vegvisir.VegvisrLocation? weightedTarget = SelectWeightedVegvisirLocation(entry.Locations, context);
-                vegvisir.m_locations = weightedTarget != null
-                    ? new List<Vegvisir.VegvisrLocation> { weightedTarget }
-                    : new List<Vegvisir.VegvisrLocation>();
-                return;
-            }
-
-            List<Vegvisir.VegvisrLocation> targets = new();
-            for (int index = 0; index < entry.Locations.Count; index++)
-            {
-                LocationVegvisirTargetDefinition definition = entry.Locations[index];
-                Vegvisir.VegvisrLocation? target = CreateVegvisirLocation(definition, $"{context}/locations[{index}]");
-                if (target != null)
-                {
-                    targets.Add(target);
-                }
-            }
-
-            vegvisir.m_locations = targets;
-        }
-    }
-
-    private static void ApplyRunestone(RuneStone runestone, LocationRunestoneDefinition entry, string prefabName)
-    {
-        string context = $"{prefabName}@runestones[{entry.Path}]";
-
-        if (entry.Name != null)
-        {
-            runestone.m_name = entry.Name;
-        }
-
-        if (entry.Topic != null)
-        {
-            runestone.m_topic = entry.Topic;
-        }
-
-        if (entry.Label != null)
-        {
-            runestone.m_label = entry.Label;
-        }
-
-        if (entry.Text != null)
-        {
-            runestone.m_text = entry.Text;
-        }
-
-        if (entry.RandomTexts != null)
-        {
-            runestone.m_randomTexts = entry.RandomTexts
-                .Select(CreateRunestoneText)
-                .ToList();
-        }
-
-        if (entry.LocationName != null)
-        {
-            runestone.m_locationName = entry.LocationName;
-        }
-
-        if (entry.PinName != null)
-        {
-            runestone.m_pinName = entry.PinName;
-        }
-
-        if (entry.PinType != null)
-        {
-            Minimap.PinType? pinType = ParsePinType(entry.PinType, context);
-            if (pinType.HasValue)
-            {
-                runestone.m_pinType = pinType.Value;
-            }
-        }
-
-        if (entry.ShowMap.HasValue)
-        {
-            runestone.m_showMap = entry.ShowMap.Value;
-        }
-
-        if (entry.Chance.HasValue)
-        {
-            ApplyRunestonePinChanceRoll(runestone, entry, prefabName);
-        }
-    }
-
-    internal static bool ShouldSuppressRunestonePinDiscovery(RuneStone? runestone)
-    {
-        return runestone != null &&
-               RunestonePinChanceRolls.TryGetValue(runestone, out RunestonePinChanceState state) &&
-               !state.AllowsPin;
-    }
-
-    private static void ApplyRunestonePinChanceRoll(
-        RuneStone runestone,
-        LocationRunestoneDefinition entry,
-        string prefabName)
-    {
-        float chance = Mathf.Clamp01(entry.Chance ?? 1f);
-        if (chance >= 1f)
-        {
-            ClearRunestonePinChanceRoll(runestone);
-            return;
-        }
-
-        string rollKey = CreateRunestonePinChanceRollKey(runestone, entry, prefabName, chance);
-        lock (RunestonePinChanceLock)
-        {
-            if (!RunestonePinChanceRolls.TryGetValue(runestone, out RunestonePinChanceState state))
-            {
-                state = new RunestonePinChanceState();
-                RunestonePinChanceRolls.Add(runestone, state);
-            }
-
-            if (state.RollKey == rollKey)
-            {
-                return;
-            }
-
-            state.RollKey = rollKey;
-            state.AllowsPin = chance > 0f && RunestonePinChanceRandom.NextDouble() <= chance;
-        }
-    }
-
-    private static string CreateRunestonePinChanceRollKey(
-        RuneStone runestone,
-        LocationRunestoneDefinition entry,
-        string prefabName,
-        float chance)
-    {
-        return string.Join(
-            "\n",
-            prefabName,
-            entry.Path ?? "",
-            runestone.m_locationName ?? "",
-            runestone.m_pinName ?? "",
-            runestone.m_pinType.ToString(),
-            runestone.m_showMap ? "true" : "false",
-            chance.ToString("R", CultureInfo.InvariantCulture));
-    }
-
-    private static void ClearRunestonePinChanceRoll(RuneStone? runestone)
-    {
-        if (runestone == null)
-        {
-            return;
-        }
-
-        RunestonePinChanceRolls.Remove(runestone);
-    }
-
-    private static RuneStone.RandomRuneText CreateRunestoneText(LocationRunestoneTextDefinition definition)
-    {
-        return new RuneStone.RandomRuneText
-        {
-            m_topic = definition.Topic ?? "",
-            m_label = definition.Label ?? "",
-            m_text = definition.Text ?? ""
-        };
-    }
-
-    private static RuneStone.RandomRuneText CreateRunestoneText(RunestoneTextSnapshot snapshot)
-    {
-        return new RuneStone.RandomRuneText
-        {
-            m_topic = snapshot.Topic,
-            m_label = snapshot.Label,
-            m_text = snapshot.Text
-        };
-    }
-
-    private static Vegvisir.VegvisrLocation? SelectWeightedVegvisirLocation(
-        List<LocationVegvisirTargetDefinition> definitions,
-        string context)
-    {
-        List<(Vegvisir.VegvisrLocation Target, float Weight)> weightedTargets = new();
-        float totalWeight = 0f;
-
-        for (int index = 0; index < definitions.Count; index++)
-        {
-            LocationVegvisirTargetDefinition definition = definitions[index];
-            Vegvisir.VegvisrLocation? target = CreateVegvisirLocation(definition, $"{context}/locations[{index}]");
-            if (target == null)
-            {
-                continue;
-            }
-
-            float weight = Mathf.Max(0f, definition.Weight ?? 1f);
-            if (weight <= 0f)
-            {
-                continue;
-            }
-
-            weightedTargets.Add((target, weight));
-            totalWeight += weight;
-        }
-
-        if (weightedTargets.Count == 0 || totalWeight <= 0f)
-        {
-            return null;
-        }
-
-        float roll = UnityEngine.Random.Range(0f, totalWeight);
-        float cumulativeWeight = 0f;
-        foreach ((Vegvisir.VegvisrLocation target, float weight) in weightedTargets)
-        {
-            cumulativeWeight += weight;
-            if (roll <= cumulativeWeight)
-            {
-                return target;
-            }
-        }
-
-        return weightedTargets[weightedTargets.Count - 1].Target;
-    }
-
-    private static Vegvisir.VegvisrLocation CreateVegvisirLocation(VegvisirTargetSnapshot snapshot)
-    {
-        Minimap.PinType pinType = ParsePinType(snapshot.PinType, null) ?? Minimap.PinType.Icon0;
-        return new Vegvisir.VegvisrLocation
-        {
-            m_locationName = snapshot.LocationName,
-            m_pinName = snapshot.PinName,
-            m_pinType = pinType,
-            m_discoverAll = snapshot.DiscoverAll,
-            m_showMap = snapshot.ShowMap
-        };
-    }
-
-    private static Vegvisir.VegvisrLocation? CreateVegvisirLocation(LocationVegvisirTargetDefinition definition, string warnContext)
-    {
-        string locationName = (definition.LocationName ?? "").Trim();
-        if (locationName.Length == 0)
-        {
-            WarnInvalidEntry($"Entry '{warnContext}' is missing locationName.");
-            return null;
-        }
-
-        Minimap.PinType pinType = ParsePinType(definition.PinType, warnContext) ?? Minimap.PinType.Icon0;
-        return new Vegvisir.VegvisrLocation
-        {
-            m_locationName = locationName,
-            m_pinName = string.IsNullOrWhiteSpace(definition.PinName) ? "Pin" : definition.PinName!,
-            m_pinType = pinType,
-            m_discoverAll = definition.DiscoverAll ?? false,
-            m_showMap = definition.ShowMap ?? true
-        };
-    }
-
-    private static Minimap.PinType? ParsePinType(string? pinTypeName, string? warnContext)
-    {
-        string trimmedName = (pinTypeName ?? "").Trim();
-        if (trimmedName.Length == 0)
-        {
-            return null;
-        }
-
-        if (Enum.TryParse(trimmedName, true, out Minimap.PinType pinType))
-        {
-            return pinType;
-        }
-
-        if (!string.IsNullOrWhiteSpace(warnContext))
-        {
-            WarnInvalidEntry($"Entry '{warnContext}' uses unknown Minimap.PinType '{trimmedName}'.");
-        }
-
-        return null;
     }
 
     private static ItemStand.Orientation? ParseItemStandOrientation(string? orientationName, string? warnContext)
@@ -5174,17 +4303,7 @@ internal static partial class LocationManager
             return 1;
         }
 
-        if (snapshot.Vegvisirs.Count > 0)
-        {
-            return 2;
-        }
-
-        if (snapshot.Runestones.Count > 0)
-        {
-            return 3;
-        }
-
-        return 4;
+        return 2;
     }
 
     private static int GetLocationComponentSignatureMask(LocationSnapshot snapshot)
@@ -5198,16 +4317,6 @@ internal static partial class LocationManager
         if (snapshot.ItemStands.Count > 0)
         {
             mask |= 1 << 1;
-        }
-
-        if (snapshot.Vegvisirs.Count > 0)
-        {
-            mask |= 1 << 2;
-        }
-
-        if (snapshot.Runestones.Count > 0)
-        {
-            mask |= 1 << 3;
         }
 
         return mask;

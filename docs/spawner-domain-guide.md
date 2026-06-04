@@ -18,7 +18,7 @@ Structure:
 ```yaml
 - prefab: ExamplePrefabName
   enabled: true
-  location: ExampleLocationPrefab
+  locations: [ExampleLocationPrefab]
   conditions: {}
   spawnArea: {}
 ```
@@ -32,7 +32,7 @@ Meaning:
 Selector notes:
 
 - `prefab` only: matches every spawner prefab with that name
-- `prefab + location`: matches only spawners under that location prefab
+- `prefab + locations`: matches only spawners under one of those location prefabs
 - only the most specific passing entry is applied
 - less specific entries act as fallback
 - if multiple passing entries share the same specificity, the later loaded one wins
@@ -40,7 +40,7 @@ Selector notes:
 Important:
 
 - do not use `conditions.locations` in the `spawner` domain
-- use top-level `location` for selector scoping
+- use top-level `locations` for selector scoping
 - `creatureSpawner` does not support top-level `conditions.insidePlayerBase`
 - use `creatureSpawner.allowInsidePlayerBase` for runtime player-base gating instead
 
@@ -96,9 +96,9 @@ Meaning:
 - `timeOfDay`: native day/night gate
 - `allowInsidePlayerBase`: if `false`, native player-base suppression still blocks this spawner
 
-Legacy note:
+Native no-op note:
 
-- `requireSpawnArea` may still appear in older configs or native snapshots
+- `requireSpawnArea` may still appear in native snapshots
 - current Valheim code does not use it, so treat it as a no-op and omit it
 
 ## Native Spawn Group Fields

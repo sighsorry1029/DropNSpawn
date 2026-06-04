@@ -8,14 +8,22 @@ internal static class LocationAwakePatch
 {
     private static void Postfix(Location __instance)
     {
-        LocationManager.TrackLocationInstance(__instance);
-
-        if (!PluginSettingsFacade.IsLocationDomainEnabled() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            LocationManager.TrackLocationInstance(__instance);
 
-        LocationManager.QueueLocationReconcile(__instance);
+            if (!PluginSettingsFacade.IsLocationDomainEnabled() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+            {
+                return;
+            }
+
+            LocationManager.QueueLocationReconcile(__instance);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("Location.Awake", sample);
+        }
     }
 }
 
@@ -37,43 +45,51 @@ internal static class LocationProxySpawnLocationPatch
 
     private static void Postfix(LocationProxy __instance, bool __result)
     {
-        if (!__result)
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
-
-        if (__instance != null &&
-            ZNet.instance != null &&
-            ZNet.instance.IsServer() &&
-            LocationManager.TryResolveZoneLocationPrefabName(__instance.transform.position, out string proxyPrefabName) &&
-            proxyPrefabName.Length > 0)
-        {
-            LocationManager.RecordLocationProxyResolvedPrefab(__instance, proxyPrefabName);
-        }
-
-        bool locationDomainEnabled = PluginSettingsFacade.IsLocationDomainEnabled() &&
-                                     !DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location);
-        bool spawnerDomainEnabled = PluginSettingsFacade.IsSpawnerDomainEnabled() &&
-                                    !DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner);
-        if (!locationDomainEnabled && !spawnerDomainEnabled)
-        {
-            return;
-        }
-
-        GameObject? instance = __instance != null ? InstanceRef(__instance) : null;
-
-        if (spawnerDomainEnabled)
-        {
-            SpawnerManager.RecordSpawnedLocationProxyProvenance(__instance, instance);
-        }
-
-        if (locationDomainEnabled)
-        {
-            LocationManager.QueueSpawnedLocationRootReconcile(instance);
-            if (LocationManager.HasRuntimeLocationAliasDemand())
+            if (!__result)
             {
-                LocationManager.QueueLocationProxyObservation(__instance);
+                return;
             }
+
+            if (__instance != null &&
+                ZNet.instance != null &&
+                ZNet.instance.IsServer() &&
+                LocationManager.TryResolveZoneLocationPrefabName(__instance.transform.position, out string proxyPrefabName) &&
+                proxyPrefabName.Length > 0)
+            {
+                LocationManager.RecordLocationProxyResolvedPrefab(__instance, proxyPrefabName);
+            }
+
+            bool locationDomainEnabled = PluginSettingsFacade.IsLocationDomainEnabled() &&
+                                         !DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location);
+            bool spawnerDomainEnabled = PluginSettingsFacade.IsSpawnerDomainEnabled() &&
+                                        !DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner);
+            if (!locationDomainEnabled && !spawnerDomainEnabled)
+            {
+                return;
+            }
+
+            GameObject? instance = __instance != null ? InstanceRef(__instance) : null;
+
+            if (spawnerDomainEnabled)
+            {
+                SpawnerManager.RecordSpawnedLocationProxyProvenance(__instance, instance);
+            }
+
+            if (locationDomainEnabled)
+            {
+                LocationManager.QueueSpawnedLocationRootReconcile(instance);
+                if (LocationManager.HasRuntimeLocationAliasDemand())
+                {
+                    LocationManager.QueueLocationProxyObservation(__instance);
+                }
+            }
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("LocationProxy.SpawnLocation", sample);
         }
     }
 }
@@ -92,20 +108,28 @@ internal static class LocationProxySetLocationAliasPatch
 
     private static void Postfix(LocationProxy __instance, string __state)
     {
-        if (__state.Length > 0)
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            LocationManager.RecordLocationProxyResolvedPrefab(__instance, __state);
-        }
+            if (__state.Length > 0)
+            {
+                LocationManager.RecordLocationProxyResolvedPrefab(__instance, __state);
+            }
 
-        if (!PluginSettingsFacade.IsLocationDomainEnabled() ||
-            DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
-        {
-            return;
-        }
+            if (!PluginSettingsFacade.IsLocationDomainEnabled() ||
+                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+            {
+                return;
+            }
 
-        if (LocationManager.HasRuntimeLocationAliasDemand())
+            if (LocationManager.HasRuntimeLocationAliasDemand())
+            {
+                LocationManager.QueueLocationProxyObservation(__instance);
+            }
+        }
+        finally
         {
-            LocationManager.QueueLocationProxyObservation(__instance);
+            RuntimeWorkProfiler.EndHookSample("LocationProxy.SetLocation", sample);
         }
     }
 }
@@ -119,31 +143,112 @@ internal static class LocationProxyOnDestroyPatch
     }
 }
 
+internal static class DungeonGeneratorLocationReconcilePatchSupport
+{
+    internal static void QueueIfEnabled(DungeonGenerator generator)
+    {
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            if (!PluginSettingsFacade.IsLocationDomainEnabled() ||
+                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+            {
+                return;
+            }
+
+            LocationManager.QueueDungeonLocationReconcile(generator);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("DungeonGenerator.locationQueue", sample);
+        }
+    }
+}
+
+[HarmonyPatch(typeof(DungeonGenerator), nameof(DungeonGenerator.Generate), new[]
+{
+    typeof(ZoneSystem.SpawnMode)
+})]
+internal static class DungeonGeneratorGenerateLocationReconcilePatch
+{
+    private static void Postfix(DungeonGenerator __instance)
+    {
+        DungeonGeneratorLocationReconcilePatchSupport.QueueIfEnabled(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(DungeonGenerator), nameof(DungeonGenerator.Generate), new[]
+{
+    typeof(int),
+    typeof(ZoneSystem.SpawnMode)
+})]
+internal static class DungeonGeneratorGenerateWithSeedLocationReconcilePatch
+{
+    private static void Postfix(DungeonGenerator __instance)
+    {
+        DungeonGeneratorLocationReconcilePatchSupport.QueueIfEnabled(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(DungeonGenerator), "Spawn")]
+internal static class DungeonGeneratorSpawnLocationReconcilePatch
+{
+    private static void Postfix(DungeonGenerator __instance)
+    {
+        DungeonGeneratorLocationReconcilePatchSupport.QueueIfEnabled(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(DungeonGenerator), "OnRoomLoaded")]
+internal static class DungeonGeneratorRoomLoadedLocationReconcilePatch
+{
+    private static void Postfix(DungeonGenerator __instance)
+    {
+        DungeonGeneratorLocationReconcilePatchSupport.QueueIfEnabled(__instance);
+    }
+}
+
 [HarmonyPatch(typeof(ZoneSystem), "CreateLocationProxy")]
 [HarmonyPriority(Priority.First)]
 internal static class ZoneSystemCreateLocationProxyAliasContextPatch
 {
     private static void Prefix(ZoneSystem.ZoneLocation location, ref bool __state)
     {
-        __state = false;
-        string prefabName = (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
-        if (prefabName.Length == 0)
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            __state = false;
+            string prefabName = (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
+            if (prefabName.Length == 0)
+            {
+                return;
+            }
 
-        LocationManager.BeginLocationProxyCreationContext(prefabName);
-        __state = true;
+            LocationManager.BeginLocationProxyCreationContext(prefabName);
+            __state = true;
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("ZoneSystem.CreateLocationProxy.prefix", sample);
+        }
     }
 
     private static void Finalizer(bool __state)
     {
-        if (!__state)
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            if (!__state)
+            {
+                return;
+            }
 
-        LocationManager.EndLocationProxyCreationContext();
+            LocationManager.EndLocationProxyCreationContext();
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("ZoneSystem.CreateLocationProxy.finalizer", sample);
+        }
     }
 }
 
@@ -170,15 +275,23 @@ internal static class OfferingBowlAwakeRegistryPatch
 {
     private static void Postfix(OfferingBowl __instance)
     {
-        OfferingBowlHoverInfoFormatter.RegisterOfferingBowl(__instance);
-        if (!PluginSettingsFacade.IsLocationDomainEnabled() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            OfferingBowlHoverInfoFormatter.RegisterOfferingBowl(__instance);
+            if (!PluginSettingsFacade.IsLocationDomainEnabled() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+            {
+                return;
+            }
 
-        if (__instance.GetComponentInParent<Location>(true) == null)
+            if (__instance.GetComponentInParent<Location>(true) == null)
+            {
+                LocationManager.QueueLooseOfferingBowlOverride(__instance);
+            }
+        }
+        finally
         {
-            LocationManager.QueueLooseOfferingBowlOverride(__instance);
+            RuntimeWorkProfiler.EndHookSample("OfferingBowl.Awake", sample);
         }
     }
 }
@@ -531,15 +644,23 @@ internal static class ItemStandAwakeLocationOverridePatch
 {
     private static void Postfix(ItemStand __instance)
     {
-        AltarItemStandHoverInfoFormatter.RegisterItemStand(__instance);
-        if (!PluginSettingsFacade.IsLocationDomainEnabled() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            AltarItemStandHoverInfoFormatter.RegisterItemStand(__instance);
+            if (!PluginSettingsFacade.IsLocationDomainEnabled() || DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Location))
+            {
+                return;
+            }
 
-        if (__instance.GetComponentInParent<Location>(true) == null)
+            if (__instance.GetComponentInParent<Location>(true) == null)
+            {
+                LocationManager.QueueLooseItemStandOverride(__instance);
+            }
+        }
+        finally
         {
-            LocationManager.QueueLooseItemStandOverride(__instance);
+            RuntimeWorkProfiler.EndHookSample("ItemStand.Awake", sample);
         }
     }
 }

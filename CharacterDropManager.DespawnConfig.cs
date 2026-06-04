@@ -13,6 +13,23 @@ internal static partial class CharacterDropManager
         }
     }
 
+    internal static bool TryGetCachedDespawnTrackingPrefabHashEligibility(int prefabHash, out bool eligible)
+    {
+        lock (Sync)
+        {
+            eligible = false;
+            if (!IsGameDataReady() || prefabHash == 0)
+            {
+                return false;
+            }
+
+            return CharacterDespawnRuntime.TryGetCachedDespawnTrackingPrefabHashEligibility(
+                prefabHash,
+                _configurationSignature,
+                out eligible);
+        }
+    }
+
     internal static bool IsEligibleDespawnTrackingPrefabName(string prefabName)
     {
         lock (Sync)
@@ -113,5 +130,18 @@ internal static partial class CharacterDropManager
                 out delayOverride,
                 out refunds);
         }
+    }
+
+    private static void PrimeDespawnTrackingRuleLookupLocked(int gameDataSignature)
+    {
+        if (!IsGameDataReady() || gameDataSignature == 0)
+        {
+            return;
+        }
+
+        CharacterDespawnRuntime.PrimeRuntimeState(
+            gameDataSignature,
+            _configurationSignature,
+            ActiveEntriesByPrefab);
     }
 }

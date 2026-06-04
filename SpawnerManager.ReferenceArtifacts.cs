@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using UnityEngine;
 
@@ -187,19 +186,75 @@ internal static partial class SpawnerManager
         bool writePrimaryReference,
         bool writeLocationReference)
     {
-        Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-
         if (writePrimaryReference && referenceContent != null)
         {
-            GeneratedFileWriter.WriteAllTextIfChanged(ReferenceConfigurationPath, referenceContent);
+            GeneratedArtifactWriter.WriteText(ReferenceConfigurationPath, referenceContent);
         }
 
         if (writeLocationReference && locationReferenceContent != null)
         {
-            GeneratedFileWriter.WriteAllTextIfChanged(LocationReferenceConfigurationPath, locationReferenceContent);
+            GeneratedArtifactWriter.WriteText(LocationReferenceConfigurationPath, locationReferenceContent);
         }
 
         DropNSpawnPlugin.DropNSpawnLogger.LogInfo(logMessage);
+    }
+
+    internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
+    {
+        string content;
+        string logMessage;
+        lock (Sync)
+        {
+            path = FullScaffoldConfigurationPath;
+            error = "";
+
+            if (!IsGameDataReady() && !_snapshotsCaptured)
+            {
+                error = "Spawner game data is not ready yet.";
+                return false;
+            }
+
+            CaptureSnapshotsIfNeeded();
+            content = BuildFullScaffoldConfigurationTemplate();
+            logMessage = $"Wrote spawner full scaffold configuration to {path}.";
+        }
+
+        GeneratedArtifactWriter.WriteTextAlways(path, content, logMessage);
+        return true;
+    }
+
+    internal static void RefreshReferenceConfigurationFile()
+    {
+        string referenceContent;
+        string locationReferenceContent;
+        string sourceSignature;
+        string logMessage;
+        lock (Sync)
+        {
+            if (!IsGameDataReady())
+            {
+                return;
+            }
+
+            CaptureSnapshotsIfNeeded();
+            referenceContent = BuildReferenceConfigurationTemplate();
+            locationReferenceContent = BuildLocationReferenceConfigurationTemplate();
+            sourceSignature = ComputeReferenceSourceSignature();
+            logMessage = $"Updated spawner reference configurations at {ReferenceConfigurationPath} and {LocationReferenceConfigurationPath}.";
+        }
+
+        WriteReferenceConfigurationFile(
+            referenceContent,
+            locationReferenceContent,
+            logMessage,
+            writePrimaryReference: true,
+            writeLocationReference: true);
+        ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, sourceSignature);
+        ReferenceArtifactLifecycle.RecordUpdate(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, sourceSignature);
+        lock (Sync)
+        {
+            ResetReferenceSnapshots();
+        }
     }
 
     private static IEnumerable<(string LocationPrefab, GameObject RootPrefab)> EnumerateLocationRootPrefabs()

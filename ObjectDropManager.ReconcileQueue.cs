@@ -19,8 +19,7 @@ internal static partial class ObjectDropManager
                 return;
             }
 
-            if (!ShouldQueueAwakeReconcileForPrefab(prefabName, sourceKind) ||
-                !HasPotentialStaticMatchForComponent(gameObject, prefabName, sourceKind))
+            if (!ShouldQueueAwakeReconcileForPrefab(prefabName, sourceKind))
             {
                 return;
             }
@@ -38,16 +37,39 @@ internal static partial class ObjectDropManager
     {
         lock (Sync)
         {
-            return ReconcileQueueState.HasPendingWork();
+            return HasPendingReconcileWorkLocked();
         }
+    }
+
+    internal static int GetPendingReconcileWorkCount()
+    {
+        lock (Sync)
+        {
+            return GetPendingReconcileWorkCountLocked();
+        }
+    }
+
+    private static bool HasPendingReconcileWorkLocked()
+    {
+        return ReconcileQueueState.HasPendingWork();
+    }
+
+    private static int GetPendingReconcileWorkCountLocked()
+    {
+        return ReconcileQueueState.GetPendingWorkCount();
     }
 
     internal static bool ProcessQueuedReconcileStep(float deadline)
     {
         lock (Sync)
         {
-            return TryProcessNextQueuedReconcileItemLocked(deadline, highPriorityOnly: false);
+            return TryProcessQueuedReconcileWorkLocked(deadline);
         }
+    }
+
+    private static bool TryProcessQueuedReconcileWorkLocked(float deadline)
+    {
+        return TryProcessNextQueuedReconcileItemLocked(deadline, highPriorityOnly: false);
     }
 
     private static void DrainQueuedHighPriorityReconcilesLocked()

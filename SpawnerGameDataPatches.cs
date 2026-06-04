@@ -21,25 +21,41 @@ internal static class ZoneSystemSpawnLocationContextPatch
 {
     private static void Prefix(ZoneSystem.ZoneLocation location, ref bool __state)
     {
-        __state = false;
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled() ||
-            DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            __state = false;
+            if (!PluginSettingsFacade.IsSpawnerDomainEnabled() ||
+                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
+            {
+                return;
+            }
 
-        SpawnerManager.BeginLocationSpawnContext(location);
-        __state = true;
+            SpawnerManager.BeginLocationSpawnContext(location);
+            __state = true;
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("ZoneSystem.SpawnLocation.spawnerContextPrefix", sample);
+        }
     }
 
     private static void Finalizer(bool __state)
     {
-        if (!__state)
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            if (!__state)
+            {
+                return;
+            }
 
-        SpawnerManager.EndLocationSpawnContext();
+            SpawnerManager.EndLocationSpawnContext();
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("ZoneSystem.SpawnLocation.spawnerContextFinalizer", sample);
+        }
     }
 }
 
@@ -51,24 +67,40 @@ internal static class DungeonGeneratorGenerateContextPatch
 {
     private static void Prefix(DungeonGenerator __instance, ref bool __state)
     {
-        __state = false;
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled() ||
-            DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            __state = false;
+            if (!PluginSettingsFacade.IsSpawnerDomainEnabled() ||
+                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
+            {
+                return;
+            }
 
-        __state = SpawnerManager.TryBeginDerivedLocationSpawnContext(__instance);
+            __state = SpawnerManager.TryBeginDerivedLocationSpawnContext(__instance);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("DungeonGenerator.Generate.spawnerContextPrefix", sample);
+        }
     }
 
     private static void Finalizer(bool __state)
     {
-        if (!__state)
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            if (!__state)
+            {
+                return;
+            }
 
-        SpawnerManager.EndLocationSpawnContext();
+            SpawnerManager.EndLocationSpawnContext();
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("DungeonGenerator.Generate.spawnerContextFinalizer", sample);
+        }
     }
 }
 
@@ -77,24 +109,40 @@ internal static class DungeonGeneratorSpawnContextPatch
 {
     private static void Prefix(DungeonGenerator __instance, ref bool __state)
     {
-        __state = false;
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled() ||
-            DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            __state = false;
+            if (!PluginSettingsFacade.IsSpawnerDomainEnabled() ||
+                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
+            {
+                return;
+            }
 
-        __state = SpawnerManager.TryBeginDerivedLocationSpawnContext(__instance);
+            __state = SpawnerManager.TryBeginDerivedLocationSpawnContext(__instance);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("DungeonGenerator.Spawn.spawnerContextPrefix", sample);
+        }
     }
 
     private static void Finalizer(bool __state)
     {
-        if (!__state)
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            if (!__state)
+            {
+                return;
+            }
 
-        SpawnerManager.EndLocationSpawnContext();
+            SpawnerManager.EndLocationSpawnContext();
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("DungeonGenerator.Spawn.spawnerContextFinalizer", sample);
+        }
     }
 }
 
@@ -103,12 +151,20 @@ internal static class SpawnAreaAwakePatch
 {
     private static void Postfix(SpawnArea __instance)
     {
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
+            {
+                return;
+            }
 
-        SpawnerManager.HandleSpawnAreaInstanceAwake(__instance);
+            SpawnerManager.HandleSpawnAreaInstanceAwake(__instance);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("SpawnArea.Awake", sample);
+        }
     }
 }
 
@@ -229,12 +285,20 @@ internal static class CreatureSpawnerAwakePatch
 {
     private static void Postfix(CreatureSpawner __instance)
     {
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
         {
-            return;
-        }
+            if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
+            {
+                return;
+            }
 
-        SpawnerManager.HandleCreatureSpawnerInstanceAwake(__instance);
+            SpawnerManager.HandleCreatureSpawnerInstanceAwake(__instance);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("CreatureSpawner.Awake", sample);
+        }
     }
 }
 
@@ -306,6 +370,14 @@ internal static class BaseAIAwakeFactionPatch
 {
     private static void Postfix(BaseAI __instance)
     {
-        FactionIntegration.ApplyFromZdo(__instance);
+        float sample = RuntimeWorkProfiler.BeginHookSample();
+        try
+        {
+            FactionIntegration.ApplyFromZdo(__instance);
+        }
+        finally
+        {
+            RuntimeWorkProfiler.EndHookSample("BaseAI.Awake", sample);
+        }
     }
 }

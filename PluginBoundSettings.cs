@@ -14,8 +14,8 @@ internal static class PluginBoundSettings
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? EnableBossTamedPressure { get; set; }
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? PerPlayerBossStones { get; set; }
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? RemoteForsakenPowerSelection { get; set; }
-    internal static ConfigEntry<DropNSpawnPlugin.ReferenceUpdateMode>? ReferenceUpdateMode { get; set; }
     internal static ConfigEntry<KeyboardShortcut>? RotateForsakenPowerShortcut { get; set; }
+    internal static ConfigEntry<DropNSpawnPlugin.Toggle>? DebugRuntimeWorkProfiling { get; set; }
 
     internal static void Clear()
     {
@@ -29,7 +29,7 @@ internal static class PluginBoundSettings
         EnableBossTamedPressure = null;
         PerPlayerBossStones = null;
         RemoteForsakenPowerSelection = null;
-        ReferenceUpdateMode = null;
         RotateForsakenPowerShortcut = null;
+        DebugRuntimeWorkProfiling = null;
     }
 }

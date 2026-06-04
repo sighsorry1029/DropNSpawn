@@ -24,58 +24,38 @@ internal static partial class SpawnerManager
     private const float RuntimeEvaluationIntervalSeconds = 0.25f;
     private const float RuntimeEvaluationIntervalInsidePlayerBaseOnlySeconds = 0.5f;
     internal static readonly DomainModuleDefinition<SpawnerConfigurationEntry> Module =
-        new(
-            "spawner",
-            DropNSpawnPlugin.ReloadDomain.Spawner,
-            "spawner_yaml",
-            98,
-            ShouldReloadForPath,
-            ReloadConfiguration,
-            Initialize,
-            OnGameDataReady,
-            HandleExpandWorldDataReady,
-            dtoVersion: 6,
-            transportProfile: DomainTransportProfile.MediumConfig,
-            displayName: "spawner",
-            cacheDirectoryName: "spawner",
-            clientRequestPriority: 30,
-            keySelector: entry => entry.RuleId,
-            applyPayloadAction: ApplySyncedPayload,
-            workKinds: DomainWorkKinds.Runtime | DomainWorkKinds.Reconcile,
-            hasPendingReconcileWork: HasPendingReconcileWork,
-            processPendingReconcileStep: ProcessQueuedReconcileStep,
-            beforeClientManifestChanged: MarkSyncedPayloadPending,
-            onClientAuthorityCutover: EnterPendingSyncedPayloadState);
+        new(new DomainModuleOptions<SpawnerConfigurationEntry>
+        {
+            DomainKey = "spawner",
+            ReloadDomain = DropNSpawnPlugin.ReloadDomain.Spawner,
+            ManifestSettingKey = "spawner_yaml",
+            ManifestPriority = 98,
+            ShouldReloadForPath = ShouldReloadForPath,
+            Reload = ReloadConfiguration,
+            InitializeRuntime = Initialize,
+            OnGameDataReady = OnGameDataReady,
+            HandleExpandWorldDataReady = HandleExpandWorldDataReady,
+            DtoVersion = 7,
+            TransportProfile = DomainTransportProfile.MediumConfig,
+            DisplayName = "spawner",
+            CacheDirectoryName = "spawner",
+            ClientRequestPriority = 30,
+            KeySelector = entry => entry.RuleId,
+            ApplyPayloadAction = ApplySyncedPayload,
+            WorkKinds = DomainWorkKinds.Runtime | DomainWorkKinds.Reconcile,
+            HasPendingReconcileWork = HasPendingReconcileWork,
+            GetPendingReconcileWorkCount = GetPendingReconcileWorkCount,
+            ProcessPendingReconcileStep = ProcessQueuedReconcileStep,
+            BeforeClientManifestChanged = MarkSyncedPayloadPending,
+            OnClientAuthorityCutover = EnterPendingSyncedPayloadState
+        });
     internal static DomainDescriptor<SpawnerConfigurationEntry> Descriptor => Module.DescriptorTyped;
     internal static DomainTransportMetadata<SpawnerConfigurationEntry> TransportMetadata => Module.TransportMetadataTyped;
-    private static int _invalidEntryWarningSuppressionDepth;
 
     private sealed class ParsedSpawnerConfigurationDocument
     {
         public List<SpawnerConfigurationEntry> Configuration { get; } = new();
         public List<string> Warnings { get; } = new();
-    }
-
-    private readonly struct InvalidEntryWarningSuppressionScope : IDisposable
-    {
-        private readonly bool _active;
-
-        public InvalidEntryWarningSuppressionScope(bool active)
-        {
-            _active = active;
-            if (_active)
-            {
-                _invalidEntryWarningSuppressionDepth++;
-            }
-        }
-
-        public void Dispose()
-        {
-            if (_active)
-            {
-                _invalidEntryWarningSuppressionDepth--;
-            }
-        }
     }
 
     private readonly struct PendingSpawnAreaReconcile
@@ -301,7 +281,7 @@ internal static partial class SpawnerManager
     {
         public string Prefab { get; set; } = "";
         public string RuleId { get; set; } = "";
-        public string Location { get; set; } = "";
+        public List<string>? Locations { get; set; }
         public ConditionsDefinition? Conditions { get; set; }
         public bool RuntimeReconcile { get; set; }
         public SpawnAreaDefinition? SpawnArea { get; set; }
@@ -373,22 +353,34 @@ internal static partial class SpawnerManager
     private static readonly Dictionary<string, CreatureSpawnerComponentSnapshot> CreatureSpawnerSnapshotsByExactKey = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, List<SpawnAreaComponentSnapshot>> SpawnAreaSnapshotsByName = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, List<CreatureSpawnerComponentSnapshot>> CreatureSpawnerSnapshotsByName = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly List<SpawnerConfigurationEntry> ActiveEntries = new();
-    private static readonly Dictionary<string, List<SpawnerConfigurationEntry>> ActiveEntriesByPrefab = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> ConfiguredSpawnAreaPrefabs = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> ConfiguredCreatureSpawnerPrefabs = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> RuntimeConfiguredSpawnAreaPrefabs = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> RuntimeConfiguredCreatureSpawnerPrefabs = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly HashSet<string> InvalidEntryWarnings = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, SpawnAreaComponentCatalog> SpawnAreaCatalogsByExactKey = new(StringComparer.OrdinalIgnoreCase);
-    private static readonly Dictionary<string, CreatureSpawnerComponentCatalog> CreatureSpawnerCatalogsByExactKey = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly SpawnerConfigurationRuntimeState RuntimeState = new();
+    private static List<SpawnerConfigurationEntry> ActiveEntries => RuntimeState.ActiveEntries;
+    private static Dictionary<string, List<SpawnerConfigurationEntry>> ActiveEntriesByPrefab => RuntimeState.ActiveEntriesByPrefab;
+    private static HashSet<string> ConfiguredSpawnAreaPrefabs => RuntimeState.ConfiguredSpawnAreaPrefabs;
+    private static HashSet<string> ConfiguredCreatureSpawnerPrefabs => RuntimeState.ConfiguredCreatureSpawnerPrefabs;
+    private static HashSet<string> RuntimeConfiguredSpawnAreaPrefabs => RuntimeState.RuntimeConfiguredSpawnAreaPrefabs;
+    private static HashSet<string> RuntimeConfiguredCreatureSpawnerPrefabs => RuntimeState.RuntimeConfiguredCreatureSpawnerPrefabs;
+    private static readonly InvalidEntryDiagnostics InvalidEntryWarnings = new();
+    private static readonly SpawnerLiveRuntimeState LiveRuntimeState = new();
+    private static Dictionary<string, SpawnAreaComponentCatalog> SpawnAreaCatalogsByExactKey => LiveRuntimeState.SpawnAreaCatalogsByExactKey;
+    private static Dictionary<string, CreatureSpawnerComponentCatalog> CreatureSpawnerCatalogsByExactKey => LiveRuntimeState.CreatureSpawnerCatalogsByExactKey;
     private static readonly HashSet<string> CapturedRootPrefabNames = new(StringComparer.OrdinalIgnoreCase);
     private static readonly FieldInfo? CreatureSpawnerCheckedLocationField = AccessTools.Field(typeof(CreatureSpawner), "m_checkedLocation");
     private static readonly FieldInfo? CreatureSpawnerLocationField = AccessTools.Field(typeof(CreatureSpawner), "m_location");
     private static readonly FieldInfo? CreatureSpawnerSpawnGroupField = AccessTools.Field(typeof(CreatureSpawner), "m_spawnGroup");
 
-    private static List<SpawnerConfigurationEntry> _configuration = new();
-    private static string _configurationSignature = "";
+    private static List<SpawnerConfigurationEntry> _configuration
+    {
+        get => RuntimeState.Configuration;
+        set => RuntimeState.Configuration = value;
+    }
+
+    private static string _configurationSignature
+    {
+        get => RuntimeState.ConfigurationSignature;
+        set => RuntimeState.ConfigurationSignature = value;
+    }
+
     private static DomainLoadState LoadState => ConfigurationRuntime.LoadState;
     private static bool _lastAppliedSynchronizedPayloadReady;
     private static bool _initialized;
@@ -396,13 +388,13 @@ internal static partial class SpawnerManager
     private static int? _lastProcessedGameDataSignature;
     private static SpawnerRuntimeConfigurationSnapshot _runtimeConfigurationSnapshot = SpawnerRuntimeConfigurationSnapshot.Empty;
     private static bool _referenceArtifactsAutoRefreshConsumed;
-    private static readonly Dictionary<string, string> CurrentEntrySignaturesByPrefab = new(StringComparer.OrdinalIgnoreCase);
+    private static Dictionary<string, string> CurrentEntrySignaturesByPrefab => RuntimeState.CurrentEntrySignaturesByPrefab;
     private static readonly Dictionary<string, string> _lastAppliedEntrySignaturesByPrefab = new(StringComparer.OrdinalIgnoreCase);
     private static string _lastAppliedConfigurationSignature = "";
     private static int? _lastAppliedGameDataSignature;
     private static bool? _lastAppliedDomainEnabled;
     private static int _reconcileQueueEpoch;
-    private static int _trackedSpawnerEligibilityEpoch;
+    private static int _trackedSpawnerEligibilityEpoch => LiveRuntimeState.TrackedSpawnerEligibilityEpoch;
     private const string MockPrefabPrefix = "JVLmock_";
     // Distinguishes an authoritative empty payload from the pre-sync waiting state on clients.
     private static bool _synchronizedPayloadReady;
@@ -615,51 +607,6 @@ internal static partial class SpawnerManager
         }
     }
 
-    internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
-    {
-        lock (Sync)
-        {
-            path = FullScaffoldConfigurationPath;
-            error = "";
-
-            if (!IsGameDataReady() && !_snapshotsCaptured)
-            {
-                error = "Spawner game data is not ready yet.";
-                return false;
-            }
-
-            CaptureSnapshotsIfNeeded();
-            Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-            File.WriteAllText(path, BuildFullScaffoldConfigurationTemplate());
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Wrote spawner full scaffold configuration to {path}.");
-            return true;
-        }
-    }
-
-    internal static void RefreshReferenceConfigurationFile()
-    {
-        lock (Sync)
-        {
-            if (!IsGameDataReady())
-            {
-                return;
-            }
-
-            CaptureSnapshotsIfNeeded();
-            string referenceContent = BuildReferenceConfigurationTemplate();
-            string locationReferenceContent = BuildLocationReferenceConfigurationTemplate();
-            WriteReferenceConfigurationFile(
-                referenceContent,
-                locationReferenceContent,
-                $"Updated spawner reference configurations at {ReferenceConfigurationPath} and {LocationReferenceConfigurationPath}.",
-                writePrimaryReference: true,
-                writeLocationReference: true);
-            ReferenceRefreshSupport.RecordAutoUpdateState(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, ComputeReferenceSourceSignature(), logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-            ReferenceRefreshSupport.RecordAutoUpdateState(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, ComputeReferenceSourceSignature(), logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-            ResetReferenceSnapshots();
-        }
-    }
-
     private static void EnsureReferenceArtifactsUpToDate()
     {
         if (!IsGameDataReady())
@@ -678,37 +625,16 @@ internal static partial class SpawnerManager
     private static bool EnsureSpawnerReferenceConfigurationUpToDate()
     {
         string currentSourceSignature = ComputeReferenceSourceSignature();
-        bool referenceFileExists = File.Exists(ReferenceConfigurationPath);
-        bool locationReferenceFileExists = File.Exists(LocationReferenceConfigurationPath);
-        bool shouldCreateMissingFiles = PluginSettingsFacade.ShouldAutoCreateMissingReferenceFiles();
-        bool shouldCreatePrimary = !referenceFileExists && shouldCreateMissingFiles;
-        bool shouldCreateLocation = !locationReferenceFileExists && shouldCreateMissingFiles;
-        bool shouldRewritePrimary = false;
-        bool shouldRewriteLocation = false;
-
-        if (PluginSettingsFacade.ShouldAutoUpdateReferenceFiles())
-        {
-            if (referenceFileExists)
-            {
-                shouldRewritePrimary = !ReferenceRefreshSupport.ShouldSkipAutoUpdate(
-                    ReferenceAutoUpdateStateKey,
-                    ReferenceConfigurationPath,
-                    currentSourceSignature,
-                    ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-            }
-
-            if (locationReferenceFileExists)
-            {
-                shouldRewriteLocation = !ReferenceRefreshSupport.ShouldSkipAutoUpdate(
-                    LocationReferenceAutoUpdateStateKey,
-                    LocationReferenceConfigurationPath,
-                    currentSourceSignature,
-                    ReferenceRefreshSupport.CurrentReferenceLogicVersion);
-            }
-        }
-
-        bool writePrimaryReference = shouldCreatePrimary || shouldRewritePrimary;
-        bool writeLocationReference = shouldCreateLocation || shouldRewriteLocation;
+        bool writePrimaryReference = ReferenceArtifactLifecycle.TryPlanUpdate(
+            ReferenceAutoUpdateStateKey,
+            ReferenceConfigurationPath,
+            currentSourceSignature,
+            out ReferenceArtifactUpdateKind primaryUpdateKind);
+        bool writeLocationReference = ReferenceArtifactLifecycle.TryPlanUpdate(
+            LocationReferenceAutoUpdateStateKey,
+            LocationReferenceConfigurationPath,
+            currentSourceSignature,
+            out ReferenceArtifactUpdateKind locationUpdateKind);
         if (!writePrimaryReference && !writeLocationReference)
         {
             return false;
@@ -717,7 +643,8 @@ internal static partial class SpawnerManager
         CaptureSnapshotsIfNeeded();
         string? referenceContent = writePrimaryReference ? BuildReferenceConfigurationTemplate() : null;
         string? locationReferenceContent = writeLocationReference ? BuildLocationReferenceConfigurationTemplate() : null;
-        bool updatedExisting = shouldRewritePrimary || shouldRewriteLocation;
+        bool updatedExisting = primaryUpdateKind == ReferenceArtifactUpdateKind.Updated ||
+                               locationUpdateKind == ReferenceArtifactUpdateKind.Updated;
         string action = updatedExisting ? "Updated" : "Created";
         string targetDescription = writePrimaryReference && writeLocationReference
             ? $"spawner reference configurations at {ReferenceConfigurationPath} and {LocationReferenceConfigurationPath}"
@@ -733,12 +660,12 @@ internal static partial class SpawnerManager
             writeLocationReference);
         if (writePrimaryReference)
         {
-            ReferenceRefreshSupport.RecordAutoUpdateState(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature, logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
+            ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature);
         }
 
         if (writeLocationReference)
         {
-            ReferenceRefreshSupport.RecordAutoUpdateState(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, currentSourceSignature, logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
+            ReferenceArtifactLifecycle.RecordUpdate(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, currentSourceSignature);
         }
 
         return true;
@@ -1048,9 +975,10 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        Directory.CreateDirectory(DropNSpawnPlugin.YamlConfigDirectoryPath);
-        File.WriteAllText(PrimaryOverrideConfigurationPathYml, BuildPrimaryOverrideConfigurationTemplate());
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Created spawner override configuration at {PrimaryOverrideConfigurationPathYml}.");
+        GeneratedArtifactWriter.WriteTextAlways(
+            PrimaryOverrideConfigurationPathYml,
+            BuildPrimaryOverrideConfigurationTemplate(),
+            $"Created spawner override configuration at {PrimaryOverrideConfigurationPathYml}.");
         return true;
     }
 
@@ -1090,20 +1018,13 @@ internal static partial class SpawnerManager
         ClearQueuedReconcileState();
         Volatile.Write(ref _synchronizedPayloadReady, false);
         Volatile.Write(ref _runtimeConfigurationSnapshot, SpawnerRuntimeConfigurationSnapshot.Empty);
-        ActiveEntries.Clear();
-        ActiveEntriesByPrefab.Clear();
-        ConfiguredSpawnAreaPrefabs.Clear();
-        ConfiguredCreatureSpawnerPrefabs.Clear();
-        RuntimeConfiguredSpawnAreaPrefabs.Clear();
-        RuntimeConfiguredCreatureSpawnerPrefabs.Clear();
+        RuntimeState.Reset();
         InvalidEntryWarnings.Clear();
         LiveReconcilerState.ClearMissingComponentWarnings();
         SelectorCacheStore.Clear();
         RuntimeStateStore.Clear();
         LiveRegistryStore.ClearRuntimeView();
         ProvenanceRegistry.Clear(clearCurrentContexts: false);
-        _configuration = new List<SpawnerConfigurationEntry>();
-        CurrentEntrySignaturesByPrefab.Clear();
         InvalidateTrackedSpawnerEligibility();
     }
 
@@ -1197,7 +1118,7 @@ internal static partial class SpawnerManager
         List<SpawnerConfigurationEntry> configuration,
         string sourceName)
     {
-        using InvalidEntryWarningSuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(sourceName);
+        using InvalidEntryDiagnostics.SuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(sourceName);
         SyncedSpawnerConfigurationState state = new();
         foreach (SpawnerConfigurationEntry entry in CloneAndNormalizeConfigurationEntries(configuration, sourceName))
         {
@@ -1241,14 +1162,17 @@ internal static partial class SpawnerManager
                 if (entry.SpawnArea != null && HasSpawnAreaOverride(entry.SpawnArea))
                 {
                     prefabPlan.SpawnAreaEntries.Add(runtimeEntry);
-                    if (string.IsNullOrWhiteSpace(runtimeEntry.Location))
+                    if (!HasLocationSelector(runtimeEntry))
                     {
                         prefabPlan.HasUnscopedSpawnAreaEntries = true;
                     }
                     else
                     {
-                        prefabPlan.SpawnAreaSelectorLocationKeys.Add(
-                            NormalizeSelectorLocationCacheKey(runtimeEntry.Location));
+                        foreach (string location in runtimeEntry.Locations!)
+                        {
+                            prefabPlan.SpawnAreaSelectorLocationKeys.Add(
+                                NormalizeSelectorLocationCacheKey(location));
+                        }
                     }
 
                     if (runtimeEntry.RuntimeReconcile)
@@ -1260,14 +1184,17 @@ internal static partial class SpawnerManager
                 if (entry.CreatureSpawner != null && HasCreatureSpawnerOverride(entry.CreatureSpawner))
                 {
                     prefabPlan.CreatureSpawnerEntries.Add(runtimeEntry);
-                    if (string.IsNullOrWhiteSpace(runtimeEntry.Location))
+                    if (!HasLocationSelector(runtimeEntry))
                     {
                         prefabPlan.HasUnscopedCreatureSpawnerEntries = true;
                     }
                     else
                     {
-                        prefabPlan.CreatureSpawnerSelectorLocationKeys.Add(
-                            NormalizeSelectorLocationCacheKey(runtimeEntry.Location));
+                        foreach (string location in runtimeEntry.Locations!)
+                        {
+                            prefabPlan.CreatureSpawnerSelectorLocationKeys.Add(
+                                NormalizeSelectorLocationCacheKey(location));
+                        }
                     }
 
                     if (runtimeEntry.RuntimeReconcile)
@@ -1293,7 +1220,7 @@ internal static partial class SpawnerManager
         {
             Prefab = entry.Prefab ?? "",
             RuleId = entry.RuleId ?? "",
-            Location = entry.Location ?? "",
+            Locations = CloneStringList(entry.Locations),
             Conditions = entry.Conditions,
             RuntimeReconcile = ShouldRuntimeReconcile(entry),
             SpawnArea = entry.SpawnArea,
@@ -1412,119 +1339,9 @@ internal static partial class SpawnerManager
         }
     }
 
-    private static void LoadLocalConfiguration(List<ConfigurationLoadSupport.LocalYamlDocument> documents)
-    {
-        if (documents.Count == 0)
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo("Loaded 0 spawner configuration(s) from 0 override file(s).");
-            return;
-        }
-
-        int loadedFileCount = 0;
-        int parsedEntryCount = 0;
-        List<string> warnings = new();
-        foreach (ConfigurationLoadSupport.LocalYamlDocument document in documents)
-        {
-            if (document.ReadError != null)
-            {
-                DropNSpawnPlugin.DropNSpawnLogger.LogError($"Failed to read {document.Path}. {document.ReadError}");
-                continue;
-            }
-
-            try
-            {
-                string yaml = document.Yaml ?? "";
-                ParsedSpawnerConfigurationDocument parsedDocument = ParseConfiguration(yaml, document.Path);
-                warnings.AddRange(parsedDocument.Warnings);
-                List<SpawnerConfigurationEntry> configuration =
-                    PrepareLocalConfigurationEntries(parsedDocument.Configuration, document.Path, warnings);
-                parsedEntryCount += parsedDocument.Configuration.Count;
-                MergeConfiguration(configuration);
-                loadedFileCount++;
-            }
-            catch (Exception ex)
-            {
-                DropNSpawnPlugin.DropNSpawnLogger.LogError(
-                    $"Failed to parse {document.Path}{FormatYamlExceptionLocation(ex)}. Spawner override YAML must start with a root list like '- prefab: ...'. {ex}");
-            }
-        }
-
-        if (warnings.Count > 0)
-        {
-            LogPartiallyAcceptedLocalConfiguration(parsedEntryCount, _configuration.Count, warnings);
-        }
-
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Loaded {ActiveEntries.Count} spawner configuration(s) from {loadedFileCount} override file(s).");
-    }
-
-    private static void MergeConfiguration(List<SpawnerConfigurationEntry> configuration)
-    {
-        foreach (SpawnerConfigurationEntry entry in configuration)
-        {
-            if (string.IsNullOrWhiteSpace(entry.Prefab))
-            {
-                continue;
-            }
-
-            RemoveEffectiveConfigurationEntry(entry.Prefab, entry.RuleId);
-            if (!entry.Enabled)
-            {
-                continue;
-            }
-
-            _configuration.Add(entry);
-            ActiveEntries.Add(entry);
-
-            if (!ActiveEntriesByPrefab.TryGetValue(entry.Prefab, out List<SpawnerConfigurationEntry>? entries))
-            {
-                entries = new List<SpawnerConfigurationEntry>();
-                ActiveEntriesByPrefab[entry.Prefab] = entries;
-            }
-
-            entries.Add(entry);
-            if (entry.SpawnArea != null && HasSpawnAreaOverride(entry.SpawnArea))
-            {
-                ConfiguredSpawnAreaPrefabs.Add(entry.Prefab);
-                if (ShouldRuntimeReconcile(entry))
-                {
-                    RuntimeConfiguredSpawnAreaPrefabs.Add(entry.Prefab);
-                }
-            }
-
-            if (entry.CreatureSpawner != null && HasCreatureSpawnerOverride(entry.CreatureSpawner))
-            {
-                ConfiguredCreatureSpawnerPrefabs.Add(entry.Prefab);
-                if (ShouldRuntimeReconcile(entry))
-                {
-                    RuntimeConfiguredCreatureSpawnerPrefabs.Add(entry.Prefab);
-                }
-            }
-        }
-
-        RefreshConfiguredPrefabSets(
-            ActiveEntries,
-            ConfiguredSpawnAreaPrefabs,
-            ConfiguredCreatureSpawnerPrefabs,
-            RuntimeConfiguredSpawnAreaPrefabs,
-            RuntimeConfiguredCreatureSpawnerPrefabs);
-        InvalidateTrackedSpawnerEligibility();
-    }
-
     private static void InvalidateTrackedSpawnerEligibility()
     {
-        unchecked
-        {
-            _trackedSpawnerEligibilityEpoch++;
-            if (_trackedSpawnerEligibilityEpoch == int.MinValue)
-            {
-                _trackedSpawnerEligibilityEpoch = 0;
-            }
-        }
-    }
-
-    private static void RemoveEffectiveConfigurationEntry(string prefabName, string ruleId)
-    {
-        RemoveEffectiveConfigurationEntry(_configuration, ActiveEntries, ActiveEntriesByPrefab, prefabName, ruleId);
+        LiveRuntimeState.InvalidateTrackedSpawnerEligibility();
     }
 
     private static void RemoveEffectiveConfigurationEntry(
@@ -1726,7 +1543,7 @@ internal static partial class SpawnerManager
     private static void NormalizeEntry(SpawnerConfigurationEntry entry)
     {
         entry.Prefab = (entry.Prefab ?? "").Trim();
-        entry.Location = NormalizeOptionalString(entry.Location);
+        entry.Locations = NormalizeOptionalSelectorLocations(entry.Locations);
         NormalizeSpawnerConditions(entry.Conditions, $"{entry.Prefab}.conditions", allowCreatureSpawnerRuntimeOverlapKeys: true);
 
         if (entry.SpawnArea != null)
@@ -1785,7 +1602,7 @@ internal static partial class SpawnerManager
         {
             Prefab = entry.Prefab,
             Enabled = true,
-            Location = entry.Location,
+            Locations = CloneStringList(entry.Locations),
             Conditions = entry.Conditions,
             SpawnArea = entry.SpawnArea,
             CreatureSpawner = entry.CreatureSpawner
@@ -1831,6 +1648,67 @@ internal static partial class SpawnerManager
         return normalized.Count == 0 ? null : normalized;
     }
 
+    private static List<string>? NormalizeOptionalSelectorLocations(List<string>? values)
+    {
+        if (values == null)
+        {
+            return null;
+        }
+
+        SortedSet<string> normalized = new(StringComparer.OrdinalIgnoreCase);
+        foreach (string value in values)
+        {
+            string location = (value ?? "").Trim();
+            if (location.Length > 0)
+            {
+                normalized.Add(location);
+            }
+        }
+
+        return normalized.Count == 0 ? null : normalized.ToList();
+    }
+
+    private static List<string>? CloneStringList(List<string>? values)
+    {
+        return values == null ? null : new List<string>(values);
+    }
+
+    private static bool HasLocationSelector(SpawnerConfigurationEntry? entry)
+    {
+        return HasLocationSelector(entry?.Locations);
+    }
+
+    private static bool HasLocationSelector(SpawnerRuntimeEntry? entry)
+    {
+        return HasLocationSelector(entry?.Locations);
+    }
+
+    private static bool HasLocationSelector(List<string>? locations)
+    {
+        return locations?.Any(location => !string.IsNullOrWhiteSpace(location)) == true;
+    }
+
+    private static bool MatchesLocationSelector(List<string>? locations, string? resolvedLocationPrefab)
+    {
+        string resolved = (resolvedLocationPrefab ?? "").Trim();
+        return resolved.Length > 0 &&
+               locations?.Any(location => string.Equals(location, resolved, StringComparison.OrdinalIgnoreCase)) == true;
+    }
+
+    private static string FormatLocationSelector(List<string>? locations)
+    {
+        return HasLocationSelector(locations)
+            ? $"locations=[{string.Join(", ", locations!)}]"
+            : "prefab-only";
+    }
+
+    private static string BuildLocationSelectorDiagnosticKey(List<string>? locations)
+    {
+        return HasLocationSelector(locations)
+            ? string.Join(",", locations!)
+            : "";
+    }
+
     private static Dictionary<string, string>? NormalizeOptionalStringDictionary(Dictionary<string, string>? values)
     {
         if (values == null)
@@ -1855,108 +1733,23 @@ internal static partial class SpawnerManager
 
     private static void NormalizeSpawnerConditions(ConditionsDefinition? conditions, string context, bool allowCreatureSpawnerRuntimeOverlapKeys)
     {
-        if (conditions == null)
-        {
-            return;
-        }
-
-        if (conditions.Locations?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.locations, but spawner entries use the top-level location selector. The key was ignored.");
-            conditions.Locations = null;
-        }
-
-        if (conditions.Level?.HasValues() == true || conditions.MinLevel.HasValue)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.level, but level filters are not supported for spawner target conditions. The key was ignored.");
-            conditions.Level = null;
-            conditions.MinLevel = null;
-        }
-
-        if (conditions.MaxLevel.HasValue)
-        {
-            conditions.MaxLevel = null;
-        }
-
-        if (conditions.States?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.states, but state filters are only valid for character-drop conditions. The key was ignored.");
-            conditions.States = null;
-        }
-
-        if (conditions.Factions?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.factions, but faction filters are only valid for character-drop conditions. The key was ignored.");
-            conditions.Factions = null;
-        }
-
-        if (allowCreatureSpawnerRuntimeOverlapKeys)
-        {
-            return;
-        }
-
-        if (conditions.TimeOfDay != null)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.timeOfDay, but creatureSpawner uses creatureSpawner.timeOfDay for runtime time-of-day gating. The key was ignored.");
-            conditions.TimeOfDay = null;
-        }
-
-        if (conditions.InsidePlayerBase.HasValue)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.insidePlayerBase, but creatureSpawner uses allowInsidePlayerBase for runtime player-base gating. The key was ignored.");
-            conditions.InsidePlayerBase = null;
-        }
-
-        if (conditions.RequiredGlobalKeys?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.requiredGlobalKeys, but creatureSpawner uses requiredGlobalKey for runtime global-key gating. The key was ignored.");
-            conditions.RequiredGlobalKeys = null;
-        }
-
-        if (conditions.ForbiddenGlobalKeys?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.forbiddenGlobalKeys, but creatureSpawner uses blockingGlobalKey for runtime global-key blocking. The key was ignored.");
-            conditions.ForbiddenGlobalKeys = null;
-        }
+        ConditionDialectSupport.StripUnsupportedSpawnerTargetFields(
+            conditions,
+            context,
+            allowCreatureSpawnerRuntimeOverlapKeys,
+            WarnInvalidEntry);
     }
 
     private static void NormalizeCreatureSpawnerEntryConditions(ConditionsDefinition? conditions, string context)
     {
-        if (conditions == null)
-        {
-            return;
-        }
-
-        if (conditions.TimeOfDay != null)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.timeOfDay, but creatureSpawner uses creatureSpawner.timeOfDay for runtime time-of-day gating. The key was ignored.");
-            conditions.TimeOfDay = null;
-        }
-
-        if (conditions.InsidePlayerBase.HasValue)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.insidePlayerBase, but creatureSpawner does not support inside-only top-level player-base gating. Use allowInsidePlayerBase for the runtime permission flag instead. The key was ignored.");
-            conditions.InsidePlayerBase = null;
-        }
-
-        if (conditions.RequiredGlobalKeys?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.requiredGlobalKeys, but creatureSpawner uses requiredGlobalKey for runtime global-key gating. The key was ignored.");
-            conditions.RequiredGlobalKeys = null;
-        }
-
-        if (conditions.ForbiddenGlobalKeys?.Count > 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' uses conditions.forbiddenGlobalKeys, but creatureSpawner uses blockingGlobalKey for runtime global-key blocking. The key was ignored.");
-            conditions.ForbiddenGlobalKeys = null;
-        }
+        ConditionDialectSupport.StripUnsupportedCreatureSpawnerEntryFields(conditions, context, WarnInvalidEntry);
     }
 
     private static bool HasDuplicateSelector(List<SpawnerConfigurationEntry> entries, SpawnerConfigurationEntry candidate)
     {
         foreach (SpawnerConfigurationEntry existing in entries)
         {
-            if (!string.Equals(existing.Location, candidate.Location, StringComparison.OrdinalIgnoreCase))
+            if (!LocationSelectorsOverlap(existing.Locations, candidate.Locations))
             {
                 continue;
             }
@@ -1980,6 +1773,18 @@ internal static partial class SpawnerManager
         }
 
         return false;
+    }
+
+    private static bool LocationSelectorsOverlap(List<string>? left, List<string>? right)
+    {
+        bool leftHasSelector = HasLocationSelector(left);
+        bool rightHasSelector = HasLocationSelector(right);
+        if (!leftHasSelector || !rightHasSelector)
+        {
+            return leftHasSelector == rightHasSelector;
+        }
+
+        return left!.Any(location => right!.Contains(location, StringComparer.OrdinalIgnoreCase));
     }
 
     private static IEnumerable<string> EnumerateOverrideConfigurationPaths()
@@ -2030,8 +1835,7 @@ internal static partial class SpawnerManager
         ClearQueuedReconcileState();
         LiveReconcilerState.Clear();
         LiveRegistryStore.ClearRuntimeView();
-        SpawnAreaCatalogsByExactKey.Clear();
-        CreatureSpawnerCatalogsByExactKey.Clear();
+        LiveRuntimeState.ClearComponentCatalogs();
         SelectorCacheStore.Clear();
         RuntimeStateStore.Clear();
         ProvenanceRegistry.Clear(clearCurrentContexts: true);
@@ -3498,9 +3302,7 @@ internal static partial class SpawnerManager
             return "(null)";
         }
 
-        string selector = entry.Location != null
-            ? $"location={entry.Location}"
-            : "prefab-only";
+        string selector = FormatLocationSelector(entry.Locations);
         if (entry.CreatureSpawner != null)
         {
             return $"{selector}, creatureSpawner.creature={entry.CreatureSpawner.Creature ?? "(null)"}";
@@ -3521,9 +3323,7 @@ internal static partial class SpawnerManager
             return "(null)";
         }
 
-        string selector = entry.Location.Length > 0
-            ? $"location={entry.Location}"
-            : "prefab-only";
+        string selector = FormatLocationSelector(entry.Locations);
         if (entry.CreatureSpawner != null)
         {
             return $"{selector}, creatureSpawner.creature={entry.CreatureSpawner.Creature ?? "(null)"}";
@@ -3810,14 +3610,14 @@ internal static partial class SpawnerManager
             DescribeInstance(gameObject),
             entry.RuleId,
             reason,
-            entry.Location ?? "",
+            BuildLocationSelectorDiagnosticKey(entry.Locations),
             resolvedLocation ?? "");
         if (!SelectorCacheStore.TryAddLocationSelectorDiagnostic(key))
         {
             return;
         }
 
-        string selectorDescription = $"location='{entry.Location}'";
+        string selectorDescription = FormatLocationSelector(entry.Locations);
         string resolvedDescription = resolvedLocation != null
             ? $"resolved location='{resolvedLocation}'"
             : "resolved location unavailable";
@@ -3840,14 +3640,14 @@ internal static partial class SpawnerManager
             DescribeInstance(gameObject),
             entry.RuleId,
             reason,
-            entry.Location ?? "",
+            BuildLocationSelectorDiagnosticKey(entry.Locations),
             resolvedLocation ?? "");
         if (!SelectorCacheStore.TryAddLocationSelectorDiagnostic(key))
         {
             return;
         }
 
-        string selectorDescription = $"location='{entry.Location}'";
+        string selectorDescription = FormatLocationSelector(entry.Locations);
         string resolvedDescription = resolvedLocation != null
             ? $"resolved location='{resolvedLocation}'"
             : "resolved location unavailable";
@@ -3867,28 +3667,12 @@ internal static partial class SpawnerManager
 
     private static void WarnInvalidEntry(string message)
     {
-        if (_invalidEntryWarningSuppressionDepth > 0 || ShouldSuppressServerSourcedInvalidEntryWarning(message))
-        {
-            return;
-        }
-
-        if (InvalidEntryWarnings.Add(message))
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogWarning(message);
-        }
+        InvalidEntryWarnings.Warn(message);
     }
 
-    private static InvalidEntryWarningSuppressionScope BeginInvalidEntryWarningSuppressionForSyncedClientBuild(string sourceName)
+    private static InvalidEntryDiagnostics.SuppressionScope BeginInvalidEntryWarningSuppressionForSyncedClientBuild(string sourceName)
     {
-        return !DropNSpawnPlugin.IsSourceOfTruth && sourceName.StartsWith("ServerSync:", StringComparison.Ordinal)
-            ? new InvalidEntryWarningSuppressionScope(active: true)
-            : default;
-    }
-
-    private static bool ShouldSuppressServerSourcedInvalidEntryWarning(string message)
-    {
-        return !DropNSpawnPlugin.IsSourceOfTruth &&
-               message.IndexOf("ServerSync:", StringComparison.Ordinal) >= 0;
+        return InvalidEntryWarnings.BeginSuppressionForSyncedClientBuild(sourceName);
     }
 
     private static void LogPartiallyAcceptedLocalConfiguration(int totalEntries, int acceptedEntries, IEnumerable<string> warnings)

@@ -149,7 +149,7 @@ internal static partial class SpawnerManager
                 continue;
             }
 
-            int specificity = string.IsNullOrWhiteSpace(entry.Location) ? 0 : 1;
+            int specificity = HasLocationSelector(entry) ? 1 : 0;
             if (specificity < winningSpecificity)
             {
                 continue;
@@ -204,7 +204,7 @@ internal static partial class SpawnerManager
                 continue;
             }
 
-            if (!locationContextEvaluated && !string.IsNullOrWhiteSpace(entry.Location))
+            if (!locationContextEvaluated && HasLocationSelector(entry))
             {
                 hasResolvedLocation = TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab, out resolvedLocationSourceLabel);
                 locationContextEvaluated = true;
@@ -265,7 +265,7 @@ internal static partial class SpawnerManager
                 continue;
             }
 
-            if (!locationContextEvaluated && !string.IsNullOrWhiteSpace(entry.Location))
+            if (!locationContextEvaluated && HasLocationSelector(entry))
             {
                 hasResolvedLocation = TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab, out resolvedLocationSourceLabel);
                 locationContextEvaluated = true;
@@ -320,7 +320,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        bool hasLocationSelector = !string.IsNullOrWhiteSpace(entry.Location);
+        bool hasLocationSelector = HasLocationSelector(entry);
         if (!hasLocationSelector)
         {
             return true;
@@ -332,7 +332,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        if (!string.Equals(entry.Location, resolvedLocationPrefab, StringComparison.OrdinalIgnoreCase))
+        if (!MatchesLocationSelector(entry.Locations, resolvedLocationPrefab))
         {
             LogLocationSelectorDiagnostic(gameObject, entry, $"location mismatch via {sourceLabel}", resolvedLocationPrefab ?? "");
             return false;
@@ -356,7 +356,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        bool hasLocationSelector = !string.IsNullOrWhiteSpace(entry.Location);
+        bool hasLocationSelector = HasLocationSelector(entry);
         if (!hasLocationSelector)
         {
             return true;
@@ -368,7 +368,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        if (!string.Equals(entry.Location, resolvedLocationPrefab, StringComparison.OrdinalIgnoreCase))
+        if (!MatchesLocationSelector(entry.Locations, resolvedLocationPrefab))
         {
             LogLocationSelectorDiagnostic(gameObject, entry, $"location mismatch via {sourceLabel}", resolvedLocationPrefab ?? "");
             return false;

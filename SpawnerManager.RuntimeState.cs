@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace DropNSpawn;
@@ -160,6 +161,57 @@ internal static partial class SpawnerManager
             _runtimeSpawnAreaSignatures.Clear();
             _runtimeCreatureSpawnerSignatures.Clear();
             _runtimeContextSnapshot = null;
+        }
+    }
+
+    private sealed class SpawnerConfigurationRuntimeState
+    {
+        public List<SpawnerConfigurationEntry> Configuration { get; set; } = new();
+        public string ConfigurationSignature { get; set; } = "";
+        public List<SpawnerConfigurationEntry> ActiveEntries { get; } = new();
+        public Dictionary<string, List<SpawnerConfigurationEntry>> ActiveEntriesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> ConfiguredSpawnAreaPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> ConfiguredCreatureSpawnerPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> RuntimeConfiguredSpawnAreaPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> RuntimeConfiguredCreatureSpawnerPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> CurrentEntrySignaturesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
+
+        public void Reset()
+        {
+            Configuration = new List<SpawnerConfigurationEntry>();
+            ConfigurationSignature = "";
+            ActiveEntries.Clear();
+            ActiveEntriesByPrefab.Clear();
+            ConfiguredSpawnAreaPrefabs.Clear();
+            ConfiguredCreatureSpawnerPrefabs.Clear();
+            RuntimeConfiguredSpawnAreaPrefabs.Clear();
+            RuntimeConfiguredCreatureSpawnerPrefabs.Clear();
+            CurrentEntrySignaturesByPrefab.Clear();
+        }
+    }
+
+    private sealed class SpawnerLiveRuntimeState
+    {
+        public Dictionary<string, SpawnAreaComponentCatalog> SpawnAreaCatalogsByExactKey { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, CreatureSpawnerComponentCatalog> CreatureSpawnerCatalogsByExactKey { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public int TrackedSpawnerEligibilityEpoch { get; private set; }
+
+        public void ClearComponentCatalogs()
+        {
+            SpawnAreaCatalogsByExactKey.Clear();
+            CreatureSpawnerCatalogsByExactKey.Clear();
+        }
+
+        public void InvalidateTrackedSpawnerEligibility()
+        {
+            unchecked
+            {
+                TrackedSpawnerEligibilityEpoch++;
+                if (TrackedSpawnerEligibilityEpoch == int.MinValue)
+                {
+                    TrackedSpawnerEligibilityEpoch = 0;
+                }
+            }
         }
     }
 }
