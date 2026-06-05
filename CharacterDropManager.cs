@@ -1525,7 +1525,7 @@ internal static partial class CharacterDropManager
         {
             Prefab = prefab,
             Drops = CloneSnapshotDrops(characterDrop.m_drops),
-            BuiltDrops = CloneDrops(characterDrop.m_drops)
+            BuiltDrops = CloneDrops(characterDrop.m_drops, normalizeNonItemLevelMultiplier: true)
         };
     }
 
@@ -2247,7 +2247,7 @@ internal static partial class CharacterDropManager
                 AmountMax = drop.m_amountMax,
                 Chance = drop.m_chance,
                 OnePerPlayer = drop.m_onePerPlayer,
-                LevelMultiplier = drop.m_levelMultiplier,
+                LevelMultiplier = NormalizeBaselineCharacterDropLevelMultiplier(drop.m_prefab, drop.m_levelMultiplier),
                 DontScale = drop.m_dontScale
             });
         }
@@ -2255,7 +2255,7 @@ internal static partial class CharacterDropManager
         return clone;
     }
 
-    private static List<CharacterDrop.Drop> CloneDrops(List<CharacterDrop.Drop> drops)
+    private static List<CharacterDrop.Drop> CloneDrops(List<CharacterDrop.Drop> drops, bool normalizeNonItemLevelMultiplier = false)
     {
         List<CharacterDrop.Drop> clone = new(drops.Count);
         foreach (CharacterDrop.Drop drop in drops)
@@ -2267,7 +2267,9 @@ internal static partial class CharacterDropManager
                 m_amountMax = drop.m_amountMax,
                 m_chance = drop.m_chance,
                 m_onePerPlayer = drop.m_onePerPlayer,
-                m_levelMultiplier = drop.m_levelMultiplier,
+                m_levelMultiplier = normalizeNonItemLevelMultiplier
+                    ? NormalizeBaselineCharacterDropLevelMultiplier(drop.m_prefab, drop.m_levelMultiplier)
+                    : drop.m_levelMultiplier,
                 m_dontScale = drop.m_dontScale
             });
         }
@@ -2526,6 +2528,11 @@ internal static partial class CharacterDropManager
     private static bool GetDefaultCharacterDropLevelMultiplier(GameObject? dropPrefab)
     {
         return IsItemDropPrefab(dropPrefab);
+    }
+
+    private static bool NormalizeBaselineCharacterDropLevelMultiplier(GameObject? dropPrefab, bool levelMultiplier)
+    {
+        return IsItemDropPrefab(dropPrefab) && levelMultiplier;
     }
 
     private static bool ShouldForceTrophyLevelMultiplier(GameObject? itemPrefab)
