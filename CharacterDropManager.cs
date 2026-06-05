@@ -1343,23 +1343,23 @@ internal static partial class CharacterDropManager
         string itemName = (definition.Item ?? "").Trim();
         if (itemName.Length == 0)
         {
-            WarnInvalidEntry($"Entry '{context}' contains a character drop without an item name.");
+            WarnInvalidEntry($"Entry '{context}' contains a character drop without a drop prefab name.");
             return false;
         }
 
-        GameObject? itemPrefab = ResolveItemPrefab(itemName, context);
-        if (itemPrefab == null)
+        GameObject? dropPrefab = ResolveDropPrefab(itemName, context);
+        if (dropPrefab == null)
         {
             return false;
         }
 
         int amountMin = Math.Max(1, definition.AmountMin ?? 1);
         int amountMax = Math.Max(amountMin, definition.AmountMax ?? definition.AmountMin ?? 1);
-        bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, itemPrefab);
+        bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab);
         compiledDefinition = new CompiledCharacterDropDefinition
         {
             Fingerprint = BuildDropRowFingerprint(definition, levelMultiplier),
-            Prefab = itemPrefab,
+            Prefab = dropPrefab,
             AmountMin = amountMin,
             AmountMax = amountMax,
             Chance = Mathf.Max(0f, definition.Chance ?? 1f),
@@ -1819,10 +1819,15 @@ internal static partial class CharacterDropManager
             matchedCustomEntry = true;
             foreach (CharacterDropEntryDefinition definition in entry.CharacterDrop?.Drops ?? Enumerable.Empty<CharacterDropEntryDefinition>())
             {
-                GameObject? itemPrefab = ResolveItemPrefab((definition.Item ?? "").Trim(), BuildCompiledDropContext(entry));
+                GameObject? dropPrefab = ResolveDropPrefab((definition.Item ?? "").Trim(), BuildCompiledDropContext(entry));
+                if (dropPrefab == null)
+                {
+                    continue;
+                }
+
                 string fingerprint = BuildDropRowFingerprint(
                     definition,
-                    GetEffectiveCharacterDropLevelMultiplier(definition, itemPrefab));
+                    GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab));
                 definitionsByFingerprint.TryAdd(fingerprint, definition);
             }
         }
@@ -2314,20 +2319,20 @@ internal static partial class CharacterDropManager
             string itemName = (definition.Item ?? "").Trim();
             if (itemName.Length == 0)
             {
-                WarnInvalidEntry($"Entry '{context}' contains a character drop without an item name.");
+                WarnInvalidEntry($"Entry '{context}' contains a character drop without a drop prefab name.");
                 continue;
             }
 
-            GameObject? itemPrefab = ResolveItemPrefab(itemName, context);
-            if (itemPrefab == null)
+            GameObject? dropPrefab = ResolveDropPrefab(itemName, context);
+            if (dropPrefab == null)
             {
                 continue;
             }
 
-            bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, itemPrefab);
+            bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab);
             drops.Add(new CharacterDrop.Drop
             {
-                m_prefab = itemPrefab,
+                m_prefab = dropPrefab,
                 m_amountMin = Math.Max(1, definition.AmountMin ?? 1),
                 m_amountMax = Math.Max(Math.Max(1, definition.AmountMin ?? 1), definition.AmountMax ?? definition.AmountMin ?? 1),
                 m_chance = Mathf.Max(0f, definition.Chance ?? 1f),
@@ -2351,18 +2356,18 @@ internal static partial class CharacterDropManager
             string itemName = (definition.Item ?? "").Trim();
             if (itemName.Length == 0)
             {
-                WarnInvalidEntry($"Entry '{context}' contains a character drop without an item name.");
+                WarnInvalidEntry($"Entry '{context}' contains a character drop without a drop prefab name.");
                 continue;
             }
 
-            GameObject? itemPrefab = ResolveItemPrefab(itemName, context);
-            if (itemPrefab == null)
+            GameObject? dropPrefab = ResolveDropPrefab(itemName, context);
+            if (dropPrefab == null)
             {
                 continue;
             }
 
             float chance = Mathf.Max(0f, definition.Chance ?? 1f);
-            bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, itemPrefab);
+            bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab);
             if (levelMultiplier)
             {
                 chance *= levelFactor;
@@ -2377,7 +2382,7 @@ internal static partial class CharacterDropManager
             int amountMax = Math.Max(amountMin, definition.AmountMax ?? definition.AmountMin ?? 1);
             int amount = definition.DontScale ?? false
                 ? UnityEngine.Random.Range(amountMin, amountMax)
-                : Game.instance.ScaleDrops(itemPrefab, amountMin, amountMax);
+                : RollConfiguredDropAmount(dropPrefab, amountMin, amountMax);
 
             if (levelMultiplier)
             {
@@ -2402,7 +2407,7 @@ internal static partial class CharacterDropManager
 
             drops.Add(new ResolvedConfiguredDrop
             {
-                Prefab = itemPrefab,
+                Prefab = dropPrefab,
                 Amount = amount,
                 DropInStack = definition.DropInStack == true
             });
@@ -2432,7 +2437,7 @@ internal static partial class CharacterDropManager
 
             int amount = definition.DontScale
                 ? UnityEngine.Random.Range(definition.AmountMin, definition.AmountMax)
-                : Game.instance.ScaleDrops(definition.Prefab, definition.AmountMin, definition.AmountMax);
+                : RollConfiguredDropAmount(definition.Prefab, definition.AmountMin, definition.AmountMax);
 
             if (definition.LevelMultiplier)
             {
@@ -2505,12 +2510,22 @@ internal static partial class CharacterDropManager
         }
     }
 
-    private static bool GetEffectiveCharacterDropLevelMultiplier(CharacterDropEntryDefinition definition, GameObject? itemPrefab)
+    private static bool GetEffectiveCharacterDropLevelMultiplier(CharacterDropEntryDefinition definition, GameObject? dropPrefab)
     {
-        bool configuredLevelMultiplier = definition.LevelMultiplier ?? true;
-        return ShouldForceTrophyLevelMultiplier(itemPrefab)
+        bool configuredLevelMultiplier = definition.LevelMultiplier ?? GetDefaultCharacterDropLevelMultiplier(dropPrefab);
+        return ShouldForceTrophyLevelMultiplier(dropPrefab)
             ? true
             : configuredLevelMultiplier;
+    }
+
+    private static bool GetConfiguredCharacterDropLevelMultiplierForOutput(CharacterDropEntryDefinition definition)
+    {
+        return definition.LevelMultiplier ?? GetDefaultCharacterDropLevelMultiplier(ResolveKnownPrefab(definition.Item));
+    }
+
+    private static bool GetDefaultCharacterDropLevelMultiplier(GameObject? dropPrefab)
+    {
+        return IsItemDropPrefab(dropPrefab);
     }
 
     private static bool ShouldForceTrophyLevelMultiplier(GameObject? itemPrefab)
@@ -2523,9 +2538,24 @@ internal static partial class CharacterDropManager
 
     private static bool IsTrophyItemPrefab(GameObject itemPrefab)
     {
-        return itemPrefab.TryGetComponent(out ItemDrop itemDrop) &&
-               itemDrop.m_itemData?.m_shared != null &&
-               itemDrop.m_itemData.m_shared.m_itemType == ItemDrop.ItemData.ItemType.Trophy;
+        if (!itemPrefab.TryGetComponent(out ItemDrop itemDrop))
+        {
+            return false;
+        }
+
+        ItemDrop.ItemData.SharedData? sharedData = itemDrop.m_itemData?.m_shared;
+        return sharedData != null && sharedData.m_itemType == ItemDrop.ItemData.ItemType.Trophy;
+    }
+
+    private static bool IsItemDropPrefab(GameObject? prefab)
+    {
+        return IsItemDropPrefab(prefab, out _);
+    }
+
+    private static bool IsItemDropPrefab(GameObject? prefab, out ItemDrop? itemDrop)
+    {
+        itemDrop = null;
+        return prefab != null && prefab.TryGetComponent(out itemDrop);
     }
 
     private static bool ShouldDropInStack(GameObject prefab, int amount, bool explicitDropInStack)
@@ -2685,7 +2715,7 @@ internal static partial class CharacterDropManager
                 Amount = RangeFormatting.FromReference(entry.Drop.AmountMin, entry.Drop.AmountMax, 1, 1),
                 Chance = IsReferenceDefault(entry.Drop.Chance, 1f) ? null : entry.Drop.Chance,
                 OnePerPlayer = entry.Drop.OnePerPlayer ? true : null,
-                LevelMultiplier = entry.Drop.LevelMultiplier ? null : false,
+                LevelMultiplier = GetReferenceLevelMultiplierOverride(entry.Drop),
                 DontScale = entry.Drop.DontScale ? true : null
             })
             .ToList();
@@ -2709,6 +2739,12 @@ internal static partial class CharacterDropManager
     private static IntRangeDefinition? GetAmountRange(CharacterDropEntryDefinition definition)
     {
         return definition.Amount ?? RangeFormatting.From(definition.AmountMin, definition.AmountMax ?? definition.AmountMin);
+    }
+
+    private static bool? GetReferenceLevelMultiplierOverride(CharacterDropItemSnapshot drop)
+    {
+        bool defaultValue = GetDefaultCharacterDropLevelMultiplier(drop.ItemPrefab);
+        return drop.LevelMultiplier == defaultValue ? null : drop.LevelMultiplier;
     }
 
     private static string? NormalizeReferenceItemName(GameObject? itemPrefab)
@@ -2738,6 +2774,32 @@ internal static partial class CharacterDropManager
         return null;
     }
 
+    private static int RollConfiguredDropAmount(GameObject prefab, int amountMin, int amountMax)
+    {
+        return prefab != null && prefab.TryGetComponent(out ItemDrop _)
+            ? Game.instance.ScaleDrops(prefab, amountMin, amountMax)
+            : UnityEngine.Random.Range(amountMin, amountMax);
+    }
+
+    private static GameObject? ResolveDropPrefab(string prefabName, string context)
+    {
+        string trimmedName = (prefabName ?? "").Trim();
+        if (trimmedName.Length == 0)
+        {
+            WarnInvalidEntry($"Entry '{context}' references an empty drop prefab name.");
+            return null;
+        }
+
+        GameObject? prefab = ResolveKnownPrefab(trimmedName);
+        if (prefab == null)
+        {
+            WarnInvalidEntry($"Entry '{context}' references unknown drop prefab '{trimmedName}'.");
+            return null;
+        }
+
+        return prefab;
+    }
+
     private static GameObject? ResolveItemPrefab(string itemName, string context)
     {
         string trimmedName = (itemName ?? "").Trim();
@@ -2747,7 +2809,7 @@ internal static partial class CharacterDropManager
             return null;
         }
 
-        GameObject? prefab = ObjectDB.instance?.GetItemPrefab(trimmedName) ?? ZNetScene.instance?.GetPrefab(trimmedName);
+        GameObject? prefab = ResolveKnownPrefab(trimmedName);
         if (prefab == null)
         {
             WarnInvalidEntry($"Entry '{context}' references unknown item prefab '{trimmedName}'.");
@@ -2761,6 +2823,14 @@ internal static partial class CharacterDropManager
         }
 
         return prefab;
+    }
+
+    private static GameObject? ResolveKnownPrefab(string prefabName)
+    {
+        string trimmedName = (prefabName ?? "").Trim();
+        return trimmedName.Length == 0
+            ? null
+            : ObjectDB.instance?.GetItemPrefab(trimmedName) ?? ZNetScene.instance?.GetPrefab(trimmedName);
     }
 
     private static string GetPrefabName(GameObject gameObject)

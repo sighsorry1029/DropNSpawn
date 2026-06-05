@@ -11,12 +11,20 @@ namespace DropNSpawn;
 
 internal static partial class LocationManager
 {
+    private const int RunestoneGlobalPinRpcVersion = 1;
+    private const string RunestoneGlobalPinRequestRpc = "DropNSpawn Runestone GlobalPin Request";
+    private const string RunestoneGlobalPinResponseRpc = "DropNSpawn Runestone GlobalPin Response";
     private static readonly ConditionalWeakTable<RuneStone, RunestoneGlobalPinsRollState> RunestoneGlobalPinsRolls = new();
     private static readonly object RunestoneGlobalPinsLock = new();
     private static readonly System.Random RunestoneGlobalPinsRandom = new();
+    private static readonly Dictionary<string, ResolvedRunestoneGlobalPin?> RunestoneGlobalPinServerRolls =
+        new(StringComparer.Ordinal);
     private static readonly Dictionary<string, string> RunestoneGlobalPinDefaultPinNames = new(StringComparer.OrdinalIgnoreCase);
     private static readonly HashSet<string> RunestoneGlobalPinWarningLogs = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly AccessTools.FieldRef<ZRoutedRpc, long> RunestoneGlobalPinRoutedRpcIdRef =
+        AccessTools.FieldRefAccess<ZRoutedRpc, long>("m_id");
     private static RunestoneGlobalPinLocationIndex? RunestoneGlobalPinLocationIndexCache;
+    private static ZRoutedRpc? RunestoneGlobalPinRegisteredRpcInstance;
     private static readonly FieldInfo? MinimapPinsField = AccessTools.Field(typeof(Minimap), "m_pins");
 
     private sealed class RunestoneGlobalPinsRollState
@@ -58,13 +66,18 @@ internal static partial class LocationManager
             return;
         }
 
-        LocationRunestoneGlobalPinsDefinition? definition = GetEffectiveRunestoneGlobalPinsDefinition();
-        if (definition?.TargetLocations == null || definition.TargetLocations.Count == 0)
+        if (!string.IsNullOrWhiteSpace(originalLocationName ?? runestone.m_locationName))
         {
             return;
         }
 
-        if (!string.IsNullOrWhiteSpace(originalLocationName ?? runestone.m_locationName))
+        if (TryRequestServerResolvedRunestoneGlobalPin(runestone, originalLocationName))
+        {
+            return;
+        }
+
+        LocationRunestoneGlobalPinsDefinition? definition = GetEffectiveRunestoneGlobalPinsDefinition();
+        if (definition?.TargetLocations == null || definition.TargetLocations.Count == 0)
         {
             return;
         }
@@ -74,6 +87,34 @@ internal static partial class LocationManager
         {
             TryAddRunestoneGlobalPin(pin);
         }
+    }
+
+    internal static void EnsureRunestoneGlobalPinRpcRegistered()
+    {
+        ZRoutedRpc? rpc = ZRoutedRpc.instance;
+        if (rpc == null || ReferenceEquals(rpc, RunestoneGlobalPinRegisteredRpcInstance))
+        {
+            return;
+        }
+
+        if (RunestoneGlobalPinRegisteredRpcInstance != null)
+        {
+            ResetRunestoneGlobalPinsRuntimeState();
+        }
+
+        rpc.Register<ZPackage>(RunestoneGlobalPinRequestRpc, OnRunestoneGlobalPinRequestRpc);
+        rpc.Register<ZPackage>(RunestoneGlobalPinResponseRpc, OnRunestoneGlobalPinResponseRpc);
+        RunestoneGlobalPinRegisteredRpcInstance = rpc;
+    }
+
+    private static void ResetRunestoneGlobalPinsRuntimeState()
+    {
+        lock (RunestoneGlobalPinsLock)
+        {
+            RunestoneGlobalPinServerRolls.Clear();
+        }
+
+        RunestoneGlobalPinLocationIndexCache = null;
     }
 
     private static LocationRunestoneGlobalPinsDefinition? GetEffectiveRunestoneGlobalPinsDefinition()
@@ -115,8 +156,34 @@ internal static partial class LocationManager
         }
     }
 
+    private static ResolvedRunestoneGlobalPin? GetOrRollServerRunestoneGlobalPin(
+        Vector3 runestonePosition,
+        LocationRunestoneGlobalPinsDefinition definition,
+        string? runestoneLocationName)
+    {
+        string rollKey = CreateRunestoneGlobalPinsServerRollKey(runestonePosition, definition, runestoneLocationName);
+        lock (RunestoneGlobalPinsLock)
+        {
+            if (RunestoneGlobalPinServerRolls.TryGetValue(rollKey, out ResolvedRunestoneGlobalPin? cachedPin))
+            {
+                return cachedPin;
+            }
+
+            ResolvedRunestoneGlobalPin? pin = RollRunestoneGlobalPin(runestonePosition, definition);
+            RunestoneGlobalPinServerRolls[rollKey] = pin;
+            return pin;
+        }
+    }
+
     private static ResolvedRunestoneGlobalPin? RollRunestoneGlobalPin(
         RuneStone runestone,
+        LocationRunestoneGlobalPinsDefinition definition)
+    {
+        return RollRunestoneGlobalPin(runestone.transform.position, definition);
+    }
+
+    private static ResolvedRunestoneGlobalPin? RollRunestoneGlobalPin(
+        Vector3 runestonePosition,
         LocationRunestoneGlobalPinsDefinition definition)
     {
         if (definition.TargetLocations == null || ZoneSystem.instance == null)
@@ -125,7 +192,7 @@ internal static partial class LocationManager
         }
 
         List<RunestoneGlobalPinCandidate> candidates = new();
-        Heightmap.Biome runestoneBiome = GetRunestoneGlobalPinBiome(runestone.transform.position);
+        Heightmap.Biome runestoneBiome = GetRunestoneGlobalPinBiome(runestonePosition);
         foreach (LocationRunestoneGlobalPinTargetDefinition target in definition.TargetLocations)
         {
             float chance = Mathf.Clamp01(target.Chance ?? 0f);
@@ -137,7 +204,7 @@ internal static partial class LocationManager
             Heightmap.Biome allowedSourceBiomeMask = ResolveRunestoneGlobalPinSourceBiomeMask(target);
             if (!TryFindClosestRunestoneGlobalPinLocation(
                     target.LocationName,
-                    runestone.transform.position,
+                    runestonePosition,
                     runestoneBiome,
                     allowedSourceBiomeMask,
                     out ZoneSystem.LocationInstance locationInstance))
@@ -479,6 +546,170 @@ internal static partial class LocationManager
         return false;
     }
 
+    private static bool TryRequestServerResolvedRunestoneGlobalPin(RuneStone runestone, string? runestoneLocationName)
+    {
+        EnsureRunestoneGlobalPinRpcRegistered();
+        if (ZRoutedRpc.instance == null ||
+            ZNet.instance == null ||
+            ZNet.instance.IsServer())
+        {
+            return false;
+        }
+
+        ZPackage package = new();
+        package.Write(RunestoneGlobalPinRpcVersion);
+        WriteRunestoneGlobalPinVector3(package, runestone.transform.position);
+        package.Write(runestoneLocationName ?? runestone.m_locationName ?? "");
+        ZRoutedRpc.instance.InvokeRoutedRPC(0L, RunestoneGlobalPinRequestRpc, package);
+        return true;
+    }
+
+    private static void OnRunestoneGlobalPinRequestRpc(long sender, ZPackage package)
+    {
+        if (ZRoutedRpc.instance == null ||
+            ZNet.instance == null ||
+            !ZNet.instance.IsServer() ||
+            !TryReadRunestoneGlobalPinRequest(package, out Vector3 runestonePosition, out string runestoneLocationName))
+        {
+            return;
+        }
+
+        ResolvedRunestoneGlobalPin? pin = ResolveServerRunestoneGlobalPin(runestonePosition, runestoneLocationName);
+        ZPackage response = new();
+        WriteRunestoneGlobalPinResponse(response, pin);
+        ZRoutedRpc.instance.InvokeRoutedRPC(sender, RunestoneGlobalPinResponseRpc, response);
+    }
+
+    private static void OnRunestoneGlobalPinResponseRpc(long sender, ZPackage package)
+    {
+        if (!IsRunestoneGlobalPinServerRoutedSender(sender) ||
+            !TryReadRunestoneGlobalPinResponse(package, out ResolvedRunestoneGlobalPin? pin) ||
+            pin == null)
+        {
+            return;
+        }
+
+        TryAddRunestoneGlobalPin(pin);
+    }
+
+    private static ResolvedRunestoneGlobalPin? ResolveServerRunestoneGlobalPin(Vector3 runestonePosition, string? runestoneLocationName)
+    {
+        if (!PluginSettingsFacade.IsLocationDomainEnabled() ||
+            !PluginSettingsFacade.IsRunestoneGlobalPinsEnabled() ||
+            !string.IsNullOrWhiteSpace(runestoneLocationName))
+        {
+            return null;
+        }
+
+        LocationRunestoneGlobalPinsDefinition? definition = GetEffectiveRunestoneGlobalPinsDefinition();
+        if (definition?.TargetLocations == null || definition.TargetLocations.Count == 0)
+        {
+            return null;
+        }
+
+        return GetOrRollServerRunestoneGlobalPin(runestonePosition, definition, runestoneLocationName);
+    }
+
+    private static bool TryReadRunestoneGlobalPinRequest(
+        ZPackage package,
+        out Vector3 runestonePosition,
+        out string runestoneLocationName)
+    {
+        runestonePosition = default;
+        runestoneLocationName = "";
+        try
+        {
+            int version = package.ReadInt();
+            if (version != RunestoneGlobalPinRpcVersion)
+            {
+                return false;
+            }
+
+            runestonePosition = ReadRunestoneGlobalPinVector3(package);
+            runestoneLocationName = package.ReadString();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            WarnRunestoneGlobalPin(
+                "globalpin|rpc-request-invalid",
+                $"Received invalid runestone global pin request RPC. Ignoring it. {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static void WriteRunestoneGlobalPinResponse(ZPackage package, ResolvedRunestoneGlobalPin? pin)
+    {
+        package.Write(RunestoneGlobalPinRpcVersion);
+        package.Write(pin != null);
+        if (pin == null)
+        {
+            return;
+        }
+
+        package.Write(pin.LocationName ?? "");
+        package.Write(pin.PinName ?? "");
+        package.Write((int)pin.PinType);
+        WriteRunestoneGlobalPinVector3(package, pin.Position);
+    }
+
+    private static bool TryReadRunestoneGlobalPinResponse(ZPackage package, out ResolvedRunestoneGlobalPin? pin)
+    {
+        pin = null;
+        try
+        {
+            int version = package.ReadInt();
+            if (version != RunestoneGlobalPinRpcVersion || !package.ReadBool())
+            {
+                return true;
+            }
+
+            pin = new ResolvedRunestoneGlobalPin
+            {
+                LocationName = package.ReadString(),
+                PinName = package.ReadString(),
+                PinType = (Minimap.PinType)package.ReadInt(),
+                Position = ReadRunestoneGlobalPinVector3(package)
+            };
+            return true;
+        }
+        catch (Exception ex)
+        {
+            WarnRunestoneGlobalPin(
+                "globalpin|rpc-response-invalid",
+                $"Received invalid runestone global pin response RPC. Ignoring it. {ex.GetType().Name}: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static void WriteRunestoneGlobalPinVector3(ZPackage package, Vector3 value)
+    {
+        package.Write(value.x);
+        package.Write(value.y);
+        package.Write(value.z);
+    }
+
+    private static Vector3 ReadRunestoneGlobalPinVector3(ZPackage package)
+    {
+        return new Vector3(package.ReadSingle(), package.ReadSingle(), package.ReadSingle());
+    }
+
+    private static bool IsRunestoneGlobalPinServerRoutedSender(long sender)
+    {
+        if (ZRoutedRpc.instance == null || ZNet.instance == null)
+        {
+            return false;
+        }
+
+        if (ZNet.instance.IsServer())
+        {
+            return RunestoneGlobalPinRoutedRpcIdRef(ZRoutedRpc.instance) == sender;
+        }
+
+        ZNetPeer? serverPeer = ZNet.instance.GetServerPeer();
+        return serverPeer != null && serverPeer.m_uid == sender;
+    }
+
     private static string CreateRunestoneGlobalPinsRollKey(
         RuneStone runestone,
         LocationRunestoneGlobalPinsDefinition definition,
@@ -491,6 +722,30 @@ internal static partial class LocationManager
             .Append(position.y.ToString("R", CultureInfo.InvariantCulture)).Append('|')
             .Append(position.z.ToString("R", CultureInfo.InvariantCulture)).Append('\n');
         builder.Append(originalLocationName ?? runestone.m_locationName ?? "").Append('\n');
+        AppendRunestoneGlobalPinsDefinitionRollKey(builder, definition);
+
+        return builder.ToString();
+    }
+
+    private static string CreateRunestoneGlobalPinsServerRollKey(
+        Vector3 runestonePosition,
+        LocationRunestoneGlobalPinsDefinition definition,
+        string? runestoneLocationName)
+    {
+        StringBuilder builder = new();
+        builder.Append(runestonePosition.x.ToString("R", CultureInfo.InvariantCulture)).Append('|')
+            .Append(runestonePosition.y.ToString("R", CultureInfo.InvariantCulture)).Append('|')
+            .Append(runestonePosition.z.ToString("R", CultureInfo.InvariantCulture)).Append('\n');
+        builder.Append(runestoneLocationName ?? "").Append('\n');
+        AppendRunestoneGlobalPinsDefinitionRollKey(builder, definition);
+
+        return builder.ToString();
+    }
+
+    private static void AppendRunestoneGlobalPinsDefinitionRollKey(
+        StringBuilder builder,
+        LocationRunestoneGlobalPinsDefinition definition)
+    {
         if (definition.TargetLocations != null)
         {
             foreach (LocationRunestoneGlobalPinTargetDefinition target in definition.TargetLocations)
@@ -502,8 +757,6 @@ internal static partial class LocationManager
                     .Append(target.PinType ?? "").Append('\n');
             }
         }
-
-        return builder.ToString();
     }
 
     private static void WarnRunestoneGlobalPin(string warningKey, string message)

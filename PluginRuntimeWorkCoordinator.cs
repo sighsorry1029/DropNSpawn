@@ -66,6 +66,7 @@ internal sealed class PluginRuntimeWorkCoordinator
 
     private static void ProcessStandaloneRuntimeTicks()
     {
+        LocationManager.EnsureRunestoneGlobalPinRpcRegistered();
         BossStonePerPlayerRuntime.EnsureRpcRegistered();
         BossStonePerPlayerRuntime.ProcessPendingResetRequests();
         BossTamedPressureRuntime.ExecuteServerTick();

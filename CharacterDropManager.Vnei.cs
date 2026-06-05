@@ -98,7 +98,7 @@ internal static partial class CharacterDropManager
             return;
         }
 
-        GameObject? prefab = ResolveItemPrefab(itemName, context);
+        GameObject? prefab = ResolveKnownPrefab(itemName);
         if (prefab == null)
         {
             return;

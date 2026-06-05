@@ -1,8 +1,8 @@
 {
   "name": "DropNSpawn",
-  "version_number": "1.2.3",
+  "version_number": "1.2.4",
   "website_url": "https://discord.com/invite/VFRJcPwUdm",
-  "description": "Configure drops, spawns, boss locations, despawn rules, RuneStone global pins, Vegvisir global effects, remote Forsaken power selection, and altar hover info.",
+  "description": "Configure all object/creature drops, spawns, spawners, and boss altars. Add boss despawn rules, remote Forsaken power selection, altar hover info for offerings/bosses, RuneStone location pins, Vegvisir buffs, stacked drops, and level-scaled trophies",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333",
     "JereKuusela-Expand_World_Data-1.63.0"

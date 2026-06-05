@@ -33,11 +33,11 @@ internal static partial class CharacterDropManager
         AppendTemplateLine(builder, 2, "insidePlayerBase: null # true = near player base only # false = away from player base only # null or no field allows both");
         AppendTemplateLine(builder, 1, "characterDrop:");
         AppendTemplateLine(builder, 2, "drops: # Set drops: [] to disable character drops for an entry");
-        AppendTemplateLine(builder, 2, "- item: null # ex) Resin");
+        AppendTemplateLine(builder, 2, "- item: null # ex) Resin # Drop prefab; CharacterDrop can also spawn non-item prefabs such as monsters");
         AppendTemplateLine(builder, 3, "amount: 1~1 # ex) 1~3 # Range of item amount");
         AppendTemplateLine(builder, 3, "chance: 1 # Chance from 0 to 1 for this item on each roll");
         AppendTemplateLine(builder, 3, "dontScale: false # True skips the game's built-in drop scaling for the base amount roll");
-        AppendTemplateLine(builder, 3, "levelMultiplier: true # True multiplies the calculated amount by character level when supported # Trophy items can be forced true in config");
+        AppendTemplateLine(builder, 3, "levelMultiplier: true # Omitted default: true for ItemDrop prefabs, false for non-item prefabs # Trophy items can be forced true in config");
         AppendTemplateLine(builder, 3, "onePerPlayer: false # True uses nearby player count as the final amount # Configure check range in config");
         AppendTemplateLine(builder, 3, "amountLimit: null # ex) 2 # Integer cap on the final amount");
         AppendTemplateLine(builder, 3, "dropInStack: false # True spawns one stacked drop instead of many singles");
@@ -125,7 +125,7 @@ internal static partial class CharacterDropManager
         AppendTemplateLine(builder, indent + 1, $"amount: {RangeFormatting.FormatShorthand(GetAmountRange(definition) ?? RangeFormatting.From(1, 1))}");
         AppendTemplateLine(builder, indent + 1, $"chance: {FormatYamlFloat(definition.Chance ?? 1f)}");
         AppendTemplateLine(builder, indent + 1, $"dontScale: {FormatYamlBool(definition.DontScale ?? false)}");
-        AppendTemplateLine(builder, indent + 1, $"levelMultiplier: {FormatYamlBool(definition.LevelMultiplier ?? true)}");
+        AppendTemplateLine(builder, indent + 1, $"levelMultiplier: {FormatYamlBool(GetConfiguredCharacterDropLevelMultiplierForOutput(definition))}");
         AppendTemplateLine(builder, indent + 1, $"onePerPlayer: {FormatYamlBool(definition.OnePerPlayer ?? false)}");
         AppendTemplateNestedLine(builder, indent + 1, "amountLimit: 1");
         AppendTemplateNestedLine(builder, indent + 1, "dropInStack: true");

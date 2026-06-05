@@ -1743,6 +1743,7 @@ internal static partial class LocationManager
     private static void ResetLoadedConfigurationState()
     {
         ClearQueuedReconcileState();
+        ResetRunestoneGlobalPinsRuntimeState();
         ResetLocationRuntimeConfigurationState();
         LiveRuntimeState.ClearLoadedConfigurationCaches();
         RuntimeState.Reset();

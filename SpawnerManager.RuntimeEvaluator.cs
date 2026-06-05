@@ -222,14 +222,118 @@ internal static partial class SpawnerManager
             return false;
         }
 
+        LocalRuntimeState localRuntimeState = RuntimeStateStore.GetOrCreateLocalRuntimeState(creatureSpawner);
         if (BossRulesManager.ShouldBlockConfiguredSameBossSpawn(
                 creatureSpawner.m_creaturePrefab,
                 creatureSpawner.transform.position))
+        {
+            RecordCreatureSpawnerSameBossDuplicateBlock(creatureSpawner, localRuntimeState);
+            return false;
+        }
+
+        if (ShouldDelayCreatureSpawnerAfterSameBossDuplicateBlock(creatureSpawner, localRuntimeState))
         {
             return false;
         }
 
         return true;
+    }
+
+    private static void RecordCreatureSpawnerSameBossDuplicateBlock(CreatureSpawner creatureSpawner, LocalRuntimeState localRuntimeState)
+    {
+        long nowTicks = GetNetworkTimeTicks();
+        localRuntimeState.LastSameBossDuplicateBlockTicks = nowTicks;
+        WriteCreatureSpawnerSameBossDuplicateBlockTicks(creatureSpawner, nowTicks);
+    }
+
+    private static bool ShouldDelayCreatureSpawnerAfterSameBossDuplicateBlock(CreatureSpawner creatureSpawner, LocalRuntimeState localRuntimeState)
+    {
+        if (creatureSpawner.m_respawnTimeMinuts <= 0f)
+        {
+            localRuntimeState.LastSameBossDuplicateBlockTicks = 0L;
+            WriteCreatureSpawnerSameBossDuplicateBlockTicks(creatureSpawner, 0L, refreshAliveTime: false);
+            return false;
+        }
+
+        long lastBlockTicks = GetCreatureSpawnerSameBossDuplicateBlockTicks(creatureSpawner, localRuntimeState);
+        if (lastBlockTicks <= 0L)
+        {
+            return false;
+        }
+
+        long nowTicks = GetNetworkTimeTicks();
+        if (lastBlockTicks > nowTicks)
+        {
+            localRuntimeState.LastSameBossDuplicateBlockTicks = nowTicks;
+            WriteCreatureSpawnerSameBossDuplicateBlockTicks(creatureSpawner, nowTicks);
+            return true;
+        }
+
+        double elapsedMinutes = (new DateTime(nowTicks) - new DateTime(lastBlockTicks)).TotalMinutes;
+        if (elapsedMinutes < creatureSpawner.m_respawnTimeMinuts)
+        {
+            return true;
+        }
+
+        localRuntimeState.LastSameBossDuplicateBlockTicks = 0L;
+        WriteCreatureSpawnerSameBossDuplicateBlockTicks(creatureSpawner, 0L, refreshAliveTime: false);
+        return false;
+    }
+
+    private static long GetCreatureSpawnerSameBossDuplicateBlockTicks(CreatureSpawner creatureSpawner, LocalRuntimeState localRuntimeState)
+    {
+        long lastBlockTicks = localRuntimeState.LastSameBossDuplicateBlockTicks;
+        if (TryGetCreatureSpawnerTimingZdo(creatureSpawner, out _, out ZDO zdo))
+        {
+            lastBlockTicks = Math.Max(lastBlockTicks, zdo.GetLong(CreatureSpawnerSameBossDuplicateBlockTicksZdoKey, 0L));
+        }
+
+        return lastBlockTicks;
+    }
+
+    private static void WriteCreatureSpawnerSameBossDuplicateBlockTicks(
+        CreatureSpawner creatureSpawner,
+        long ticks,
+        bool refreshAliveTime = true)
+    {
+        if (!TryGetCreatureSpawnerTimingZdo(creatureSpawner, out ZNetView nview, out ZDO zdo) ||
+            !CanWriteCreatureSpawnerTimingZdo(nview))
+        {
+            return;
+        }
+
+        zdo.Set(CreatureSpawnerSameBossDuplicateBlockTicksZdoKey, ticks);
+        if (refreshAliveTime && ticks > 0L)
+        {
+            zdo.Set(ZDOVars.s_aliveTime, ticks);
+        }
+    }
+
+    private static bool TryGetCreatureSpawnerTimingZdo(CreatureSpawner creatureSpawner, out ZNetView nview, out ZDO zdo)
+    {
+        nview = null!;
+        zdo = null!;
+        if (!creatureSpawner.TryGetComponent(out ZNetView? candidate) ||
+            candidate == null)
+        {
+            return false;
+        }
+
+        nview = candidate;
+        zdo = nview.GetZDO();
+        return zdo != null;
+    }
+
+    private static bool CanWriteCreatureSpawnerTimingZdo(ZNetView nview)
+    {
+        return DropNSpawnPlugin.IsRuntimeServer() || nview.IsOwner();
+    }
+
+    private static long GetNetworkTimeTicks()
+    {
+        return ZNet.instance != null
+            ? ZNet.instance.GetTime().Ticks
+            : DateTime.UtcNow.Ticks;
     }
 
     private static void ClearRuntimeReconcileState()

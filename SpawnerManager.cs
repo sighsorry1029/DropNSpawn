@@ -23,6 +23,8 @@ internal static partial class SpawnerManager
     private const string UnresolvedSelectorLocationCacheKey = "<unresolved>";
     private const float RuntimeEvaluationIntervalSeconds = 0.25f;
     private const float RuntimeEvaluationIntervalInsidePlayerBaseOnlySeconds = 0.5f;
+    private static readonly int CreatureSpawnerSameBossDuplicateBlockTicksZdoKey =
+        "DropNSpawn.CreatureSpawner.SameBossDuplicateBlockTicks".GetStableHashCode();
     internal static readonly DomainModuleDefinition<SpawnerConfigurationEntry> Module =
         new(new DomainModuleOptions<SpawnerConfigurationEntry>
         {
@@ -157,6 +159,7 @@ internal static partial class SpawnerManager
         public bool IsInsidePlayerBase { get; set; }
         public int LastObservedTimeOfDayPhaseMarker { get; set; } = int.MinValue;
         public string LastObservedEnvironmentName { get; set; } = "";
+        public long LastSameBossDuplicateBlockTicks { get; set; }
         public bool HasAppliedWinningEntrySelection { get; set; }
         public string LastAppliedConfigPrefabName { get; set; } = "";
         public string LastAppliedResolvedLocationKey { get; set; } = "";

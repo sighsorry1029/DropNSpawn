@@ -1,9 +1,6 @@
 # DropNSpawn
 
-Configure Valheim drops, spawns, and boss-location behavior with server-synced YAML.
-
-DropNSpawn is split into five domains. Each domain can be enabled or disabled separately, which makes it easier to coexist with other mods that own the same runtime systems.
-
+Configure all object/creature drops, spawns, spawners, and boss altars. Add boss despawn rules, remote Forsaken power selection, altar hover info for offerings/bosses, RuneStone location pins, Vegvisir buffs, stacked drops, and level-scaled trophies.
 ## Domains
 
 | Domain | What it controls |
