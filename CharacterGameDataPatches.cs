@@ -55,15 +55,6 @@ internal static class CharacterDropGenerateDropListPatch
     }
 }
 
-[HarmonyPatch(typeof(Character), "RPC_Damage")]
-internal static class CharacterRpcDamageBossTamedPressurePatch
-{
-    private static void Prefix(Character __instance, HitData hit)
-    {
-        BossTamedPressureRuntime.ApplyDamageMultipliers(__instance, hit);
-    }
-}
-
 [HarmonyPatch(typeof(ZNet), nameof(ZNet.GetNrOfPlayers))]
 internal static class ZNetGetNrOfPlayersPatch
 {
@@ -106,68 +97,15 @@ internal static class CharacterDropStartPatch
     }
 }
 
-[HarmonyPatch]
-internal static class ZDOManCreateNewZdoDespawnPatch
-{
-    private static MethodBase? TargetMethod()
-    {
-        return AccessTools.Method(typeof(ZDOMan), nameof(ZDOMan.CreateNewZDO), new[] { typeof(ZDOID), typeof(Vector3), typeof(int) });
-    }
-
-    private static void Postfix(int prefabHashIn, ZDO __result)
-    {
-        float sample = RuntimeWorkProfiler.BeginHookSample();
-        try
-        {
-            DespawnRulesManager.QueueCreatedDespawnTarget(prefabHashIn, __result);
-        }
-        finally
-        {
-            RuntimeWorkProfiler.EndHookSample("ZDOMan.CreateNewZDO.despawn", sample);
-        }
-    }
-}
-
-[HarmonyPatch(typeof(Character), nameof(Character.Awake))]
-internal static class CharacterAwakeBossRulesPatch
-{
-    private static void Postfix(Character __instance)
-    {
-        float sample = RuntimeWorkProfiler.BeginHookSample();
-        try
-        {
-            BossRulesManager.TrackBossCharacter(__instance);
-            if (PluginSettingsFacade.IsCharacterDomainEnabled())
-            {
-                DespawnRulesManager.TryTrackLoadedDespawnTarget(__instance);
-            }
-        }
-        finally
-        {
-            RuntimeWorkProfiler.EndHookSample("Character.Awake", sample);
-        }
-    }
-}
-
 [HarmonyPatch(typeof(Character), "OnDestroy")]
 internal static class CharacterOnDestroyCharacterDropPatch
 {
     private static void Postfix(Character __instance)
     {
-        BossRulesManager.UntrackBossCharacter(__instance);
         if (__instance != null && __instance.TryGetComponent(out CharacterDrop characterDrop))
         {
             CharacterDropManager.UntrackCharacterDropInstance(characterDrop);
         }
-    }
-}
-
-[HarmonyPatch(typeof(ZNetView), nameof(ZNetView.ResetZDO))]
-internal static class ZNetViewResetZdoDespawnPatch
-{
-    private static void Prefix(ZNetView __instance)
-    {
-        DespawnRulesManager.TryPersistDespawnCountdownBeforeResetZdo(__instance);
     }
 }
 

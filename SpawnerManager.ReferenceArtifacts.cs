@@ -199,6 +199,100 @@ internal static partial class SpawnerManager
         DropNSpawnPlugin.DropNSpawnLogger.LogInfo(logMessage);
     }
 
+    private static void EnsureReferenceArtifactsUpToDate()
+    {
+        if (!IsGameDataReady())
+        {
+            return;
+        }
+
+        bool usedReferenceSnapshots = EnsureSpawnerReferenceConfigurationUpToDate();
+
+        if (usedReferenceSnapshots)
+        {
+            ResetReferenceSnapshots();
+        }
+    }
+
+    private static bool EnsureSpawnerReferenceConfigurationUpToDate()
+    {
+        string currentSourceSignature = ComputeReferenceSourceSignature();
+        bool writePrimaryReference = ReferenceArtifactLifecycle.TryPlanUpdate(
+            ReferenceAutoUpdateStateKey,
+            ReferenceConfigurationPath,
+            currentSourceSignature,
+            out ReferenceArtifactUpdateKind primaryUpdateKind);
+        bool writeLocationReference = ReferenceArtifactLifecycle.TryPlanUpdate(
+            LocationReferenceAutoUpdateStateKey,
+            LocationReferenceConfigurationPath,
+            currentSourceSignature,
+            out ReferenceArtifactUpdateKind locationUpdateKind);
+        if (!writePrimaryReference && !writeLocationReference)
+        {
+            return false;
+        }
+
+        CaptureSnapshotsIfNeeded();
+        string? referenceContent = writePrimaryReference ? BuildReferenceConfigurationTemplate() : null;
+        string? locationReferenceContent = writeLocationReference ? BuildLocationReferenceConfigurationTemplate() : null;
+        bool updatedExisting = primaryUpdateKind == ReferenceArtifactUpdateKind.Updated ||
+                               locationUpdateKind == ReferenceArtifactUpdateKind.Updated;
+        string action = updatedExisting ? "Updated" : "Created";
+        string targetDescription = writePrimaryReference && writeLocationReference
+            ? $"spawner reference configurations at {ReferenceConfigurationPath} and {LocationReferenceConfigurationPath}"
+            : writePrimaryReference
+                ? $"spawner reference configuration at {ReferenceConfigurationPath}"
+                : $"spawner location reference configuration at {LocationReferenceConfigurationPath}";
+
+        WriteReferenceConfigurationFile(
+            referenceContent,
+            locationReferenceContent,
+            $"{action} {targetDescription}.",
+            writePrimaryReference,
+            writeLocationReference);
+        if (writePrimaryReference)
+        {
+            ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature);
+        }
+
+        if (writeLocationReference)
+        {
+            ReferenceArtifactLifecycle.RecordUpdate(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, currentSourceSignature);
+        }
+
+        return true;
+    }
+
+    private static IEnumerable<string> BuildCurrentSpawnerReferencePrefabKeys()
+    {
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (GameObject rootPrefab in EnumerateRootPrefabs())
+        {
+            foreach (SpawnArea spawnArea in rootPrefab.GetComponentsInChildren<SpawnArea>(true))
+            {
+                string prefabName = ReferenceRefreshSupport.NormalizeKey(spawnArea?.gameObject?.name);
+                if (prefabName.Length > 0 && seen.Add(prefabName))
+                {
+                    yield return prefabName;
+                }
+            }
+
+            foreach (CreatureSpawner creatureSpawner in rootPrefab.GetComponentsInChildren<CreatureSpawner>(true))
+            {
+                string prefabName = ReferenceRefreshSupport.NormalizeKey(creatureSpawner?.gameObject?.name);
+                if (prefabName.Length > 0 && seen.Add(prefabName))
+                {
+                    yield return prefabName;
+                }
+            }
+        }
+    }
+
+    private static string ComputeReferenceSourceSignature()
+    {
+        return ReferenceRefreshSupport.ComputeStableHashForKeys(BuildCurrentSpawnerReferencePrefabKeys());
+    }
+
     internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
     {
         string content;

@@ -8,7 +8,6 @@ internal static partial class ExampleContentWriter
     private const string CharacterSampleFileName = "DNS_character.sample.yml";
     private const string ObjectSampleFileName = "DNS_object.sample.yml";
     private const string SpawnerSampleFileName = "DNS_spawner.sample.yml";
-    private const string LocationSampleFileName = "DNS_location.sample.yml";
     private const string SpawnSystemSampleFileName = "DNS_spawnsystem.sample.yml";
 
     internal static void EnsureDefaultExampleFiles()
@@ -17,7 +16,6 @@ internal static partial class ExampleContentWriter
         EnsureExampleFile(CharacterSampleFileName, CharacterConditionContent);
         EnsureExampleFile(ObjectSampleFileName, ObjectConditionContent);
         EnsureExampleFile(SpawnerSampleFileName, SpawnerConditionContent);
-        EnsureExampleFile(LocationSampleFileName, LocationConditionContent);
         EnsureExampleFile(SpawnSystemSampleFileName, SpawnSystemConditionContent);
     }
 

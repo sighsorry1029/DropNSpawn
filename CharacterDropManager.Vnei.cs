@@ -7,6 +7,16 @@ namespace DropNSpawn;
 
 internal static partial class CharacterDropManager
 {
+    private static void RefreshVneiCompatibility(Dictionary<string, string> previousEntrySignatures)
+    {
+        RefreshVneiCompatibility(previousEntrySignatures, CloneCurrentEntrySignaturesByPrefab());
+    }
+
+    private static void RefreshVneiCompatibility(Dictionary<string, string> previousEntrySignatures, Dictionary<string, string> currentEntrySignatures)
+    {
+        VneiCompatibility.RefreshCharacterPrefabs(BuildDirtyPrefabs(previousEntrySignatures, currentEntrySignatures));
+    }
+
     internal static bool HasVneiRelevantEntries(string prefabName)
     {
         lock (Sync)

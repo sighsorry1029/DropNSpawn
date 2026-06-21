@@ -309,7 +309,6 @@ sealed class LocationRuleSet
     public string Prefab;
     public List<OfferingBowlBlock> OfferingBowls;
     public List<ItemStandBlock> ItemStands;
-    public VegvisirGlobalEffectsBlock? VegvisirGlobalEffects;
 }
 ```
 

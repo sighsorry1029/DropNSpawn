@@ -85,6 +85,382 @@ internal static partial class ObjectDropManager
         }
     }
 
+    private static bool TryResolveLazyDamageableScalars(
+        GameObject gameObject,
+        LiveObjectComponentKind componentKind,
+        out CompiledDamageableScalarDefinition resolvedScalars,
+        out int signature)
+    {
+        resolvedScalars = null!;
+        signature = 0;
+        if (!TryGetConditionalDropContext(gameObject, out _, out _, out List<CompiledObjectDropRule> compiledRules))
+        {
+            return false;
+        }
+
+        CompiledDamageableScalarDefinition effectiveScalars = new();
+        foreach (CompiledObjectDropRule compiledRule in compiledRules)
+        {
+            if (!CanUseLazyDamageableScalarFastPath(compiledRule.Entry, componentKind) ||
+                !EntryMatches(gameObject, compiledRule.Entry, allowConditionalMatches: true))
+            {
+                continue;
+            }
+
+            CompiledDamageableScalarDefinition? candidateScalars = GetDamageableScalarDefinition(compiledRule, componentKind);
+            if (candidateScalars == null)
+            {
+                continue;
+            }
+
+            if (candidateScalars.HasHealthOverride)
+            {
+                effectiveScalars.HasHealthOverride = true;
+                effectiveScalars.Health = candidateScalars.Health;
+            }
+
+            if (candidateScalars.HasMinToolTierOverride)
+            {
+                effectiveScalars.HasMinToolTierOverride = true;
+                effectiveScalars.MinToolTier = candidateScalars.MinToolTier;
+            }
+        }
+
+        if (!effectiveScalars.HasHealthOverride &&
+            !effectiveScalars.HasMinToolTierOverride)
+        {
+            return false;
+        }
+
+        resolvedScalars = effectiveScalars;
+        signature = ComputeLazyDamageableScalarSignature(effectiveScalars);
+        return true;
+    }
+
+    private static bool TryResolveLazyDestructibleScalars(
+        GameObject gameObject,
+        out CompiledDestructibleComponentDefinition resolvedDefinition,
+        out int signature)
+    {
+        resolvedDefinition = null!;
+        signature = 0;
+        if (!TryGetConditionalDropContext(gameObject, out _, out _, out List<CompiledObjectDropRule> compiledRules))
+        {
+            return false;
+        }
+
+        CompiledDestructibleComponentDefinition effectiveDefinition = new();
+        foreach (CompiledObjectDropRule compiledRule in compiledRules)
+        {
+            if (compiledRule.Destructible == null ||
+                !CanUseLazyDestructibleScalarFastPath(compiledRule.Entry) ||
+                !EntryMatches(gameObject, compiledRule.Entry, allowConditionalMatches: true))
+            {
+                continue;
+            }
+
+            if (compiledRule.Destructible.HasHealthOverride)
+            {
+                effectiveDefinition.HasHealthOverride = true;
+                effectiveDefinition.Health = compiledRule.Destructible.Health;
+            }
+
+            if (compiledRule.Destructible.HasMinToolTierOverride)
+            {
+                effectiveDefinition.HasMinToolTierOverride = true;
+                effectiveDefinition.MinToolTier = compiledRule.Destructible.MinToolTier;
+            }
+        }
+
+        if (!effectiveDefinition.HasHealthOverride &&
+            !effectiveDefinition.HasMinToolTierOverride)
+        {
+            return false;
+        }
+
+        resolvedDefinition = effectiveDefinition;
+        signature = ComputeLazyDestructibleScalarSignature(effectiveDefinition);
+        return true;
+    }
+
+    private static bool TryResolveLazyDestructibleType(GameObject gameObject, out DestructibleType resolvedType)
+    {
+        resolvedType = DestructibleType.Default;
+        List<CompiledObjectDropRule>? compiledRules;
+        if (!TryGetConditionalContext(gameObject, out string prefabName, out PrefabSnapshot snapshot, out _) ||
+            snapshot.Destructible == null)
+        {
+            return false;
+        }
+
+        EnsureRuntimeDropConfigurationState();
+        if (!_runtimeDropConfigurationState.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) ||
+            (compiledRules = prefabPlan.Rules) == null ||
+            compiledRules.Count == 0)
+        {
+            return false;
+        }
+
+        bool hasLazyTypeOverride = false;
+        DestructibleType effectiveType = snapshot.Destructible.DestructibleType;
+        foreach (CompiledObjectDropRule compiledRule in compiledRules)
+        {
+            if (compiledRule.Destructible?.HasDestructibleTypeOverride != true)
+            {
+                continue;
+            }
+
+            if (!CanUseLazyDestructibleScalarFastPath(compiledRule.Entry))
+            {
+                return false;
+            }
+
+            hasLazyTypeOverride = true;
+            if (EntryMatches(gameObject, compiledRule.Entry, allowConditionalMatches: true))
+            {
+                effectiveType = compiledRule.Destructible.DestructibleType;
+            }
+        }
+
+        if (!hasLazyTypeOverride)
+        {
+            return false;
+        }
+
+        resolvedType = effectiveType;
+        return true;
+    }
+
+    private static CompiledDamageableScalarDefinition? GetDamageableScalarDefinition(
+        CompiledObjectDropRule compiledRule,
+        LiveObjectComponentKind componentKind)
+    {
+        return componentKind switch
+        {
+            LiveObjectComponentKind.MineRock => compiledRule.MineRockScalars,
+            LiveObjectComponentKind.MineRock5 => compiledRule.MineRock5Scalars,
+            LiveObjectComponentKind.TreeBase => compiledRule.TreeBaseScalars,
+            LiveObjectComponentKind.TreeLog => compiledRule.TreeLogScalars,
+            _ => null
+        };
+    }
+
+    private static int ComputeLazyDamageableScalarSignature(CompiledDamageableScalarDefinition scalars)
+    {
+        unchecked
+        {
+            int hash = 17;
+            hash = hash * 31 + (scalars.HasHealthOverride ? 1 : 0);
+            hash = hash * 31 + (scalars.HasHealthOverride ? BitConverter.SingleToInt32Bits(scalars.Health) : 0);
+            hash = hash * 31 + (scalars.HasMinToolTierOverride ? 1 : 0);
+            hash = hash * 31 + (scalars.HasMinToolTierOverride ? scalars.MinToolTier : 0);
+            return hash;
+        }
+    }
+
+    private static int ComputeLazyDestructibleScalarSignature(CompiledDestructibleComponentDefinition definition)
+    {
+        unchecked
+        {
+            int hash = 17;
+            hash = hash * 31 + (definition.HasHealthOverride ? 1 : 0);
+            hash = hash * 31 + (definition.HasHealthOverride ? BitConverter.SingleToInt32Bits(definition.Health) : 0);
+            hash = hash * 31 + (definition.HasMinToolTierOverride ? 1 : 0);
+            hash = hash * 31 + (definition.HasMinToolTierOverride ? definition.MinToolTier : 0);
+            return hash;
+        }
+    }
+
+    private static void ApplyLazyTreeBaseScalars(TreeBase treeBase, CompiledDamageableScalarDefinition scalars, int signature)
+    {
+        ZNetView? nview = treeBase.GetComponent<ZNetView>();
+        ZDO? zdo = nview?.GetZDO();
+        int existingSignature = zdo?.GetInt(TreeBaseLazyScalarSignatureKey, int.MinValue) ?? int.MinValue;
+        bool signatureMatches = existingSignature == signature;
+        bool healthMatches = !scalars.HasHealthOverride || Mathf.Approximately(treeBase.m_health, scalars.Health);
+        bool minToolTierMatches = !scalars.HasMinToolTierOverride || treeBase.m_minToolTier == scalars.MinToolTier;
+        if (healthMatches &&
+            minToolTierMatches &&
+            (signatureMatches || nview == null || zdo == null || !nview.IsOwner()))
+        {
+            return;
+        }
+
+        if (scalars.HasHealthOverride)
+        {
+            treeBase.m_health = scalars.Health;
+        }
+
+        if (scalars.HasMinToolTierOverride)
+        {
+            treeBase.m_minToolTier = scalars.MinToolTier;
+        }
+
+        if (nview == null || zdo == null || !nview.IsOwner() || signatureMatches)
+        {
+            return;
+        }
+
+        if (scalars.HasHealthOverride)
+        {
+            zdo.Set(ZDOVars.s_health, Mathf.Max(scalars.Health, 0.01f));
+        }
+
+        zdo.Set(TreeBaseLazyScalarSignatureKey, signature);
+    }
+
+    private static void ApplyLazyTreeLogScalars(TreeLog treeLog, CompiledDamageableScalarDefinition scalars, int signature)
+    {
+        ZNetView? nview = treeLog.GetComponent<ZNetView>();
+        ZDO? zdo = nview?.GetZDO();
+        int existingSignature = zdo?.GetInt(TreeLogLazyScalarSignatureKey, int.MinValue) ?? int.MinValue;
+        bool signatureMatches = existingSignature == signature;
+        bool healthMatches = !scalars.HasHealthOverride || Mathf.Approximately(treeLog.m_health, scalars.Health);
+        bool minToolTierMatches = !scalars.HasMinToolTierOverride || treeLog.m_minToolTier == scalars.MinToolTier;
+        if (healthMatches &&
+            minToolTierMatches &&
+            (signatureMatches || nview == null || zdo == null || !nview.IsOwner()))
+        {
+            return;
+        }
+
+        if (scalars.HasHealthOverride)
+        {
+            treeLog.m_health = scalars.Health;
+        }
+
+        if (scalars.HasMinToolTierOverride)
+        {
+            treeLog.m_minToolTier = scalars.MinToolTier;
+        }
+
+        if (nview == null || zdo == null || !nview.IsOwner() || signatureMatches)
+        {
+            return;
+        }
+
+        if (scalars.HasHealthOverride)
+        {
+            zdo.Set(ZDOVars.s_health, GetScaledMineHealth(Mathf.Max(scalars.Health, 0.01f)));
+        }
+
+        zdo.Set(TreeLogLazyScalarSignatureKey, signature);
+    }
+
+    private static void ApplyLazyMineRockScalars(MineRock mineRock, CompiledDamageableScalarDefinition scalars, int signature)
+    {
+        ZNetView? nview = mineRock.GetComponent<ZNetView>();
+        ZDO? zdo = nview?.GetZDO();
+        int existingSignature = zdo?.GetInt(MineRockLazyScalarSignatureKey, int.MinValue) ?? int.MinValue;
+        bool signatureMatches = existingSignature == signature;
+        bool healthMatches = !scalars.HasHealthOverride || Mathf.Approximately(mineRock.m_health, scalars.Health);
+        bool minToolTierMatches = !scalars.HasMinToolTierOverride || mineRock.m_minToolTier == scalars.MinToolTier;
+        if (healthMatches &&
+            minToolTierMatches &&
+            (signatureMatches || nview == null || zdo == null || !nview.IsOwner()))
+        {
+            return;
+        }
+
+        if (scalars.HasHealthOverride)
+        {
+            mineRock.m_health = scalars.Health;
+        }
+
+        if (scalars.HasMinToolTierOverride)
+        {
+            mineRock.m_minToolTier = scalars.MinToolTier;
+        }
+
+        if (nview == null || zdo == null || !nview.IsOwner() || signatureMatches)
+        {
+            return;
+        }
+
+        if (scalars.HasHealthOverride)
+        {
+            SetMineRockAreaHealthAbsolute(mineRock, GetScaledMineHealth(Mathf.Max(scalars.Health, 0.01f)));
+        }
+
+        zdo.Set(MineRockLazyScalarSignatureKey, signature);
+    }
+
+    private static void ApplyLazyMineRock5Scalars(MineRock5 mineRock5, CompiledDamageableScalarDefinition scalars, int signature)
+    {
+        ZNetView? nview = mineRock5.GetComponent<ZNetView>();
+        ZDO? zdo = nview?.GetZDO();
+        int existingSignature = zdo?.GetInt(MineRock5LazyScalarSignatureKey, int.MinValue) ?? int.MinValue;
+        bool signatureMatches = existingSignature == signature;
+        bool healthMatches = !scalars.HasHealthOverride || Mathf.Approximately(mineRock5.m_health, scalars.Health);
+        bool minToolTierMatches = !scalars.HasMinToolTierOverride || mineRock5.m_minToolTier == scalars.MinToolTier;
+        if (healthMatches &&
+            minToolTierMatches &&
+            (signatureMatches || nview == null || zdo == null || !nview.IsOwner()))
+        {
+            return;
+        }
+
+        if (scalars.HasHealthOverride)
+        {
+            mineRock5.m_health = scalars.Health;
+        }
+
+        if (scalars.HasMinToolTierOverride)
+        {
+            mineRock5.m_minToolTier = scalars.MinToolTier;
+        }
+
+        if (nview == null || zdo == null || !nview.IsOwner() || signatureMatches)
+        {
+            return;
+        }
+
+        if (scalars.HasHealthOverride)
+        {
+            SetMineRock5AreaHealthAbsolute(mineRock5, GetScaledMineHealth(Mathf.Max(scalars.Health, 0.01f)));
+        }
+
+        zdo.Set(MineRock5LazyScalarSignatureKey, signature);
+    }
+
+    private static void ApplyLazyDestructibleScalars(Destructible destructible, CompiledDestructibleComponentDefinition definition, int signature)
+    {
+        ZNetView? nview = destructible.GetComponent<ZNetView>();
+        ZDO? zdo = nview?.GetZDO();
+        int existingSignature = zdo?.GetInt(DestructibleLazyScalarSignatureKey, int.MinValue) ?? int.MinValue;
+        bool signatureMatches = existingSignature == signature;
+        bool healthMatches = !definition.HasHealthOverride || Mathf.Approximately(destructible.m_health, definition.Health);
+        bool minToolTierMatches = !definition.HasMinToolTierOverride || destructible.m_minToolTier == definition.MinToolTier;
+        if (healthMatches &&
+            minToolTierMatches &&
+            (signatureMatches || nview == null || zdo == null || !nview.IsOwner()))
+        {
+            return;
+        }
+
+        if (definition.HasHealthOverride)
+        {
+            destructible.m_health = definition.Health;
+        }
+
+        if (definition.HasMinToolTierOverride)
+        {
+            destructible.m_minToolTier = definition.MinToolTier;
+        }
+
+        if (nview == null || zdo == null || !nview.IsOwner() || signatureMatches)
+        {
+            return;
+        }
+
+        if (definition.HasHealthOverride)
+        {
+            zdo.Set(ZDOVars.s_health, GetScaledMineHealth(Mathf.Max(definition.Health, 0.01f)));
+        }
+
+        zdo.Set(DestructibleLazyScalarSignatureKey, signature);
+    }
+
     private static bool TryGetCachedEventDropTable(
         GameObject gameObject,
         Func<CompiledObjectDropRule, CompiledDropTablePayload?> payloadSelector,

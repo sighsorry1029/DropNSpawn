@@ -91,6 +91,7 @@ internal sealed class PrefabReferenceEntry
 
     [YamlMember(Order = 11)]
     public DestructibleDefinition? Destructible { get; set; }
+
 }
 
 internal sealed class ObjectLocationReferenceEntry

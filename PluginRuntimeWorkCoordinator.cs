@@ -43,7 +43,6 @@ internal sealed class PluginRuntimeWorkCoordinator
     internal void ProcessUpdateFrame()
     {
         RuntimeWorkProfiler.Update(Time.realtimeSinceStartup);
-        ProcessStandaloneRuntimeTicks();
         ObserveExpandWorldDataReadyTransition();
         if (!NetworkPayloadSyncSupport.HasPendingWork() &&
             !HasPendingSnapshotBuildWork() &&
@@ -62,15 +61,6 @@ internal sealed class PluginRuntimeWorkCoordinator
         }
 
         RuntimeWorkProfiler.Update(Time.realtimeSinceStartup);
-    }
-
-    private static void ProcessStandaloneRuntimeTicks()
-    {
-        LocationManager.EnsureRunestoneGlobalPinRpcRegistered();
-        BossStonePerPlayerRuntime.EnsureRpcRegistered();
-        BossStonePerPlayerRuntime.ProcessPendingResetRequests();
-        BossTamedPressureRuntime.ExecuteServerTick();
-        DespawnRulesManager.ExecuteServerTick();
     }
 
     internal void QueueGameDataRefresh(DropNSpawnPlugin.ReloadDomain domains, string source)
@@ -146,7 +136,7 @@ internal sealed class PluginRuntimeWorkCoordinator
         if (replayed)
         {
             DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-                "ExpandWorldData biome sync became ready; replayed synchronized biome-mask publish for object, character, spawner, location, and spawnsystem domains.");
+                "ExpandWorldData biome sync became ready; replayed synchronized biome-mask publish for object, character, spawner, and spawnsystem domains.");
         }
     }
 

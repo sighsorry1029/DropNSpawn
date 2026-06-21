@@ -17,10 +17,6 @@ internal static partial class NetworkPayloadSyncSupport
     private static DomainCodec<SpawnerConfigurationEntry> SpawnerCodec =>
         _spawnerCodec ??= new(CreateSpawnerEntrySchema());
 
-    private static DomainCodec<LocationConfigurationEntry> _locationCodec;
-    private static DomainCodec<LocationConfigurationEntry> LocationCodec =>
-        _locationCodec ??= new(CreateLocationEntrySchema());
-
     private static DomainCodec<CanonicalSpawnSystemEntry> _spawnSystemCodec;
     private static DomainCodec<CanonicalSpawnSystemEntry> SpawnSystemCodec =>
         _spawnSystemCodec ??= new(CreateSpawnSystemEntrySchema());

@@ -41,12 +41,6 @@ internal static partial class CharacterDropManager
         AppendTemplateLine(builder, 3, "onePerPlayer: false # True uses nearby player count as the final amount # Configure check range in config");
         AppendTemplateLine(builder, 3, "amountLimit: null # ex) 2 # Integer cap on the final amount");
         AppendTemplateLine(builder, 3, "dropInStack: false # True spawns one stacked drop instead of many singles");
-        AppendTemplateLine(builder, 1, "despawn: # Optional unconditional no-player despawn rule for this prefab # top-level conditions do not apply to despawn");
-        AppendTemplateLine(builder, 2, "range: 64 # Optional override; falls back to Default Despawn Range config");
-        AppendTemplateLine(builder, 2, "delay: 90 # Optional override; falls back to Default Despawn Delay Seconds config");
-        AppendTemplateLine(builder, 2, "refunds: # Optional items dropped when this despawn rule removes the prefab");
-        AppendTemplateLine(builder, 2, "- item: null # ex) TrophyDeer");
-        AppendTemplateLine(builder, 3, "amount: 1 # ex) 2");
         AppendTemplateBlankLine(builder);
         AppendTemplateLine(builder, 0, "- prefab: Eikthyr");
         AppendTemplateLine(builder, 1, "characterDrop:");
@@ -58,33 +52,7 @@ internal static partial class CharacterDropManager
         AppendTemplateLine(builder, 3, "amount: 3");
         AppendTemplateLine(builder, 3, "dontScale: true");
         AppendTemplateLine(builder, 3, "levelMultiplier: false");
-        AppendTemplateLine(builder, 1, "despawn:");
-        AppendTemplateLine(builder, 2, "range: 64");
-        AppendTemplateLine(builder, 2, "delay: 90");
-        AppendTemplateLine(builder, 2, "refunds:");
-        AppendTemplateLine(builder, 2, "- item: TrophyDeer");
-        AppendTemplateLine(builder, 3, "amount: 2");
         AppendTemplateBlankLine(builder);
-        AppendTemplateComment(builder, "bossTamedPressure # Enable with BepInEx config: 2 - Boss / Enable Boss Tamed Pressure");
-        AppendActiveTemplateBlankLine(builder);
-        AppendActiveTemplateLine(builder, 0, "- bossTamedPressure:");
-        AppendActiveTemplateLine(builder, 2, "bossPrefabs: [] # Extra source boss prefabs added to the auto-detected boss set");
-        AppendActiveTemplateLine(builder, 2, "excludedBossPrefabs: [] # Boss prefabs to ignore from auto-detected and bossPrefabs sources");
-        AppendActiveTemplateLine(builder, 2, "targets:");
-        AppendActiveTemplateLine(builder, 3, "range: 32 # Clamp: 0~128. Horizontal XZ range around each boss");
-        AppendActiveTemplateLine(builder, 3, "scanInterval: 5 # Clamp: 0.25~30. Seconds between boss/tamed range scans");
-        AppendActiveTemplateLine(builder, 3, "maxPerBoss: 4 # Clamp: 1~128. Maximum pressured targets per boss per scan");
-        AppendActiveTemplateLine(builder, 3, "excludedTamedPrefabs: [] # Tamed MonsterAI prefabs excluded from the default pressured target set");
-        AppendActiveTemplateLine(builder, 3, "extraPressuredPrefabs: [] # Character prefabs pressured even when not tamed");
-        AppendActiveTemplateLine(builder, 2, "pressure:");
-        AppendActiveTemplateLine(builder, 3, "damageInterval: 1 # Clamp: 0.25~30. Seconds between periodic damage ticks; each tick applies damagePercentPerSecond * damageInterval at once");
-        AppendActiveTemplateLine(builder, 3, "damagePercentPerSecond: 0.01 # Clamp: 0~1. 0.01 = 1% of max health per second");
-        AppendActiveTemplateLine(builder, 3, "damageMinBaseHealth: 100 # Clamp: 0~100000. Minimum max-health basis for periodic damage");
-        AppendActiveTemplateLine(builder, 3, "incomingDamageMultiplier: 1.25 # Clamp: 0~10. Multiplies damage received while affected");
-        AppendActiveTemplateLine(builder, 3, "outgoingDamageMultiplier: 0.75 # Clamp: 0~10. Multiplies damage dealt while affected");
-        AppendActiveTemplateLine(builder, 2, "message: null # Defaults to \"Tamed creatures near a boss are weakened.\"; empty string disables messages");
-        AppendActiveTemplateLine(builder, 2, "messageInterval: 5 # Clamp: 0~300. Per-player message cooldown in seconds");
-        AppendActiveTemplateBlankLine(builder);
 
         return builder.ToString();
     }
@@ -110,12 +78,6 @@ internal static partial class CharacterDropManager
             AppendOptionalCharacterDropEntryTemplate(builder, 2);
         }
 
-        AppendTemplateNestedLine(builder, 1, "despawn:");
-        AppendTemplateNestedLine(builder, 2, "range: 64");
-        AppendTemplateNestedLine(builder, 2, "delay: 90");
-        AppendTemplateNestedLine(builder, 2, "refunds:");
-        AppendTemplateNestedLine(builder, 2, "- item: TrophyDeer");
-        AppendTemplateNestedLine(builder, 3, "amount: 2");
         AppendTemplateBlankLine(builder);
     }
 
@@ -192,17 +154,6 @@ internal static partial class CharacterDropManager
         builder.Append(' ', indent * 2);
         builder.Append("# ");
         builder.AppendLine(text);
-    }
-
-    private static void AppendActiveTemplateLine(StringBuilder builder, int indent, string text)
-    {
-        builder.Append(' ', indent * 2);
-        builder.AppendLine(text);
-    }
-
-    private static void AppendActiveTemplateBlankLine(StringBuilder builder)
-    {
-        builder.AppendLine();
     }
 
     private static void AppendTemplateBlankLine(StringBuilder builder)

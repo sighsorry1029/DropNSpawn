@@ -52,6 +52,39 @@ internal static partial class SpawnSystemManager
         GeneratedArtifactWriter.WriteText(ReferenceConfigurationPath, content, logMessage, logOnlyWhenChanged: true);
     }
 
+    private static void EnsureReferenceArtifactsUpToDate()
+    {
+        if (!DropNSpawnPlugin.IsSourceOfTruth ||
+            ZNetScene.instance == null ||
+            ObjectDB.instance == null)
+        {
+            return;
+        }
+
+        ReferenceCatalogSnapshot referenceCatalogSnapshot = BuildCurrentReferenceCatalogSnapshot();
+        if (!referenceCatalogSnapshot.HasAnyEntries)
+        {
+            return;
+        }
+
+        if (!ReferenceArtifactLifecycle.TryPlanUpdate(
+                ReferenceAutoUpdateStateKey,
+                ReferenceConfigurationPath,
+                referenceCatalogSnapshot.SourceSignature,
+                out ReferenceArtifactUpdateKind updateKind))
+        {
+            return;
+        }
+
+        WriteReferenceConfigurationFile(
+            BuildReferenceConfigurationTemplate(referenceCatalogSnapshot),
+            $"{ReferenceArtifactLifecycle.FormatAction(updateKind)} spawnsystem reference configuration at {ReferenceConfigurationPath}.");
+        ReferenceArtifactLifecycle.RecordUpdate(
+            ReferenceAutoUpdateStateKey,
+            ReferenceConfigurationPath,
+            referenceCatalogSnapshot.SourceSignature);
+    }
+
     internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
     {
         string content;

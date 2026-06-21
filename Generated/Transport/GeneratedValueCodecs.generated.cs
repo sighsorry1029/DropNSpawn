@@ -23,33 +23,6 @@ internal static partial class NetworkPayloadSyncSupport
                 ReadCharacterDropDefinition,
                 value => ConfigurationEntryCloneSupport.CloneCharacterDropDefinition(value)!);
 
-    private static ValueCodec<DespawnRefundEntryDefinition> _despawnRefundValueCodec;
-    private static ValueCodec<DespawnRefundEntryDefinition> DespawnRefundValueCodec =>
-        _despawnRefundValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteDespawnRefundEntryDefinition(builder, definition),
-                WriteDespawnRefundEntryDefinition,
-                ReadDespawnRefundEntryDefinition,
-                ConfigurationEntryCloneSupport.CloneDespawnRefundEntryDefinition);
-
-    private static ValueCodec<DespawnDefinition> _despawnValueCodec;
-    private static ValueCodec<DespawnDefinition> DespawnValueCodec =>
-        _despawnValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteDespawnDefinition(builder, definition),
-                WriteDespawnDefinition,
-                ReadDespawnDefinition,
-                value => ConfigurationEntryCloneSupport.CloneDespawnDefinition(value)!);
-
-    private static ValueCodec<BossTamedPressureDefinition> _bossTamedPressureValueCodec;
-    private static ValueCodec<BossTamedPressureDefinition> BossTamedPressureValueCodec =>
-        _bossTamedPressureValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteBossTamedPressureDefinition(builder, definition),
-                WriteBossTamedPressureDefinition,
-                ReadBossTamedPressureDefinition,
-                value => ConfigurationEntryCloneSupport.CloneBossTamedPressureDefinition(value)!);
-
     private static ValueCodec<DropTableDefinition> _dropTableValueCodec;
     private static ValueCodec<DropTableDefinition> DropTableValueCodec =>
         _dropTableValueCodec ??=
@@ -121,42 +94,6 @@ internal static partial class NetworkPayloadSyncSupport
                 WriteSpawnerSyncCreatureSpawnerDefinition,
                 ReadSpawnerSyncCreatureSpawnerDefinition,
                 value => ConfigurationEntryCloneSupport.CloneCreatureSpawnerDefinition(value)!);
-
-    private static ValueCodec<LocationOfferingBowlDefinition> _offeringBowlValueCodec;
-    private static ValueCodec<LocationOfferingBowlDefinition> OfferingBowlValueCodec =>
-        _offeringBowlValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteOfferingBowlDefinition(builder, definition),
-                WriteOfferingBowlDefinition,
-                ReadOfferingBowlDefinition,
-                value => ConfigurationEntryCloneSupport.CloneLocationOfferingBowlDefinition(value)!);
-
-    private static ValueCodec<LocationItemStandDefinition> _itemStandValueCodec;
-    private static ValueCodec<LocationItemStandDefinition> ItemStandValueCodec =>
-        _itemStandValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteItemStandDefinition(builder, definition),
-                WriteItemStandDefinition,
-                ReadItemStandDefinition,
-                ConfigurationEntryCloneSupport.CloneLocationItemStandDefinition);
-
-    private static ValueCodec<LocationRunestoneGlobalPinsDefinition> _runestoneGlobalPinsValueCodec;
-    private static ValueCodec<LocationRunestoneGlobalPinsDefinition> RunestoneGlobalPinsValueCodec =>
-        _runestoneGlobalPinsValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteRunestoneGlobalPinsDefinition(builder, definition),
-                WriteRunestoneGlobalPinsDefinition,
-                ReadRunestoneGlobalPinsDefinition,
-                ConfigurationEntryCloneSupport.CloneLocationRunestoneGlobalPinsDefinition);
-
-    private static ValueCodec<LocationVegvisirGlobalEffectsDefinition> _vegvisirGlobalEffectsValueCodec;
-    private static ValueCodec<LocationVegvisirGlobalEffectsDefinition> VegvisirGlobalEffectsValueCodec =>
-        _vegvisirGlobalEffectsValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteVegvisirGlobalEffectsDefinition(builder, definition),
-                WriteVegvisirGlobalEffectsDefinition,
-                ReadVegvisirGlobalEffectsDefinition,
-                ConfigurationEntryCloneSupport.CloneLocationVegvisirGlobalEffectsDefinition);
 
     private static ValueCodec<SpawnSystemSpawnDefinition> _spawnSystemSpawnValueCodec;
     private static ValueCodec<SpawnSystemSpawnDefinition> SpawnSystemSpawnValueCodec =>

@@ -1,5 +1,7 @@
 # Despawn Flow
 
+> Historical DropNSpawn note: boss despawn rules moved to the standalone `BossRules` mod. The active implementation now lives in `C:\Users\blizz\RiderProjects\BossRules\DespawnRulesManager.cs`.
+
 This flow reflects the current `bootstrap/register` model. The older periodic fallback sweep model no longer exists.
 
 ## Producers

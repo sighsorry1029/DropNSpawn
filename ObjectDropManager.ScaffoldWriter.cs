@@ -83,6 +83,7 @@ internal static partial class ObjectDropManager
         {
             AppendScaffoldDestructibleBlock(builder, entry.Destructible);
         }
+
     }
 
     private static void AppendScaffoldDamageableDropTableBlock(StringBuilder builder, int indent, string blockName, DamageableDropTableDefinition definition)

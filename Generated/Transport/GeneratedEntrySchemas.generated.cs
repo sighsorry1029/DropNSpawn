@@ -40,8 +40,6 @@ internal static partial class NetworkPayloadSyncSupport
             BoolField<CharacterDropPrefabEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value),
             OptionalField<CharacterDropPrefabEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec),
             OptionalField<CharacterDropPrefabEntry, CharacterDropDefinition>(entry => entry.CharacterDrop, (entry, value) => entry.CharacterDrop = value, CharacterDropValueCodec),
-            OptionalField<CharacterDropPrefabEntry, DespawnDefinition>(entry => entry.Despawn, (entry, value) => entry.Despawn = value, DespawnValueCodec),
-            OptionalField<CharacterDropPrefabEntry, BossTamedPressureDefinition>(entry => entry.BossTamedPressure, (entry, value) => entry.BossTamedPressure = value, BossTamedPressureValueCodec),
             CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourcePath = source.SourcePath),
             CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourceLine = source.SourceLine),
             CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourceColumn = source.SourceColumn)
@@ -63,25 +61,6 @@ internal static partial class NetworkPayloadSyncSupport
             CopyOnlyField<SpawnerConfigurationEntry>((source, target) => target.SourcePath = source.SourcePath),
             CopyOnlyField<SpawnerConfigurationEntry>((source, target) => target.SourceLine = source.SourceLine),
             CopyOnlyField<SpawnerConfigurationEntry>((source, target) => target.SourceColumn = source.SourceColumn)
-        );
-    }
-
-    private static EntryTransportSchema<LocationConfigurationEntry> CreateLocationEntrySchema()
-    {
-        return new(
-            LocationManager.TransportMetadata.DtoVersion,
-            () => new LocationConfigurationEntry(),
-            StringField<LocationConfigurationEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId),
-            StringField<LocationConfigurationEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value),
-            BoolField<LocationConfigurationEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value),
-            OptionalField<LocationConfigurationEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec),
-            OptionalField<LocationConfigurationEntry, LocationOfferingBowlDefinition>(entry => entry.OfferingBowl, (entry, value) => entry.OfferingBowl = value, OfferingBowlValueCodec),
-            ListField<LocationConfigurationEntry, LocationItemStandDefinition>(entry => entry.ItemStands, (entry, value) => entry.ItemStands = value, ItemStandValueCodec),
-            OptionalField<LocationConfigurationEntry, LocationRunestoneGlobalPinsDefinition>(entry => entry.RunestoneGlobalPins, (entry, value) => entry.RunestoneGlobalPins = value, RunestoneGlobalPinsValueCodec),
-            OptionalField<LocationConfigurationEntry, LocationVegvisirGlobalEffectsDefinition>(entry => entry.VegvisirGlobalEffects, (entry, value) => entry.VegvisirGlobalEffects = value, VegvisirGlobalEffectsValueCodec),
-            CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourcePath = source.SourcePath),
-            CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourceLine = source.SourceLine),
-            CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourceColumn = source.SourceColumn)
         );
     }
 

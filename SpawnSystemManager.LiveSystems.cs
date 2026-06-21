@@ -9,6 +9,259 @@ namespace DropNSpawn;
 
 internal static partial class SpawnSystemManager
 {
+    internal static void OnSpawnSystemAwake(SpawnSystem? system)
+    {
+        lock (Sync)
+        {
+            TrackLiveSystemLocked(system);
+            if (system == null ||
+                ZNetScene.instance == null ||
+                ObjectDB.instance == null ||
+                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.SpawnSystem))
+            {
+                return;
+            }
+
+            bool preAttached = PreAttachedSpawnSystemIds.Remove(system.GetInstanceID());
+            CompiledSpawnSystemTable? selectedTable = GetSelectedCompiledTableForCurrentState();
+            bool preAttachedMutated = preAttached && !IsSystemAttachedToCompiledTable(system, selectedTable);
+            bool queueEspRefreshForAwake = !preAttached || preAttachedMutated;
+
+            if (DropNSpawnPlugin.IsSourceOfTruth)
+            {
+                if (HandleSourceOfTruthSpawnSystemAwake())
+                {
+                    ApplyIfReady(queueEspRefreshForLiveSystems: queueEspRefreshForAwake);
+                    return;
+                }
+            }
+            else if (!_configurationReady)
+            {
+                if (!CanRetainCurrentCompiledTableWhilePending(ComputeGameDataSignature()))
+                {
+                    return;
+                }
+            }
+            else if (_configurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0))
+            {
+                ApplyIfReady(
+                    queueEspRefreshForLiveSystems: queueEspRefreshForAwake,
+                    queueLiveSystemAttach: true);
+                if (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0)
+                {
+                    return;
+                }
+            }
+
+            AttachCompiledTableToAwakenedSystem(system, queueEspRefresh: queueEspRefreshForAwake);
+        }
+    }
+
+    internal static void PreAttachCompiledTableToAwakeningSystem(SpawnSystem? system)
+    {
+        lock (Sync)
+        {
+            TrackLiveSystemLocked(system);
+            if (system == null ||
+                !ShouldApplyLocally() ||
+                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.SpawnSystem))
+            {
+                return;
+            }
+
+            if (!DropNSpawnPlugin.IsSourceOfTruth &&
+                ((_configurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0)) ||
+                 (!_configurationReady && !CanRetainCurrentCompiledTableWhilePending(ComputeGameDataSignature()))))
+            {
+                return;
+            }
+
+            CompiledSpawnSystemTable? table = GetSelectedCompiledTableForCurrentState();
+            if (table == null)
+            {
+                return;
+            }
+
+            AttachTableToSystem(system, table);
+            PreAttachedSpawnSystemIds.Add(system.GetInstanceID());
+        }
+    }
+
+    internal static void UntrackLiveSystem(SpawnSystem? system)
+    {
+        lock (Sync)
+        {
+            UntrackLiveSystemLocked(system);
+        }
+    }
+
+    internal static bool ShouldBlockClientSpawnSystemUpdate(SpawnSystem? system)
+    {
+        lock (Sync)
+        {
+            if (!ShouldApplyLocally() || DropNSpawnPlugin.IsSourceOfTruth)
+            {
+                return false;
+            }
+
+            if (!_configurationReady)
+            {
+                return true;
+            }
+
+            if (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0)
+            {
+                return true;
+            }
+
+            return !IsSystemAttachedToCompiledTable(system, _activeCompiledTable);
+        }
+    }
+
+    private static void QueueEspMarkerRefresh(SpawnSystem? system)
+    {
+        EspSpawnSystemCompatibility.RequestRefresh(system, _reconcileQueueEpoch);
+    }
+
+    private static void EnsureLiveSystemRegistrySessionLocked()
+    {
+        int currentSceneInstanceId = ZNetScene.instance != null ? ZNetScene.instance.GetInstanceID() : 0;
+        if (_liveSystemsRegistrySceneInstanceId == currentSceneInstanceId)
+        {
+            return;
+        }
+
+        FinalizeAllPendingCompiledTableRetirementsLocked();
+        _liveSystemsRegistrySceneInstanceId = currentSceneInstanceId;
+        LiveSystemsById.Clear();
+        LiveSystemsSnapshot.Clear();
+        _liveSystemsSnapshotDirty = true;
+        _liveSystemsBootstrapAttempted = false;
+        SnapshotsBySystemId.Clear();
+        _templateSnapshot = null;
+        PendingLiveSystemAttaches.Clear();
+        PendingLiveSystemAttachIds.Clear();
+        PendingLiveSystemAttachEspRefreshIds.Clear();
+        EspSpawnSystemCompatibility.ClearPendingRefreshes();
+        PreAttachedSpawnSystemIds.Clear();
+        ResetPreparedEntriesBuildPipelineLocked(clearPendingTargetSignature: true);
+    }
+
+    private static void TrackLiveSystemLocked(SpawnSystem? system)
+    {
+        EnsureLiveSystemRegistrySessionLocked();
+        if (system == null)
+        {
+            return;
+        }
+
+        int systemId = system.GetInstanceID();
+        LiveSystemsById[systemId] = system;
+        _liveSystemsSnapshotDirty = true;
+    }
+
+    private static void UntrackLiveSystemLocked(SpawnSystem? system)
+    {
+        EnsureLiveSystemRegistrySessionLocked();
+        if (system == null)
+        {
+            return;
+        }
+
+        int systemId = system.GetInstanceID();
+        if (!LiveSystemsById.Remove(systemId))
+        {
+            return;
+        }
+
+        ClearAttachedRuntimeState(system);
+        _liveSystemsSnapshotDirty = true;
+        SnapshotsBySystemId.Remove(systemId);
+        _templateSnapshot = null;
+        PendingLiveSystemAttachIds.Remove(systemId);
+        PendingLiveSystemAttachEspRefreshIds.Remove(systemId);
+        EspSpawnSystemCompatibility.RemovePendingRefresh(systemId);
+        PreAttachedSpawnSystemIds.Remove(systemId);
+        MarkSystemMigratedFromRetiredTablesLocked(systemId);
+    }
+
+    private static bool HandleSourceOfTruthSpawnSystemAwake()
+    {
+        if (_activeCompiledTable != null)
+        {
+            return false;
+        }
+
+        bool overrideCreated = EnsurePrimaryOverrideConfigurationFileExists();
+        if (overrideCreated)
+        {
+            LoadConfiguration();
+        }
+
+        return true;
+    }
+
+    private static void AttachCompiledTableToAwakenedSystem(SpawnSystem system, bool queueEspRefresh)
+    {
+        CompiledSpawnSystemTable? table = GetSelectedCompiledTableForCurrentState();
+        if (table == null)
+        {
+            return;
+        }
+
+        AttachTableToSystem(system, table);
+        MarkSystemMigratedFromRetiredTablesLocked(system.GetInstanceID());
+        if (queueEspRefresh)
+        {
+            QueueEspMarkerRefresh(system);
+        }
+    }
+
+    private static bool TryProcessPendingLiveSystemAttach(float deadline)
+    {
+        while (PendingLiveSystemAttaches.Count > 0)
+        {
+            if (Time.realtimeSinceStartup >= deadline)
+            {
+                return false;
+            }
+
+            if (!PendingLiveSystemAttaches.TryDequeue(out PendingLiveSystemAttach queuedAttach))
+            {
+                continue;
+            }
+
+            bool queueEspRefresh = PendingLiveSystemAttachEspRefreshIds.Remove(queuedAttach.SystemId);
+            PendingLiveSystemAttachIds.Remove(queuedAttach.SystemId);
+            if (queuedAttach.Epoch != _reconcileQueueEpoch || queuedAttach.System == null)
+            {
+                continue;
+            }
+
+            if (queuedAttach.BuildVersion != _preparedEntriesBuildVersion ||
+                !ReferenceEquals(queuedAttach.TargetTable, GetSelectedCompiledTableForCurrentState()))
+            {
+                return true;
+            }
+
+            if (queuedAttach.TargetTable == null)
+            {
+                return true;
+            }
+
+            AttachTableToSystem(queuedAttach.System, queuedAttach.TargetTable);
+            MarkSystemMigratedFromRetiredTablesLocked(queuedAttach.SystemId);
+            if (queueEspRefresh)
+            {
+                QueueEspMarkerRefresh(queuedAttach.System);
+            }
+
+            return true;
+        }
+
+        return false;
+    }
+
     private static bool TryCaptureSnapshotsIfNeeded()
     {
         List<SpawnSystem> systems = GetLiveSystems();

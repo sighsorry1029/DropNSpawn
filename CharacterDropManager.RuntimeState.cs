@@ -13,7 +13,6 @@ internal static partial class CharacterDropManager
         public Dictionary<string, string> CurrentEntrySignaturesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> ConfiguredCharacterDropPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> PrefabsWithCharacterDropOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public List<BossTamedPressureDefinition> BossTamedPressureRules { get; } = new();
 
         public void Reset()
         {
@@ -23,7 +22,6 @@ internal static partial class CharacterDropManager
             CurrentEntrySignaturesByPrefab.Clear();
             ConfiguredCharacterDropPrefabs.Clear();
             PrefabsWithCharacterDropOverrides.Clear();
-            BossTamedPressureRules.Clear();
         }
     }
 }

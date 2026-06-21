@@ -1,9 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
-using BepInEx.Configuration;
 using ServerSync;
-using UnityEngine;
 
 namespace DropNSpawn;
 
@@ -52,15 +50,6 @@ internal sealed class PluginBootstrapCoordinator
             DropNSpawnPlugin.Toggle.On,
             "If on, the configuration is locked and can be changed by server admins only.",
             configManagerOrder: 800);
-        PluginBoundSettings.RotateForsakenPowerShortcut = _host.BindConfigEntry(
-            "1 - General",
-            "Rotate Forsaken Power Shortcut",
-            new KeyboardShortcut(KeyCode.G),
-            new ConfigDescription(
-                "Shortcut used to rotate through unlocked Forsaken Powers when Remote Forsaken Power Selection is enabled. This setting is client-side only.",
-                new DropNSpawnPlugin.AcceptableShortcuts()),
-            synchronizedSetting: false,
-            configManagerOrder: 700);
         PluginBoundSettings.DebugRuntimeWorkProfiling = _host.BindConfigEntry(
             "1 - General",
             "Debug Runtime Work Profiling",
@@ -69,29 +58,6 @@ internal sealed class PluginBootstrapCoordinator
             synchronizedSetting: false,
             configManagerOrder: 50);
         SpawnerGlobalConfig.Bind(_host);
-        LocationRunestoneGlobalPinsConfig.Bind(_host);
-        LocationVegvisirGlobalEffectsConfig.Bind(_host);
-        PluginBoundSettings.ShowLocationProxyOfferingBowlHoverInfo = _host.BindConfigEntry(
-            "2 - Boss",
-            "Show LocationProxy Offering Bowl Hover Info",
-            DropNSpawnPlugin.Toggle.On,
-            "If on, looking at an OfferingBowl shows simplified offering info with the spawned boss/item and required offering item. Matching altar ItemStands also show their required supported item names.",
-            synchronizedSetting: true);
-        PluginBoundSettings.PerPlayerBossStones = _host.BindConfigEntry(
-            "2 - Boss",
-            "Per Player Boss Stones",
-            DropNSpawnPlugin.Toggle.On,
-            "Each player sees their own version of reality. Any player standing in the Start Temple when a trophy is sacrificed will have the trophy hung in their reality as well. Any player not standing in the Start Temple when a trophy is sacrificed will not see the trophy in their reality.",
-            synchronizedSetting: true);
-        PluginBoundSettings.RemoteForsakenPowerSelection = _host.BindConfigEntry(
-            "2 - Boss",
-            "Remote Forsaken Power Selection",
-            DropNSpawnPlugin.Toggle.On,
-            "If on, players can rotate through Forsaken Powers they have unlocked through per-player boss stones without returning to the Start Temple.",
-            synchronizedSetting: true);
-
-        BossRulesConfig.Bind(_host);
-        DespawnRulesConfig.Bind(_host);
         CharacterDropGlobalConfig.Bind(_host);
 
         BindDomainConfigurationEntries();
@@ -120,13 +86,6 @@ internal sealed class PluginBootstrapCoordinator
             "If off, DropNSpawn SpawnArea and CreatureSpawner runtime overrides are not applied and existing spawner changes are restored to vanilla. Turn this off with Enable SpawnSystem when using Spawn That!. Turn this off when using Spawner Tweaks Spawn points or Spawners features.",
             synchronizedSetting: true,
             configManagerOrder: 500);
-        PluginBoundSettings.EnableLocationOverrides = _host.BindConfigEntry(
-            "4 - Domains",
-            "Enable Location Overrides",
-            DropNSpawnPlugin.Toggle.On,
-            "If off, DropNSpawn location runtime behavior for OfferingBowl, ItemStand, Vegvisir global effects, and RuneStone global pins is not applied and existing location changes are restored to vanilla. Turn this off when using Spawner Tweaks Boss altars or Item stands features.",
-            synchronizedSetting: true,
-            configManagerOrder: 400);
         PluginBoundSettings.EnableSpawnSystemOverrides = _host.BindConfigEntry(
             "4 - Domains",
             "Enable SpawnSystem Overrides",
@@ -144,7 +103,6 @@ internal sealed class PluginBootstrapCoordinator
             PluginBoundSettings.EnableObjectOverrides!,
             PluginBoundSettings.EnableCharacterOverrides!,
             PluginBoundSettings.EnableSpawnerOverrides!,
-            PluginBoundSettings.EnableLocationOverrides!,
             PluginBoundSettings.EnableSpawnSystemOverrides!);
     }
 
@@ -155,7 +113,6 @@ internal sealed class PluginBootstrapCoordinator
         PluginBoundSettings.EnableObjectOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
         PluginBoundSettings.EnableCharacterOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
         PluginBoundSettings.EnableSpawnerOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
-        PluginBoundSettings.EnableLocationOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
         PluginBoundSettings.EnableSpawnSystemOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
         PluginManifestCoordinator.AttachRuntimeDomainHandlers();
     }
@@ -166,9 +123,7 @@ internal sealed class PluginBootstrapCoordinator
         NetworkPayloadSyncSupport.Initialize(_host);
         ExampleContentWriter.EnsureDefaultExampleFiles();
         DomainRegistry.InitializeRuntimeDomains();
-        BossStonePerPlayerRuntime.Initialize();
         DropNSpawnConsoleCommands.Register();
-
     }
 
     private void ApplyPatchesAndWatchers()

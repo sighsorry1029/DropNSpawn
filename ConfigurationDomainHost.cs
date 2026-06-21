@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace DropNSpawn;
 
@@ -246,6 +247,34 @@ internal static class ConfigurationDomainHost
         loadState.LastRejectedPayload = "";
         loadState.PendingStrictPayload = "";
         loadState.LastRejectedValidationKey = "";
+    }
+
+    internal static void RejectLocalConfigurationPayload(
+        DomainLoadState loadState,
+        string payload,
+        IEnumerable<string> errors,
+        string domainName,
+        string? validationKey = null)
+    {
+        bool sameRejectedPayload = string.Equals(loadState.LastRejectedPayload, payload, StringComparison.Ordinal);
+        bool sameValidationKey = validationKey == null ||
+                                 string.Equals(loadState.LastRejectedValidationKey, validationKey, StringComparison.Ordinal);
+        if (sameRejectedPayload && sameValidationKey)
+        {
+            return;
+        }
+
+        loadState.LastRejectedPayload = payload;
+        loadState.PendingStrictPayload = "";
+        loadState.LastRejectedValidationKey = validationKey ?? "";
+        DropNSpawnPlugin.DropNSpawnLogger.LogError(
+            $"Rejected {domainName} reload. Keeping the previous authoritative {domainName} configuration.");
+        foreach (string error in errors
+                     .Where(message => !string.IsNullOrWhiteSpace(message))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            DropNSpawnPlugin.DropNSpawnLogger.LogError(error);
+        }
     }
 
     internal static DomainReloadOutcome RunSourceOfTruthReload<TEntry, TState>(

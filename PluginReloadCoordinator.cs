@@ -33,7 +33,6 @@ internal sealed class PluginReloadCoordinator
         ConfigEntry<DropNSpawnPlugin.Toggle> enableObjectOverrides,
         ConfigEntry<DropNSpawnPlugin.Toggle> enableCharacterOverrides,
         ConfigEntry<DropNSpawnPlugin.Toggle> enableSpawnerOverrides,
-        ConfigEntry<DropNSpawnPlugin.Toggle> enableLocationOverrides,
         ConfigEntry<DropNSpawnPlugin.Toggle> enableSpawnSystemOverrides)
     {
         _host = host;
@@ -42,7 +41,6 @@ internal sealed class PluginReloadCoordinator
             (enableObjectOverrides, DropNSpawnPlugin.ReloadDomain.Object),
             (enableCharacterOverrides, DropNSpawnPlugin.ReloadDomain.Character),
             (enableSpawnerOverrides, DropNSpawnPlugin.ReloadDomain.Spawner),
-            (enableLocationOverrides, DropNSpawnPlugin.ReloadDomain.Location),
             (enableSpawnSystemOverrides, DropNSpawnPlugin.ReloadDomain.SpawnSystem)
         };
     }
@@ -349,7 +347,6 @@ internal sealed class PluginReloadCoordinator
             GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Object),
             GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Character),
             GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Spawner),
-            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Location),
             GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.SpawnSystem));
     }
 
@@ -398,11 +395,6 @@ internal sealed class PluginReloadCoordinator
         if (previous.Spawner != current.Spawner)
         {
             domains |= DropNSpawnPlugin.ReloadDomain.Spawner;
-        }
-
-        if (previous.Location != current.Location)
-        {
-            domains |= DropNSpawnPlugin.ReloadDomain.Location;
         }
 
         if (previous.SpawnSystem != current.SpawnSystem)

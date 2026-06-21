@@ -12,7 +12,6 @@ using BepInEx.Logging;
 using HarmonyLib;
 using JetBrains.Annotations;
 using ServerSync;
-using UnityEngine;
 
 namespace DropNSpawn;
 
@@ -31,26 +30,23 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         Object = 1 << 0,
         Character = 1 << 1,
         Spawner = 1 << 2,
-        Location = 1 << 3,
-        SpawnSystem = 1 << 4,
-        All = Object | Character | Spawner | Location | SpawnSystem
+        SpawnSystem = 1 << 3,
+        All = Object | Character | Spawner | SpawnSystem
     }
 
     internal readonly struct DomainToggleState
     {
-        internal DomainToggleState(Toggle @object, Toggle character, Toggle spawner, Toggle location, Toggle spawnSystem)
+        internal DomainToggleState(Toggle @object, Toggle character, Toggle spawner, Toggle spawnSystem)
         {
             Object = @object;
             Character = character;
             Spawner = spawner;
-            Location = location;
             SpawnSystem = spawnSystem;
         }
 
         internal Toggle Object { get; }
         internal Toggle Character { get; }
         internal Toggle Spawner { get; }
-        internal Toggle Location { get; }
         internal Toggle SpawnSystem { get; }
     }
 
@@ -125,7 +121,6 @@ public class DropNSpawnPlugin : BaseUnityPlugin
             PluginBoundSettings.EnableObjectOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
             PluginBoundSettings.EnableCharacterOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
             PluginBoundSettings.EnableSpawnerOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableLocationOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
             PluginBoundSettings.EnableSpawnSystemOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
         }
         PluginManifestCoordinator.DetachRuntimeDomainHandlers();
@@ -136,7 +131,6 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         PluginBoundSettings.Clear();
 
         NetworkPayloadSyncSupport.Shutdown();
-        BossStonePerPlayerRuntime.Shutdown();
     }
 
     private static void EnsureServerSyncInitialized()
@@ -254,19 +248,9 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         return configEntry;
     }
 
-    private ConfigEntry<T> config<T>(string group, string name, T value, ConfigDescription description, bool synchronizedSetting = true)
-    {
-        return BindConfigEntry(group, name, value, description, synchronizedSetting);
-    }
-
     internal ConfigEntry<T> BindConfigEntry<T>(string group, string name, T value, string description, bool synchronizedSetting = true, int? configManagerOrder = null)
     {
         return BindConfigEntry(group, name, value, new ConfigDescription(description), synchronizedSetting, configManagerOrder);
-    }
-
-    private ConfigEntry<T> config<T>(string group, string name, T value, string description, bool synchronizedSetting = true)
-    {
-        return BindConfigEntry(group, name, value, description, synchronizedSetting);
     }
 
     private class ConfigurationManagerAttributes
@@ -295,31 +279,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
             .ToArray();
     }
 
-    internal class AcceptableShortcuts() : AcceptableValueBase(typeof(KeyboardShortcut))
-    {
-        public override object Clamp(object value) => value;
-        public override bool IsValid(object value) => true;
-
-        public override string ToDescriptionString() => $"# Acceptable values: {string.Join(", ", UnityInput.Current.SupportedKeyCodes)}";
-    }
-
     #endregion
-}
-
-public static class KeyboardExtensions
-{
-    extension(KeyboardShortcut shortcut)
-    {
-        public bool IsKeyDown()
-        {
-            return shortcut.MainKey != KeyCode.None && Input.GetKeyDown(shortcut.MainKey) && shortcut.Modifiers.All(Input.GetKey);
-        }
-
-        public bool IsKeyHeld()
-        {
-            return shortcut.MainKey != KeyCode.None && Input.GetKey(shortcut.MainKey) && shortcut.Modifiers.All(Input.GetKey);
-        }
-    }
 }
 
 public static class ToggleExtentions

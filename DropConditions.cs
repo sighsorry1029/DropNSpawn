@@ -652,7 +652,7 @@ internal static class DropConditionEvaluator
 
         Location? location = gameObject.GetComponentInParent<Location>(true);
         if (location != null &&
-            LocationManager.TryResolveRuntimeLocationPrefabName(location, out string resolvedPrefabName) &&
+            TryResolveLocationPrefabName(location, out string resolvedPrefabName) &&
             !string.IsNullOrWhiteSpace(resolvedPrefabName))
         {
             return resolvedPrefabName;
@@ -665,7 +665,7 @@ internal static class DropConditionEvaluator
     {
         Location? location = Location.GetLocation(position);
         if (location != null &&
-            LocationManager.TryResolveRuntimeLocationPrefabName(location, out string resolvedPrefabName) &&
+            TryResolveLocationPrefabName(location, out string resolvedPrefabName) &&
             !string.IsNullOrWhiteSpace(resolvedPrefabName))
         {
             return resolvedPrefabName;
@@ -695,7 +695,7 @@ internal static class DropConditionEvaluator
 
         Location? liveZoneLocation = Location.GetZoneLocation(position);
         if (liveZoneLocation != null &&
-            LocationManager.TryResolveRuntimeLocationPrefabName(liveZoneLocation, out string resolvedPrefabName) &&
+            TryResolveLocationPrefabName(liveZoneLocation, out string resolvedPrefabName) &&
             !string.IsNullOrWhiteSpace(resolvedPrefabName))
         {
             return resolvedPrefabName;
@@ -780,7 +780,7 @@ internal static class DropConditionEvaluator
 
     private static string? GetLocationName(Location location)
     {
-        if (LocationManager.TryResolveRuntimeLocationPrefabName(location, out string resolvedPrefabName) &&
+        if (TryResolveLocationPrefabName(location, out string resolvedPrefabName) &&
             !string.IsNullOrWhiteSpace(resolvedPrefabName))
         {
             return resolvedPrefabName;
@@ -800,6 +800,53 @@ internal static class DropConditionEvaluator
         }
 
         return TrimCloneSuffix(location.gameObject.name);
+    }
+
+    private static bool TryResolveLocationPrefabName(Location? location, out string prefabName)
+    {
+        prefabName = "";
+        if (location == null)
+        {
+            return false;
+        }
+
+        if (TryGetZoneLocationPrefabName(location.transform.position, out prefabName))
+        {
+            return true;
+        }
+
+        prefabName = TrimCloneSuffix(location.gameObject.name).Trim();
+        return prefabName.Length > 0;
+    }
+
+    private static bool TryGetZoneLocationPrefabName(Vector3 position, out string prefabName)
+    {
+        prefabName = "";
+        if (ZoneSystem.instance == null)
+        {
+            return false;
+        }
+
+        Vector2i zone = ZoneSystem.GetZone(position);
+        if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
+        {
+            return false;
+        }
+
+        float radius = Mathf.Max(locationInstance.m_location.m_exteriorRadius, locationInstance.m_location.m_interiorRadius);
+        if (radius > 0f && Utils.DistanceXZ(locationInstance.m_position, position) > radius)
+        {
+            return false;
+        }
+
+        string candidate = (locationInstance.m_location.m_prefabName ?? locationInstance.m_location.m_prefab.Name ?? "").Trim();
+        if (candidate.Length == 0)
+        {
+            return false;
+        }
+
+        prefabName = candidate;
+        return true;
     }
 
     private static string TrimCloneSuffix(string name)

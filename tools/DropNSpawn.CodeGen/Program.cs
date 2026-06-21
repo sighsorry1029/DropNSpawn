@@ -435,6 +435,11 @@ internal static class Program
                 RegexOptions.Multiline);
             foreach (Match match in matches)
             {
+                if (HasYamlIgnoreAttribute(type.Body, match.Index))
+                {
+                    continue;
+                }
+
                 string property = match.Groups["name"].Value;
                 if (!properties.Contains(property, StringComparer.Ordinal))
                 {
@@ -444,6 +449,13 @@ internal static class Program
 
             _propertiesByTypeName[typeName] = properties;
             return properties;
+        }
+
+        private static bool HasYamlIgnoreAttribute(string body, int propertyIndex)
+        {
+            int scanStart = Math.Max(0, propertyIndex - 256);
+            string prefix = body.Substring(scanStart, propertyIndex - scanStart);
+            return Regex.IsMatch(prefix, @"\[YamlIgnore\]\s*$", RegexOptions.Multiline);
         }
 
         public string? FindExpandedMethodBody(string methodName, string? fileName, string? parametersContain)

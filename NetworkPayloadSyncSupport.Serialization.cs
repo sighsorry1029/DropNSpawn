@@ -35,16 +35,6 @@ internal static partial class NetworkPayloadSyncSupport
         return SpawnerCodec.Schema.DeserializeEntries(payloadBytes);
     }
 
-    private static byte[] SerializeLocationEntries(List<LocationConfigurationEntry> entries)
-    {
-        return LocationCodec.Schema.SerializeEntries(entries);
-    }
-
-    private static List<LocationConfigurationEntry> DeserializeLocationEntries(byte[] payloadBytes)
-    {
-        return LocationCodec.Schema.DeserializeEntries(payloadBytes);
-    }
-
     private static byte[] SerializeSpawnSystemEntries(List<CanonicalSpawnSystemEntry> entries)
     {
         return SpawnSystemCodec.Schema.SerializeEntries(entries);

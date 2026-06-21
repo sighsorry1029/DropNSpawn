@@ -211,7 +211,27 @@ internal static partial class SpawnerManager
 
     private static bool TryGetLocationProxyPrefabName(LocationProxy proxy, out string prefabName)
     {
-        return LocationManager.TryResolveLocationProxyPrefabName(proxy, out prefabName);
+        prefabName = "";
+        if (proxy == null)
+        {
+            return false;
+        }
+
+        ZNetView? nview = proxy.GetComponent<ZNetView>();
+        ZDO? zdo = nview?.GetZDO();
+        int locationHash = zdo?.GetInt(ZDOVars.s_location) ?? 0;
+        if (locationHash != 0 && TryGetZoneLocationPrefabName(locationHash, out prefabName))
+        {
+            return true;
+        }
+
+        Location? childLocation = proxy.GetComponentInChildren<Location>(true);
+        if (childLocation != null && TryGetLocationPrefabName(childLocation, out prefabName))
+        {
+            return true;
+        }
+
+        return TryGetZoneLocationPrefabName(proxy.transform.position, out prefabName);
     }
 
     private static bool TryGetDirectLocationContext(GameObject gameObject, out string locationPrefab, out string relativePath)
@@ -664,12 +684,77 @@ internal static partial class SpawnerManager
 
     private static bool TryGetLocationPrefabName(Location location, out string prefabName)
     {
-        return LocationManager.TryResolveRuntimeLocationPrefabName(location, out prefabName);
+        prefabName = "";
+        if (location == null)
+        {
+            return false;
+        }
+
+        if (TryGetZoneLocationPrefabName(location.transform.position, out prefabName))
+        {
+            return true;
+        }
+
+        prefabName = TrimCloneSuffix(location.gameObject.name).Trim();
+        return prefabName.Length > 0;
     }
 
     private static string GetZoneLocationPrefabName(ZoneSystem.ZoneLocation? location)
     {
         return (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
+    }
+
+    private static bool TryGetZoneLocationPrefabName(int locationHash, out string prefabName)
+    {
+        prefabName = "";
+        if (locationHash == 0 || ZoneSystem.instance == null)
+        {
+            return false;
+        }
+
+        foreach (ZoneSystem.ZoneLocation zoneLocation in ZoneSystem.instance.m_locations)
+        {
+            string candidate = GetZoneLocationPrefabName(zoneLocation);
+            if (candidate.Length == 0 || candidate.GetStableHashCode() != locationHash)
+            {
+                continue;
+            }
+
+            prefabName = candidate;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryGetZoneLocationPrefabName(Vector3 position, out string prefabName)
+    {
+        prefabName = "";
+        if (ZoneSystem.instance == null)
+        {
+            return false;
+        }
+
+        Vector2i zone = ZoneSystem.GetZone(position);
+        if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
+        {
+            return false;
+        }
+
+        float radius = Mathf.Max(locationInstance.m_location.m_exteriorRadius, locationInstance.m_location.m_interiorRadius);
+        if (radius > 0f && Utils.DistanceXZ(locationInstance.m_position, position) > radius)
+        {
+            return false;
+        }
+
+        string candidate = GetZoneLocationPrefabName(locationInstance.m_location);
+        if (candidate.Length == 0)
+        {
+            return false;
+        }
+
+        prefabName = candidate;
+        return true;
     }
 
     private static string TryGetRelativePathIfDescendant(Transform root, Transform target)

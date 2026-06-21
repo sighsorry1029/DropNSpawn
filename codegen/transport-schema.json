@@ -17,30 +17,6 @@
       "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneCharacterDropDefinition(value)!"
     },
     {
-      "name": "DespawnRefundValueCodec",
-      "typeName": "DespawnRefundEntryDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteDespawnRefundEntryDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteDespawnRefundEntryDefinition",
-      "payloadReaderExpression": "ReadDespawnRefundEntryDefinition",
-      "cloneExpression": "ConfigurationEntryCloneSupport.CloneDespawnRefundEntryDefinition"
-    },
-    {
-      "name": "DespawnValueCodec",
-      "typeName": "DespawnDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteDespawnDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteDespawnDefinition",
-      "payloadReaderExpression": "ReadDespawnDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneDespawnDefinition(value)!"
-    },
-    {
-      "name": "BossTamedPressureValueCodec",
-      "typeName": "BossTamedPressureDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteBossTamedPressureDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteBossTamedPressureDefinition",
-      "payloadReaderExpression": "ReadBossTamedPressureDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneBossTamedPressureDefinition(value)!"
-    },
-    {
       "name": "DropTableValueCodec",
       "typeName": "DropTableDefinition",
       "signatureWriterExpression": "static (builder, definition, _) => WriteDropTableDefinition(builder, definition)",
@@ -103,40 +79,6 @@
       "payloadWriterExpression": "WriteSpawnerSyncCreatureSpawnerDefinition",
       "payloadReaderExpression": "ReadSpawnerSyncCreatureSpawnerDefinition",
       "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneCreatureSpawnerDefinition(value)!"
-    },
-    {
-      "name": "OfferingBowlValueCodec",
-      "typeName": "LocationOfferingBowlDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteOfferingBowlDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteOfferingBowlDefinition",
-      "payloadReaderExpression": "ReadOfferingBowlDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneLocationOfferingBowlDefinition(value)!",
-      "signatureCoverageIgnoredProperties": [ "SpawnBossMaxDistance", "SpawnBossMinDistance" ],
-      "payloadCoverageIgnoredProperties": [ "SpawnBossMaxDistance", "SpawnBossMinDistance" ]
-    },
-    {
-      "name": "ItemStandValueCodec",
-      "typeName": "LocationItemStandDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteItemStandDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteItemStandDefinition",
-      "payloadReaderExpression": "ReadItemStandDefinition",
-      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationItemStandDefinition"
-    },
-    {
-      "name": "RunestoneGlobalPinsValueCodec",
-      "typeName": "LocationRunestoneGlobalPinsDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteRunestoneGlobalPinsDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteRunestoneGlobalPinsDefinition",
-      "payloadReaderExpression": "ReadRunestoneGlobalPinsDefinition",
-      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationRunestoneGlobalPinsDefinition"
-    },
-    {
-      "name": "VegvisirGlobalEffectsValueCodec",
-      "typeName": "LocationVegvisirGlobalEffectsDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteVegvisirGlobalEffectsDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteVegvisirGlobalEffectsDefinition",
-      "payloadReaderExpression": "ReadVegvisirGlobalEffectsDefinition",
-      "cloneExpression": "ConfigurationEntryCloneSupport.CloneLocationVegvisirGlobalEffectsDefinition"
     },
     {
       "name": "SpawnSystemSpawnValueCodec",
@@ -204,8 +146,6 @@
         { "expression": "BoolField<CharacterDropPrefabEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
         { "expression": "OptionalField<CharacterDropPrefabEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec)" },
         { "expression": "OptionalField<CharacterDropPrefabEntry, CharacterDropDefinition>(entry => entry.CharacterDrop, (entry, value) => entry.CharacterDrop = value, CharacterDropValueCodec)" },
-        { "expression": "OptionalField<CharacterDropPrefabEntry, DespawnDefinition>(entry => entry.Despawn, (entry, value) => entry.Despawn = value, DespawnValueCodec)" },
-        { "expression": "OptionalField<CharacterDropPrefabEntry, BossTamedPressureDefinition>(entry => entry.BossTamedPressure, (entry, value) => entry.BossTamedPressure = value, BossTamedPressureValueCodec)" },
         { "expression": "CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourcePath = source.SourcePath)" },
         { "expression": "CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourceLine = source.SourceLine)" },
         { "expression": "CopyOnlyField<CharacterDropPrefabEntry>((source, target) => target.SourceColumn = source.SourceColumn)" }
@@ -230,25 +170,6 @@
       ]
     },
     {
-      "methodName": "CreateLocationEntrySchema",
-      "entryTypeName": "LocationConfigurationEntry",
-      "dtoVersionExpression": "LocationManager.TransportMetadata.DtoVersion",
-      "createEntryExpression": "() => new LocationConfigurationEntry()",
-      "fields": [
-        { "expression": "StringField<LocationConfigurationEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId)" },
-        { "expression": "StringField<LocationConfigurationEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
-        { "expression": "BoolField<LocationConfigurationEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
-        { "expression": "OptionalField<LocationConfigurationEntry, ConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, ConditionsValueCodec)" },
-        { "expression": "OptionalField<LocationConfigurationEntry, LocationOfferingBowlDefinition>(entry => entry.OfferingBowl, (entry, value) => entry.OfferingBowl = value, OfferingBowlValueCodec)" },
-        { "expression": "ListField<LocationConfigurationEntry, LocationItemStandDefinition>(entry => entry.ItemStands, (entry, value) => entry.ItemStands = value, ItemStandValueCodec)" },
-        { "expression": "OptionalField<LocationConfigurationEntry, LocationRunestoneGlobalPinsDefinition>(entry => entry.RunestoneGlobalPins, (entry, value) => entry.RunestoneGlobalPins = value, RunestoneGlobalPinsValueCodec)" },
-        { "expression": "OptionalField<LocationConfigurationEntry, LocationVegvisirGlobalEffectsDefinition>(entry => entry.VegvisirGlobalEffects, (entry, value) => entry.VegvisirGlobalEffects = value, VegvisirGlobalEffectsValueCodec)" },
-        { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourcePath = source.SourcePath)" },
-        { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourceLine = source.SourceLine)" },
-        { "expression": "CopyOnlyField<LocationConfigurationEntry>((source, target) => target.SourceColumn = source.SourceColumn)" }
-      ]
-    },
-    {
       "methodName": "CreateSpawnSystemEntrySchema",
       "entryTypeName": "CanonicalSpawnSystemEntry",
       "dtoVersionExpression": "SpawnSystemManager.TransportMetadata.DtoVersion",
@@ -267,42 +188,5 @@
       ]
     }
   ],
-  "coverageAudits": [
-    {
-      "typeName": "LocationRunestoneGlobalPinTargetDefinition",
-      "methods": [
-        { "file": "ConfigurationEntryCloneSupport.cs", "name": "CloneLocationRunestoneGlobalPinTargetDefinition" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteRunestoneGlobalPinTargetDefinition", "parametersContain": "PayloadSignatureBuilder" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteRunestoneGlobalPinTargetDefinition", "parametersContain": "ZPackage" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "ReadRunestoneGlobalPinTargetDefinition" }
-      ]
-    },
-    {
-      "typeName": "LocationVegvisirGlobalEffectsBiomeDefinition",
-      "methods": [
-        { "file": "ConfigurationEntryCloneSupport.cs", "name": "CloneLocationVegvisirGlobalEffectsBiomeDefinition" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectsBiomeDefinition", "parametersContain": "PayloadSignatureBuilder" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectsBiomeDefinition", "parametersContain": "ZPackage" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "ReadVegvisirGlobalEffectsBiomeDefinition" }
-      ]
-    },
-    {
-      "typeName": "LocationVegvisirGlobalEffectDefinition",
-      "methods": [
-        { "file": "ConfigurationEntryCloneSupport.cs", "name": "CloneLocationVegvisirGlobalEffectDefinition" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectDefinition", "parametersContain": "PayloadSignatureBuilder" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectDefinition", "parametersContain": "ZPackage" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "ReadVegvisirGlobalEffectDefinition" }
-      ]
-    },
-    {
-      "typeName": "LocationVegvisirGlobalEffectsLocalizationDefinition",
-      "methods": [
-        { "file": "ConfigurationEntryCloneSupport.cs", "name": "CloneLocationVegvisirGlobalEffectsLocalizationDefinition" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectsLocalizationDefinition", "parametersContain": "PayloadSignatureBuilder" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "WriteVegvisirGlobalEffectsLocalizationDefinition", "parametersContain": "ZPackage" },
-        { "file": "NetworkPayloadSyncSupport.cs", "name": "ReadVegvisirGlobalEffectsLocalizationDefinition" }
-      ]
-    }
-  ]
+  "coverageAudits": []
 }

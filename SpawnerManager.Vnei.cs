@@ -7,6 +7,16 @@ namespace DropNSpawn;
 
 internal static partial class SpawnerManager
 {
+    private static void RefreshVneiCompatibility(Dictionary<string, string> previousEntrySignatures)
+    {
+        RefreshVneiCompatibility(previousEntrySignatures, CloneCurrentEntrySignaturesByPrefab());
+    }
+
+    private static void RefreshVneiCompatibility(Dictionary<string, string> previousEntrySignatures, Dictionary<string, string> currentEntrySignatures)
+    {
+        VneiCompatibility.RefreshSpawnerPrefabs(BuildDirtyPrefabs(previousEntrySignatures, currentEntrySignatures));
+    }
+
     internal static bool HasVneiRelevantSpawnAreaEntries(string prefabName)
     {
         lock (Sync)

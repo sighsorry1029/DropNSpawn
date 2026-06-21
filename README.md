@@ -1,12 +1,11 @@
 # DropNSpawn
 
-Configure all object/creature drops, spawns, spawners, and boss altars. Add boss despawn rules, remote Forsaken power selection, altar hover info for offerings/bosses, RuneStone location pins, Vegvisir buffs, stacked drops, and level-scaled trophies.
+Configure object and creature drops, object loot, spawners, and world spawning. Add stacked drops, level-scaled trophies, VNEI support, and location-scoped spawner rules.
 ## Domains
 
 | Domain | What it controls |
 | --- | --- |
-| `location` | Boss altars, altar item stands, Vegvisir global effects, and RuneStone global pins |
-| `character` | `CharacterDrop` loot, one-per-player drop counting, drop-in-stack, despawn rules, and boss-tamed pressure |
+| `character` | `CharacterDrop` loot, one-per-player drop counting, and drop-in-stack |
 | `object` | Containers, pickables, pickable items, fish, destructibles, mine rocks, trees, and object drop tables |
 | `spawner` | `SpawnArea` and `CreatureSpawner` tables, intervals, caps, level ranges, and location-scoped spawner rules |
 | `spawnsystem` | World `SpawnSystem` rows, biome rules, time-of-day rules, global-key gates, and extended spawn data |
@@ -14,14 +13,9 @@ Configure all object/creature drops, spawns, spawners, and boss altars. Add boss
 `spawnsystem` is a full replacement domain: the loaded rows become the live world spawn table. Keep every spawn row you still want.
 
 ## Location
-![](https://i.ibb.co/FLPN5q68/altar.png)  
-Boss-location and location-helper behavior.
+DropNSpawn no longer owns a user-editable `DNS_location.yml` domain. Boss altar, altar `ItemStand`, same-boss duplicate blocking, boss despawn, and boss-tamed pressure rules live in the standalone `BossRules` mod. DropNSpawn keeps internal location lookup helpers for object and spawner `locations:` selectors.
 
-- boss altar behavior, summon requirements, and respawn timing
-- slot-specific `ItemStand` restrictions and offering changes
-- biome-based `vegvisirGlobalEffects` status-effect rewards when interacting with Vegvisirs
-- RuneStone global pins for revealing configured map locations from pinless RuneStones
-- hover on altar to see the offering and summonable boss
+RuneStone global pins and Vegvisir biome buffs live in the standalone `VegvisirRunestones` mod.
 
 ## Character
 ![](https://i.ibb.co/nMZ7gcZR/characterdrop.png)
@@ -31,7 +25,6 @@ Boss-location and location-helper behavior.
 - VNEI-compatible character drop display
 - drop creature loot in one stack when configured
 - `onePerPlayer` can count nearby living players within the configured range
-- character despawn rules and boss-tamed pressure
 
 ## Object
 ![](https://i.ibb.co/yFhNTP60/objectdrop.png)
@@ -102,16 +95,12 @@ Notes:
 
 ## Console Commands
 
-- `dns:reference [object|character|spawner|location|spawnsystem|all]`
+- `dns:reference [object|character|spawner|spawnsystem|all]`
   Regenerates reference files.
-- `dns:full [object|character|spawner|location|spawnsystem|all]`
+- `dns:full [object|character|spawner|spawnsystem|all]`
   Writes non-loaded full scaffold files.
 - `dns:inspect spawner`
   Shows the current or nearest spawner target and resolved location selector context.
-- `dns:inspect bossstone`
-  Shows per-player boss stone state for the aimed target.
-- `dns:bossstone reset <exactPlayerName>`
-  Admin command that resets per-player boss stone state for one player.
 
 ## Useful Config
 
@@ -122,29 +111,19 @@ Domain toggles live under `4 - Domains`:
 - `Enable Object Overrides`
 - `Enable Character Overrides`
 - `Enable Spawner Overrides`
-- `Enable Location Overrides`
 - `Enable SpawnSystem Overrides`
 
-General, boss, and character settings include:
+General and character settings include:
 
 - `Lock Configuration`
 - `Default SpawnArea Max Total Spawns`
-- `Enable Runestone Global Pins`
-- `Enable Vegvisir Global Effects`
-- `Show LocationProxy Offering Bowl Hover Info`
-- `Per Player Boss Stones`
-- `Remote Forsaken Power Selection`
-- `Enable Boss Tamed Pressure`
-- `Enable Same Boss Duplicate Block`
-- `default despawn delay seconds`
-- `default despawn range`
 - `OnePerPlayer drop check range`
 - `global drop in stack`
 - `global drop in stack blacklist`
 - `global trophy level multiplier`
 - `global trophy level multiplier blacklist`
 
-Client-only settings include `Rotate Forsaken Power Shortcut`.
+Boss altar rules, same boss duplicate blocking for altars and `CreatureSpawner`, per-player boss stones, remote Forsaken Power selection, boss despawn, and boss tamed pressure live in BossRules.
 
 ## Compatibility
 

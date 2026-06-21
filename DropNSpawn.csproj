@@ -451,37 +451,13 @@
         <Reference Include="UnityEngine.IMGUIModule">
             <HintPath>$(CorlibPath)\UnityEngine.IMGUIModule.dll</HintPath>
         </Reference>
-        <Reference Include="UnityEngine.InputLegacyModule">
-            <HintPath>$(CorlibPath)\UnityEngine.InputLegacyModule.dll</HintPath>
-        </Reference>
         <Reference Include="UnityEngine.UI">
             <HintPath>$(CorlibPath)\UnityEngine.UI.dll</HintPath>
         </Reference>
-        <Reference Include="Unity.TextMeshPro">
-            <HintPath>$(GamePath)\valheim_Data\Managed\Unity.TextMeshPro.dll</HintPath>
-        </Reference>
     </ItemGroup>
     <ItemGroup>
-        <Compile Include="LocationConfiguration.cs"/>
-        <Compile Include="LocationManager.cs"/>
-        <Compile Include="LocationManager.Applier.cs"/>
-        <Compile Include="LocationManager.BaselineDesiredState.cs"/>
-        <Compile Include="LocationManager.Diagnostics.cs"/>
-        <Compile Include="LocationManager.LooseOverrides.cs"/>
-        <Compile Include="LocationManager.ReferenceArtifacts.cs"/>
-        <Compile Include="LocationManager.RootTraversal.cs"/>
-        <Compile Include="LocationManager.RuntimeState.cs"/>
-        <Compile Include="LocationManager.RunestoneGlobalPins.cs"/>
-        <Compile Include="LocationManager.ScaffoldWriter.cs"/>
-        <Compile Include="LocationManager.TemplateWriter.cs"/>
-        <Compile Include="LocationManager.VegvisirGlobalEffects.cs"/>
-        <Compile Include="LocationVegvisirGlobalEffectsPatches.cs"/>
-        <Compile Include="LocationRunestoneGlobalPinsPatches.cs"/>
-         <Compile Include="LocationRunestoneGlobalPinsConfig.cs"/>
-         <Compile Include="LocationVegvisirGlobalEffectsConfig.cs"/>
-         <Compile Include="LocationProxyOfferingBowlHover.cs"/>
          <Compile Include="GameDataPatches.cs"/>
-         <Compile Include="LocationGameDataPatches.cs"/>
+         <Compile Include="SpawnerLocationGameDataPatches.cs"/>
          <Compile Include="ObjectGameDataPatches.cs"/>
          <Compile Include="CharacterGameDataPatches.cs"/>
          <Compile Include="SpawnerGameDataPatches.cs"/>
@@ -495,12 +471,7 @@
         <Compile Include="CharacterDropRuntime.cs"/>
         <Compile Include="CharacterDropManager.cs"/>
         <Compile Include="CharacterDropManager.BaselineDesiredState.cs"/>
-        <Compile Include="CharacterDropManager.DespawnConfig.cs"/>
         <Compile Include="CharacterDropManager.RuntimeState.cs"/>
-        <Compile Include="CharacterBossPolicyRuntime.cs"/>
-        <Compile Include="BossTamedPressureRuntime.cs"/>
-        <Compile Include="CharacterDespawnRuntime.cs"/>
-        <Compile Include="CharacterDropManager.DespawnRefundExecutor.cs"/>
         <Compile Include="CharacterDropManager.ReferenceArtifacts.cs"/>
         <Compile Include="CharacterDropManager.ScaffoldWriter.cs"/>
         <Compile Include="CharacterDropManager.TemplateWriter.cs"/>
@@ -529,7 +500,6 @@
         <Compile Include="ExpandWorldFieldOverrideSupport.cs"/>
         <Compile Include="ExpandWorldSpawnDataSupport.cs"/>
         <Compile Include="ExampleContentWriter.cs"/>
-        <Compile Include="ExampleContentWriter.Location.cs"/>
         <Compile Include="ExampleContentWriter.Spawner.cs"/>
         <Compile Include="ExampleContentWriter.SpawnSystem.cs"/>
         <Compile Include="FactionIntegration.cs"/>
@@ -548,7 +518,6 @@
         <Compile Include="NetworkPayloadSyncSupport.ValueCodecs.cs"/>
         <Compile Include="Generated\Transport\GeneratedDomainCodecs.generated.cs"/>
         <Compile Include="Generated\Transport\GeneratedValueCodecs.generated.cs"/>
-        <Compile Include="OfferingBowlRuntimeState.cs"/>
         <Compile Include="ObjectDropConfiguration.cs"/>
         <Compile Include="ObjectDropManager.Applier.cs"/>
         <Compile Include="ObjectDropManager.cs"/>
@@ -582,19 +551,12 @@
         <Compile Include="RuntimeWorkProfiler.cs"/>
         <Compile Include="PluginBoundSettings.cs"/>
         <Compile Include="PluginSettingsFacade.cs"/>
-        <Compile Include="BossRulesManager.cs"/>
-        <Compile Include="DespawnRulesManager.cs"/>
-        <Compile Include="DespawnCleanupSupport.cs"/>
         <Compile Include="DomainTransportHooks.cs"/>
-        <Compile Include="BossRulesConfig.cs"/>
-        <Compile Include="DespawnRulesConfig.cs"/>
         <Compile Include="CharacterDropGlobalConfig.cs"/>
         <Compile Include="SpawnerGlobalConfig.cs"/>
         <Compile Include="EspSpawnSystemCompatibility.cs"/>
         <Compile Include="SceneProximityQueries.cs"/>
         <Compile Include="SpawnSystemTransportHooks.cs"/>
-        <Compile Include="BossStonePerPlayerRuntime.cs"/>
-        <Compile Include="ForsakenPowerSelectionRuntime.cs"/>
         <Compile Include="Properties\AssemblyInfo.cs"/>
         <Compile Include="RangeDefinitions.cs"/>
         <Compile Include="InstanceReconcileQueue.cs"/>
@@ -619,6 +581,7 @@
         <Compile Include="SpawnerManager.Applier.cs"/>
         <Compile Include="SpawnerManager.cs"/>
         <Compile Include="SpawnerManager.BaselineDesiredState.cs"/>
+        <Compile Include="SpawnerManager.Inspection.cs"/>
         <Compile Include="SpawnerManager.LiveRegistry.cs"/>
         <Compile Include="SpawnerManager.LiveReconciler.cs"/>
         <Compile Include="SpawnerManager.LiveReconcilerState.cs"/>

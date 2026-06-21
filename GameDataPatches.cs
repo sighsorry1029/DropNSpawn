@@ -7,8 +7,6 @@ internal static class ZNetSceneAwakePatch
 {
     private static void Postfix()
     {
-        BossRulesManager.ClearRuntimeState();
-        DespawnRulesManager.MarkBootstrapScanDirty("ZNetScene.Awake");
         DropNSpawnPlugin.QueueGameDataRefresh(DropNSpawnPlugin.ReloadDomain.All, "ZNetScene.Awake");
     }
 }
@@ -31,20 +29,11 @@ internal static class ObjectDBCopyOtherDBPatch
     }
 }
 
-[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Awake))]
-internal static class ZoneSystemAwakePatch
-{
-    private static void Postfix()
-    {
-        DropNSpawnPlugin.QueueGameDataRefresh(DropNSpawnPlugin.ReloadDomain.Location, "ZoneSystem.Awake");
-    }
-}
-
 [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
 internal static class ZoneSystemStartPatch
 {
     private static void Postfix()
     {
-        DropNSpawnPlugin.QueueGameDataRefresh(DropNSpawnPlugin.ReloadDomain.Location | DropNSpawnPlugin.ReloadDomain.SpawnSystem, "ZoneSystem.Start");
+        DropNSpawnPlugin.QueueGameDataRefresh(DropNSpawnPlugin.ReloadDomain.SpawnSystem, "ZoneSystem.Start");
     }
 }

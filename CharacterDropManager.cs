@@ -18,7 +18,7 @@ namespace DropNSpawn;
 
 /// <summary>
 /// Character domain front door and orchestrator.
-/// Parsing, compile orchestration, and apply entrypoints live here; specialized runtimes own compiled despawn, boss policy, and live drop state.
+/// Parsing, compile orchestration, and apply entrypoints live here; specialized runtimes own compiled and live drop state.
 /// </summary>
 internal static partial class CharacterDropManager
 {
@@ -65,7 +65,6 @@ internal static partial class CharacterDropManager
         public Dictionary<string, List<CharacterDropPrefabEntry>> ActiveEntriesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> ConfiguredCharacterDropPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> PrefabsWithCharacterDropOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public List<BossTamedPressureDefinition> BossTamedPressureRules { get; } = new();
         public Dictionary<string, string> EntrySignaturesByPrefab { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string ConfigurationSignature { get; set; } = "";
     }
@@ -99,7 +98,6 @@ internal static partial class CharacterDropManager
     private static Dictionary<string, string> CurrentEntrySignaturesByPrefab => RuntimeState.CurrentEntrySignaturesByPrefab;
     private static HashSet<string> ConfiguredCharacterDropPrefabs => RuntimeState.ConfiguredCharacterDropPrefabs;
     private static HashSet<string> PrefabsWithCharacterDropOverrides => RuntimeState.PrefabsWithCharacterDropOverrides;
-    private static List<BossTamedPressureDefinition> BossTamedPressureRules => RuntimeState.BossTamedPressureRules;
     private static readonly InvalidEntryDiagnostics InvalidEntryWarnings = new();
     private static readonly System.Reflection.FieldInfo? DropsEnabledField = AccessTools.Field(typeof(CharacterDrop), "m_dropsEnabled");
     [ThreadStatic] private static CharacterDrop? OnePerPlayerScopeCharacterDrop;
@@ -362,30 +360,6 @@ internal static partial class CharacterDropManager
         return ZNetScene.instance != null && ObjectDB.instance != null;
     }
 
-    private static void EnsureReferenceArtifactsUpToDate()
-    {
-        if (!IsGameDataReady())
-        {
-            return;
-        }
-
-        string currentSourceSignature = ComputeReferenceSourceSignature();
-        if (!ReferenceArtifactLifecycle.TryPlanUpdate(
-                ReferenceAutoUpdateStateKey,
-                ReferenceConfigurationPath,
-                currentSourceSignature,
-                out ReferenceArtifactUpdateKind updateKind))
-        {
-            return;
-        }
-
-        CaptureSnapshotsIfNeeded();
-        WriteReferenceConfigurationFile(
-            BuildReferenceConfigurationTemplate(),
-            $"{ReferenceArtifactLifecycle.FormatAction(updateKind)} character reference configuration at {ReferenceConfigurationPath}.");
-        ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature);
-    }
-
     private static bool EnsurePrimaryOverrideConfigurationFileExists()
     {
         if (DomainConfigurationFileSupport.HasAnyOverrideConfigurationFile(
@@ -429,16 +403,6 @@ internal static partial class CharacterDropManager
         }
     }
 
-    private static void RefreshVneiCompatibility(Dictionary<string, string> previousEntrySignatures)
-    {
-        RefreshVneiCompatibility(previousEntrySignatures, CloneCurrentEntrySignaturesByPrefab());
-    }
-
-    private static void RefreshVneiCompatibility(Dictionary<string, string> previousEntrySignatures, Dictionary<string, string> currentEntrySignatures)
-    {
-        VneiCompatibility.RefreshCharacterPrefabs(BuildDirtyPrefabs(previousEntrySignatures, currentEntrySignatures));
-    }
-
     private static void CompleteGameDataReadyLocked(string source, int gameDataSignature, int snapshotSignature)
     {
         if (DropNSpawnPlugin.IsSourceOfTruth && !_referenceArtifactsAutoRefreshConsumed)
@@ -461,8 +425,6 @@ internal static partial class CharacterDropManager
         RuntimeState.Reset();
         InvalidEntryWarnings.Clear();
         CharacterDropRuntime.Reset();
-        CharacterDespawnRuntime.Reset();
-        BossTamedPressureRuntime.Configure(Array.Empty<BossTamedPressureDefinition>());
         _compiledState = CharacterCompiledState.Empty;
         _compiledStateConfigurationSignature = "";
         _compiledStateGameDataSignature = null;
@@ -516,28 +478,15 @@ internal static partial class CharacterDropManager
 
         string context = CreateConfigurationContext(entry);
         bool hasDropOverride = entry.CharacterDrop != null;
-        bool hasDespawnOverride = entry.Despawn != null;
-        bool hasBossTamedPressure = entry.BossTamedPressure != null;
-        if (hasBossTamedPressure)
-        {
-            if (!string.IsNullOrWhiteSpace(entry.Prefab) || hasDropOverride || hasDespawnOverride || entry.Conditions != null)
-            {
-                warnings.Add($"Entry '{context}' defines bossTamedPressure, which is a global character-domain block and must not be combined with prefab, conditions, characterDrop, or despawn.");
-                return false;
-            }
-
-            return true;
-        }
-
         if (string.IsNullOrWhiteSpace(entry.Prefab))
         {
             warnings.Add($"Entry '{context}' is missing required prefab.");
             return false;
         }
 
-        if (!hasDropOverride && !hasDespawnOverride)
+        if (!hasDropOverride)
         {
-            warnings.Add($"Entry '{context}' does not define characterDrop or despawn.");
+            warnings.Add($"Entry '{context}' does not define characterDrop.");
             return false;
         }
 
@@ -595,17 +544,6 @@ internal static partial class CharacterDropManager
         SyncedCharacterConfigurationState state = new();
         foreach (CharacterDropPrefabEntry entry in CloneAndNormalizeConfigurationEntries(configuration, sourceName))
         {
-            if (entry.BossTamedPressure != null)
-            {
-                state.Configuration.Add(entry);
-                if (entry.Enabled)
-                {
-                    state.BossTamedPressureRules.Add(entry.BossTamedPressure);
-                }
-
-                continue;
-            }
-
             if (string.IsNullOrWhiteSpace(entry.Prefab))
             {
                 continue;
@@ -650,10 +588,6 @@ internal static partial class CharacterDropManager
         {
             PrefabsWithCharacterDropOverrides.Add(prefabName);
         }
-        BossTamedPressureRules.Clear();
-        BossTamedPressureRules.AddRange(state.BossTamedPressureRules);
-        BossTamedPressureRuntime.Configure(BossTamedPressureRules);
-
         _configurationSignature = state.ConfigurationSignature;
         LoadState.LastLoadedPayload = payloadToken;
         LoadState.LastRejectedPayload = "";
@@ -668,65 +602,23 @@ internal static partial class CharacterDropManager
     private static LocalLoadResult<CharacterDropPrefabEntry> ParseLocalConfigurationDocuments(
         List<ConfigurationLoadSupport.LocalYamlDocument> documents)
     {
-        List<CharacterDropPrefabEntry> configuration = new();
-        List<string> errors = new();
-        List<string> warnings = new();
-        int parsedEntryCount = 0;
-        int loadedFileCount = 0;
-        foreach (ConfigurationLoadSupport.LocalYamlDocument document in documents)
-        {
-            if (document.ReadError != null)
+        return ConfigurationLoadSupport.ParseLocalConfigurationDocuments(
+            documents,
+            (yaml, path) =>
             {
-                errors.Add($"Failed to read {document.Path}. {document.ReadError}");
-                continue;
-            }
-
-            try
-            {
-                string yaml = document.Yaml ?? "";
-                ParsedCharacterConfigurationDocument parsedDocument = ParseConfiguration(yaml, document.Path);
-                warnings.AddRange(parsedDocument.Warnings);
-                parsedEntryCount += parsedDocument.Configuration.Count;
-                List<CharacterDropPrefabEntry> sourcedConfiguration =
-                    PrepareLocalConfigurationEntries(parsedDocument.Configuration, document.Path, warnings);
-                configuration.AddRange(sourcedConfiguration);
-                loadedFileCount++;
-            }
-            catch (Exception ex)
-            {
-                errors.Add(
-                    $"Failed to parse {document.Path}{FormatYamlExceptionLocation(ex)}. Character override YAML must start with a root list like '- prefab: ...'. {ex}");
-            }
-        }
-
-        return new LocalLoadResult<CharacterDropPrefabEntry>
-        {
-            Entries = configuration,
-            Errors = errors,
-            Warnings = warnings,
-            ParsedEntryCount = parsedEntryCount,
-            LoadedFileCount = loadedFileCount
-        };
+                ParsedCharacterConfigurationDocument parsedDocument = ParseConfiguration(yaml, path);
+                return new ConfigurationLoadSupport.ParsedLocalConfiguration<CharacterDropPrefabEntry>(
+                    parsedDocument.Configuration,
+                    parsedDocument.Warnings);
+            },
+            PrepareLocalConfigurationEntries,
+            FormatYamlExceptionLocation,
+            "Character override YAML must start with a root list like '- prefab: ...'.");
     }
 
     private static void RejectLocalConfigurationPayload(string payload, IEnumerable<string> errors)
     {
-        if (string.Equals(LoadState.LastRejectedPayload, payload, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        LoadState.LastRejectedPayload = payload;
-        LoadState.PendingStrictPayload = "";
-        LoadState.LastRejectedValidationKey = "";
-        DropNSpawnPlugin.DropNSpawnLogger.LogError(
-            "Rejected character reload. Keeping the previous authoritative character configuration.");
-        foreach (string error in errors
-                     .Where(message => !string.IsNullOrWhiteSpace(message))
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogError(error);
-        }
+        ConfigurationDomainHost.RejectLocalConfigurationPayload(LoadState, payload, errors, "character");
     }
 
     private static void RebuildCharacterDropOverridePrefabSet(
@@ -905,63 +797,7 @@ internal static partial class CharacterDropManager
             }
         }
 
-        if (entry.Despawn != null)
-        {
-            entry.Despawn.Range = entry.Despawn.Range.HasValue
-                ? Mathf.Clamp(entry.Despawn.Range.Value, 0f, 128f)
-                : null;
-            entry.Despawn.Delay = entry.Despawn.Delay.HasValue
-                ? Mathf.Clamp(entry.Despawn.Delay.Value, 0f, 300f)
-                : null;
-            foreach (DespawnRefundEntryDefinition refund in entry.Despawn.Refunds ?? Enumerable.Empty<DespawnRefundEntryDefinition>())
-            {
-                refund.Item = (refund.Item ?? "").Trim();
-                refund.Amount = Math.Max(1, refund.Amount ?? 1);
-            }
-        }
-
-        if (entry.BossTamedPressure != null)
-        {
-            NormalizeBossTamedPressure(entry.BossTamedPressure);
-        }
-
         entry.RuleId = NormalizeOptionalRuleId(entry.RuleId) ?? BuildRuleId(entry);
-    }
-
-    private static void NormalizeBossTamedPressure(BossTamedPressureDefinition definition)
-    {
-        definition.BossPrefabs = NormalizeStringList(definition.BossPrefabs);
-        definition.ExcludedBossPrefabs = NormalizeStringList(definition.ExcludedBossPrefabs);
-        if (definition.Targets != null)
-        {
-            definition.Targets.Range = definition.Targets.Range.HasValue ? Mathf.Clamp(definition.Targets.Range.Value, 0f, 128f) : null;
-            definition.Targets.ScanInterval = definition.Targets.ScanInterval.HasValue ? Mathf.Clamp(definition.Targets.ScanInterval.Value, 0.25f, 30f) : null;
-            definition.Targets.MaxPerBoss = definition.Targets.MaxPerBoss.HasValue
-                ? Math.Max(1, Math.Min(definition.Targets.MaxPerBoss.Value, 128))
-                : null;
-            definition.Targets.ExcludedTamedPrefabs = NormalizeStringList(definition.Targets.ExcludedTamedPrefabs);
-            definition.Targets.ExtraPressuredPrefabs = NormalizeStringList(definition.Targets.ExtraPressuredPrefabs);
-        }
-
-        if (definition.Pressure != null)
-        {
-            definition.Pressure.DamageInterval = definition.Pressure.DamageInterval.HasValue ? Mathf.Clamp(definition.Pressure.DamageInterval.Value, 0.25f, 30f) : null;
-            definition.Pressure.DamagePercentPerSecond = definition.Pressure.DamagePercentPerSecond.HasValue
-                ? Mathf.Clamp(definition.Pressure.DamagePercentPerSecond.Value, 0f, 1f)
-                : null;
-            definition.Pressure.DamageMinBaseHealth = definition.Pressure.DamageMinBaseHealth.HasValue
-                ? Mathf.Clamp(definition.Pressure.DamageMinBaseHealth.Value, 0f, 100000f)
-                : null;
-            definition.Pressure.IncomingDamageMultiplier = definition.Pressure.IncomingDamageMultiplier.HasValue
-                ? Mathf.Clamp(definition.Pressure.IncomingDamageMultiplier.Value, 0f, 10f)
-                : null;
-            definition.Pressure.OutgoingDamageMultiplier = definition.Pressure.OutgoingDamageMultiplier.HasValue
-                ? Mathf.Clamp(definition.Pressure.OutgoingDamageMultiplier.Value, 0f, 10f)
-                : null;
-        }
-
-        definition.Message = definition.Message?.Trim();
-        definition.MessageInterval = definition.MessageInterval.HasValue ? Mathf.Clamp(definition.MessageInterval.Value, 0f, 300f) : null;
     }
 
     private static List<string>? NormalizeStringList(List<string>? values)
@@ -985,9 +821,7 @@ internal static partial class CharacterDropManager
             Prefab = entry.Prefab,
             Enabled = true,
             Conditions = entry.Conditions,
-            CharacterDrop = entry.CharacterDrop,
-            Despawn = entry.Despawn,
-            BossTamedPressure = entry.BossTamedPressure
+            CharacterDrop = entry.CharacterDrop
         };
 
         return $"{entry.Prefab}:{NetworkPayloadSyncSupport.ComputeCharacterEntryIdentitySignature(normalizedEntry)}";
@@ -1473,13 +1307,6 @@ internal static partial class CharacterDropManager
         }
     }
 
-    private static string ComputeReferenceSourceSignature()
-    {
-        return ReferenceRefreshSupport.ComputeStableHashForKeys(
-            EnumerateRelevantPrefabs()
-                .Select(prefab => prefab.name));
-    }
-
     private static int HashGameObjectCollection(int hash, IEnumerable<GameObject> prefabs)
     {
         unchecked
@@ -1594,8 +1421,6 @@ internal static partial class CharacterDropManager
         _lastAppliedConfigurationSignature = effectiveConfigurationSignature;
         _lastAppliedSynchronizedPayloadReady = Volatile.Read(ref _synchronizedPayloadReady);
         ReplaceEntrySignatures(_lastAppliedEntrySignaturesByPrefab, currentEntrySignatures);
-        PrimeDespawnTrackingRuleLookupLocked(gameDataSignature);
-        DespawnRulesManager.MarkBootstrapScanDirty("character apply committed");
     }
 
     private static void RestoreSnapshots(HashSet<string>? targetPrefabs = null)
@@ -2681,106 +2506,6 @@ internal static partial class CharacterDropManager
         return false;
     }
 
-    private static string FormatYamlBool(bool value)
-    {
-        return value ? "true" : "false";
-    }
-
-    private static string FormatYamlFloat(float value)
-    {
-        return value.ToString("0.###", CultureInfo.InvariantCulture);
-    }
-
-    private static string FormatYamlString(string value)
-    {
-        if (value.Length == 0)
-        {
-            return "''";
-        }
-
-        bool requiresQuotes =
-            char.IsWhiteSpace(value[0]) ||
-            char.IsWhiteSpace(value[value.Length - 1]) ||
-            value.IndexOfAny(new[] { ':', '#', '{', '}', '[', ']', ',', '\'', '"', '&', '*', '!', '|', '>', '%', '@', '`' }) >= 0 ||
-            value[0] == '-' ||
-            value[0] == '?' ||
-            string.Equals(value, "null", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
-
-        return requiresQuotes ? $"'{value.Replace("'", "''")}'" : value;
-    }
-
-    private static CharacterDropPrefabEntry BuildConfigurationEntry(CharacterDropSnapshot snapshot)
-    {
-        List<CharacterDropEntryDefinition> drops = snapshot.Drops
-            .Select(drop => new { Name = NormalizeReferenceItemName(drop.ItemPrefab), Drop = drop })
-            .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
-            .Select(entry => new CharacterDropEntryDefinition
-            {
-                Item = entry.Name!,
-                Amount = RangeFormatting.FromReference(entry.Drop.AmountMin, entry.Drop.AmountMax, 1, 1),
-                Chance = IsReferenceDefault(entry.Drop.Chance, 1f) ? null : entry.Drop.Chance,
-                OnePerPlayer = entry.Drop.OnePerPlayer ? true : null,
-                LevelMultiplier = GetReferenceLevelMultiplierOverride(entry.Drop),
-                DontScale = entry.Drop.DontScale ? true : null
-            })
-            .ToList();
-
-        return new CharacterDropPrefabEntry
-        {
-            Prefab = snapshot.Prefab.name,
-            Enabled = true,
-            CharacterDrop = new CharacterDropDefinition
-            {
-                Drops = drops.Count > 0 ? drops : null
-            }
-        };
-    }
-
-    private static bool IsReferenceDefault(float value, float defaultValue)
-    {
-        return Math.Abs(value - defaultValue) < 0.0001f;
-    }
-
-    private static IntRangeDefinition? GetAmountRange(CharacterDropEntryDefinition definition)
-    {
-        return definition.Amount ?? RangeFormatting.From(definition.AmountMin, definition.AmountMax ?? definition.AmountMin);
-    }
-
-    private static bool? GetReferenceLevelMultiplierOverride(CharacterDropItemSnapshot drop)
-    {
-        bool defaultValue = GetDefaultCharacterDropLevelMultiplier(drop.ItemPrefab);
-        return drop.LevelMultiplier == defaultValue ? null : drop.LevelMultiplier;
-    }
-
-    private static string? NormalizeReferenceItemName(GameObject? itemPrefab)
-    {
-        if (itemPrefab == null)
-        {
-            return null;
-        }
-
-        string prefabName = itemPrefab.name;
-        if (!prefabName.StartsWith(MockPrefabPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            return prefabName;
-        }
-
-        string normalizedName = prefabName.Substring(MockPrefabPrefix.Length);
-        if (string.IsNullOrWhiteSpace(normalizedName))
-        {
-            return null;
-        }
-
-        if (ObjectDB.instance?.GetItemPrefab(normalizedName) != null || ZNetScene.instance?.GetPrefab(normalizedName) != null)
-        {
-            return normalizedName;
-        }
-
-        return null;
-    }
-
     private static int RollConfiguredDropAmount(GameObject prefab, int amountMin, int amountMax)
     {
         return prefab != null && prefab.TryGetComponent(out ItemDrop _)
@@ -2982,33 +2707,4 @@ internal static partial class CharacterDropManager
         return $"{prefabName}/{ruleId}@{DescribeEntrySource(entry)}";
     }
 
-    internal static int ComputeGameDataSignatureForDespawnRuntime()
-    {
-        return ComputeGameDataSignature();
-    }
-
-    internal static IEnumerable<GameObject> EnumeratePrefabsForDespawnRuntime()
-    {
-        return EnumeratePrefabs();
-    }
-
-    internal static string GetPrefabNameForDespawnRuntime(GameObject prefab)
-    {
-        return GetPrefabName(prefab);
-    }
-
-    internal static string BuildCompiledDropContextForDespawnRuntime(CharacterDropPrefabEntry entry)
-    {
-        return BuildCompiledDropContext(entry);
-    }
-
-    internal static GameObject? ResolveItemPrefabForDespawnRuntime(string itemName, string context)
-    {
-        return ResolveItemPrefab(itemName, context);
-    }
-
-    internal static void WarnInvalidEntryForDespawnRuntime(string message)
-    {
-        WarnInvalidEntry(message);
-    }
 }

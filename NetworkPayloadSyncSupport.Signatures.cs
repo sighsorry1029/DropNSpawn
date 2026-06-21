@@ -80,26 +80,6 @@ internal static partial class NetworkPayloadSyncSupport
         return SpawnerCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: false);
     }
 
-    private static string ComputeLocationPayloadSignature(List<LocationConfigurationEntry> entries)
-    {
-        return LocationCodec.Schema.ComputePayloadSignature(entries);
-    }
-
-    internal static string ComputeLocationConfigurationSignature(IEnumerable<LocationConfigurationEntry>? entries)
-    {
-        return ComputeLocationPayloadSignature((entries ?? Enumerable.Empty<LocationConfigurationEntry>()).ToList());
-    }
-
-    internal static string ComputeLocationEntrySignature(LocationConfigurationEntry entry)
-    {
-        return LocationCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: true);
-    }
-
-    internal static string ComputeLocationEntryIdentitySignature(LocationConfigurationEntry entry)
-    {
-        return LocationCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: false);
-    }
-
     private static string ComputeSpawnSystemPayloadSignature(IReadOnlyList<CanonicalSpawnSystemEntry> entries)
     {
         return SpawnSystemCodec.Schema.ComputePayloadSignature(entries);

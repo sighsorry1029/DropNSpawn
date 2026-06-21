@@ -565,115 +565,6 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    internal static void OnSpawnSystemAwake(SpawnSystem? system)
-    {
-        lock (Sync)
-        {
-            TrackLiveSystemLocked(system);
-            if (system == null ||
-                ZNetScene.instance == null ||
-                ObjectDB.instance == null ||
-                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.SpawnSystem))
-            {
-                return;
-            }
-
-            bool preAttached = PreAttachedSpawnSystemIds.Remove(system.GetInstanceID());
-            CompiledSpawnSystemTable? selectedTable = GetSelectedCompiledTableForCurrentState();
-            bool preAttachedMutated = preAttached && !IsSystemAttachedToCompiledTable(system, selectedTable);
-            bool queueEspRefreshForAwake = !preAttached || preAttachedMutated;
-
-            if (DropNSpawnPlugin.IsSourceOfTruth)
-            {
-                if (HandleSourceOfTruthSpawnSystemAwake())
-                {
-                    ApplyIfReady(queueEspRefreshForLiveSystems: queueEspRefreshForAwake);
-                    return;
-                }
-            }
-            else if (!_configurationReady)
-            {
-                if (!CanRetainCurrentCompiledTableWhilePending(ComputeGameDataSignature()))
-                {
-                    return;
-                }
-            }
-            else if (_configurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0))
-            {
-                ApplyIfReady(
-                    queueEspRefreshForLiveSystems: queueEspRefreshForAwake,
-                    queueLiveSystemAttach: true);
-                if (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0)
-                {
-                    return;
-                }
-            }
-
-            AttachCompiledTableToAwakenedSystem(system, queueEspRefresh: queueEspRefreshForAwake);
-        }
-    }
-
-    internal static void PreAttachCompiledTableToAwakeningSystem(SpawnSystem? system)
-    {
-        lock (Sync)
-        {
-            TrackLiveSystemLocked(system);
-            if (system == null ||
-                !ShouldApplyLocally() ||
-                DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.SpawnSystem))
-            {
-                return;
-            }
-
-            if (!DropNSpawnPlugin.IsSourceOfTruth &&
-                ((_configurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0)) ||
-                 (!_configurationReady && !CanRetainCurrentCompiledTableWhilePending(ComputeGameDataSignature()))))
-            {
-                return;
-            }
-
-            CompiledSpawnSystemTable? table = GetSelectedCompiledTableForCurrentState();
-            if (table == null)
-            {
-                return;
-            }
-
-            AttachTableToSystem(system, table);
-            PreAttachedSpawnSystemIds.Add(system.GetInstanceID());
-        }
-    }
-
-    internal static void UntrackLiveSystem(SpawnSystem? system)
-    {
-        lock (Sync)
-        {
-            UntrackLiveSystemLocked(system);
-        }
-    }
-
-    internal static bool ShouldBlockClientSpawnSystemUpdate(SpawnSystem? system)
-    {
-        lock (Sync)
-        {
-            if (!ShouldApplyLocally() || DropNSpawnPlugin.IsSourceOfTruth)
-            {
-                return false;
-            }
-
-            if (!_configurationReady)
-            {
-                return true;
-            }
-
-            if (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0)
-            {
-                return true;
-            }
-
-            return !IsSystemAttachedToCompiledTable(system, _activeCompiledTable);
-        }
-    }
-
     internal static bool ProcessQueuedReconcileStep(float deadline)
     {
         lock (Sync)
@@ -795,146 +686,6 @@ internal static partial class SpawnSystemManager
         EnsureReferenceArtifactsUpToDate();
     }
 
-    private static void EnsureLiveSystemRegistrySessionLocked()
-    {
-        int currentSceneInstanceId = ZNetScene.instance != null ? ZNetScene.instance.GetInstanceID() : 0;
-        if (_liveSystemsRegistrySceneInstanceId == currentSceneInstanceId)
-        {
-            return;
-        }
-
-        FinalizeAllPendingCompiledTableRetirementsLocked();
-        _liveSystemsRegistrySceneInstanceId = currentSceneInstanceId;
-        LiveSystemsById.Clear();
-        LiveSystemsSnapshot.Clear();
-        _liveSystemsSnapshotDirty = true;
-        _liveSystemsBootstrapAttempted = false;
-        SnapshotsBySystemId.Clear();
-        _templateSnapshot = null;
-        PendingLiveSystemAttaches.Clear();
-        PendingLiveSystemAttachIds.Clear();
-        PendingLiveSystemAttachEspRefreshIds.Clear();
-        EspSpawnSystemCompatibility.ClearPendingRefreshes();
-        PreAttachedSpawnSystemIds.Clear();
-        ResetPreparedEntriesBuildPipelineLocked(clearPendingTargetSignature: true);
-    }
-
-    private static void TrackLiveSystemLocked(SpawnSystem? system)
-    {
-        EnsureLiveSystemRegistrySessionLocked();
-        if (system == null)
-        {
-            return;
-        }
-
-        int systemId = system.GetInstanceID();
-        LiveSystemsById[systemId] = system;
-        _liveSystemsSnapshotDirty = true;
-    }
-
-    private static void UntrackLiveSystemLocked(SpawnSystem? system)
-    {
-        EnsureLiveSystemRegistrySessionLocked();
-        if (system == null)
-        {
-            return;
-        }
-
-        int systemId = system.GetInstanceID();
-        if (!LiveSystemsById.Remove(systemId))
-        {
-            return;
-        }
-
-        ClearAttachedRuntimeState(system);
-        _liveSystemsSnapshotDirty = true;
-        SnapshotsBySystemId.Remove(systemId);
-        _templateSnapshot = null;
-        PendingLiveSystemAttachIds.Remove(systemId);
-        PendingLiveSystemAttachEspRefreshIds.Remove(systemId);
-        EspSpawnSystemCompatibility.RemovePendingRefresh(systemId);
-        PreAttachedSpawnSystemIds.Remove(systemId);
-        MarkSystemMigratedFromRetiredTablesLocked(systemId);
-    }
-
-    private static bool HandleSourceOfTruthSpawnSystemAwake()
-    {
-        if (_activeCompiledTable != null)
-        {
-            return false;
-        }
-
-        bool overrideCreated = EnsurePrimaryOverrideConfigurationFileExists();
-        if (overrideCreated)
-        {
-            LoadConfiguration();
-        }
-
-        return true;
-    }
-
-    private static void AttachCompiledTableToAwakenedSystem(SpawnSystem system, bool queueEspRefresh)
-    {
-        CompiledSpawnSystemTable? table = GetSelectedCompiledTableForCurrentState();
-        if (table == null)
-        {
-            return;
-        }
-
-        AttachTableToSystem(system, table);
-        MarkSystemMigratedFromRetiredTablesLocked(system.GetInstanceID());
-        if (queueEspRefresh)
-        {
-            QueueEspMarkerRefresh(system);
-        }
-
-    }
-
-    private static bool TryProcessPendingLiveSystemAttach(float deadline)
-    {
-        while (PendingLiveSystemAttaches.Count > 0)
-        {
-            if (Time.realtimeSinceStartup >= deadline)
-            {
-                return false;
-            }
-
-            if (!PendingLiveSystemAttaches.TryDequeue(out PendingLiveSystemAttach queuedAttach))
-            {
-                continue;
-            }
-
-            bool queueEspRefresh = PendingLiveSystemAttachEspRefreshIds.Remove(queuedAttach.SystemId);
-            PendingLiveSystemAttachIds.Remove(queuedAttach.SystemId);
-            if (queuedAttach.Epoch != _reconcileQueueEpoch || queuedAttach.System == null)
-            {
-                continue;
-            }
-
-            if (queuedAttach.BuildVersion != _preparedEntriesBuildVersion ||
-                !ReferenceEquals(queuedAttach.TargetTable, GetSelectedCompiledTableForCurrentState()))
-            {
-                return true;
-            }
-
-            if (queuedAttach.TargetTable == null)
-            {
-                return true;
-            }
-
-            AttachTableToSystem(queuedAttach.System, queuedAttach.TargetTable);
-            MarkSystemMigratedFromRetiredTablesLocked(queuedAttach.SystemId);
-            if (queueEspRefresh)
-            {
-                QueueEspMarkerRefresh(queuedAttach.System);
-            }
-
-            return true;
-        }
-
-        return false;
-    }
-
     internal static void RefreshRuntimeTimeOfDayState()
     {
         if (!_hasRuntimeTimeOfDayOverrides)
@@ -990,55 +741,6 @@ internal static partial class SpawnSystemManager
             _lastRuntimeTimeOfDayPhaseMarker = currentPhaseMarker;
             _lastRuntimeTimeOfDayRefreshFrame = currentFrame;
         }
-    }
-
-    private static void QueueEspMarkerRefresh(SpawnSystem? system)
-    {
-        EspSpawnSystemCompatibility.RequestRefresh(system, _reconcileQueueEpoch);
-    }
-
-    internal static void RecordDirectSpawnedObject(SpawnSystem.SpawnData critter, GameObject? spawnedObject)
-    {
-        lock (Sync)
-        {
-            if (critter == null || spawnedObject == null)
-            {
-                return;
-            }
-        }
-    }
-
-    private static void EnsureReferenceArtifactsUpToDate()
-    {
-        if (!DropNSpawnPlugin.IsSourceOfTruth ||
-            ZNetScene.instance == null ||
-            ObjectDB.instance == null)
-        {
-            return;
-        }
-
-        ReferenceCatalogSnapshot referenceCatalogSnapshot = BuildCurrentReferenceCatalogSnapshot();
-        if (!referenceCatalogSnapshot.HasAnyEntries)
-        {
-            return;
-        }
-
-        if (!ReferenceArtifactLifecycle.TryPlanUpdate(
-                ReferenceAutoUpdateStateKey,
-                ReferenceConfigurationPath,
-                referenceCatalogSnapshot.SourceSignature,
-                out ReferenceArtifactUpdateKind updateKind))
-        {
-            return;
-        }
-
-        WriteReferenceConfigurationFile(
-            BuildReferenceConfigurationTemplate(referenceCatalogSnapshot),
-            $"{ReferenceArtifactLifecycle.FormatAction(updateKind)} spawnsystem reference configuration at {ReferenceConfigurationPath}.");
-        ReferenceArtifactLifecycle.RecordUpdate(
-            ReferenceAutoUpdateStateKey,
-            ReferenceConfigurationPath,
-            referenceCatalogSnapshot.SourceSignature);
     }
 
     private static bool EnsurePrimaryOverrideConfigurationFileExists()
@@ -1128,43 +830,18 @@ internal static partial class SpawnSystemManager
     private static LocalLoadResult<SpawnSystemConfigurationEntry> ParseLocalConfigurationDocuments(
         List<ConfigurationLoadSupport.LocalYamlDocument> documents)
     {
-        List<SpawnSystemConfigurationEntry> configuration = new();
-        List<string> errors = new();
-        List<string> warnings = new();
-        int loadedFileCount = 0;
-        foreach (ConfigurationLoadSupport.LocalYamlDocument document in documents)
-        {
-            if (document.ReadError != null)
+        return ConfigurationLoadSupport.ParseLocalConfigurationDocuments(
+            documents,
+            (yaml, path) =>
             {
-                errors.Add($"Failed to read {document.Path}. {document.ReadError}");
-                continue;
-            }
-
-            try
-            {
-                string yaml = document.Yaml ?? "";
-                ParsedSpawnSystemConfigurationDocument parsedDocument = ParseConfiguration(yaml, document.Path);
-                warnings.AddRange(parsedDocument.Warnings);
-                List<SpawnSystemConfigurationEntry> ownedConfiguration =
-                    CloneAndNormalizeConfigurationEntries(parsedDocument.Configuration, document.Path);
-                configuration.AddRange(ownedConfiguration);
-                loadedFileCount++;
-            }
-            catch (Exception ex)
-            {
-                errors.Add(
-                    $"Failed to parse {document.Path}{FormatYamlExceptionLocation(ex)}. Spawnsystem authoritative YAML must start with a root list like '- prefab: Fox'. {ex}");
-            }
-        }
-
-        return new LocalLoadResult<SpawnSystemConfigurationEntry>
-        {
-            Entries = configuration,
-            Errors = errors,
-            Warnings = warnings,
-            ParsedEntryCount = configuration.Count,
-            LoadedFileCount = loadedFileCount
-        };
+                ParsedSpawnSystemConfigurationDocument parsedDocument = ParseConfiguration(yaml, path);
+                return new ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnSystemConfigurationEntry>(
+                    parsedDocument.Configuration,
+                    parsedDocument.Warnings);
+            },
+            (configuration, path, _) => CloneAndNormalizeConfigurationEntries(configuration, path),
+            FormatYamlExceptionLocation,
+            "Spawnsystem authoritative YAML must start with a root list like '- prefab: Fox'.");
     }
 
     private static bool CanStrictlyValidateLocalConfigurationNow(IEnumerable<SpawnSystemConfigurationEntry> configuration)
@@ -1261,24 +938,12 @@ internal static partial class SpawnSystemManager
 
     private static void RejectLocalConfigurationPayload(string payload, IEnumerable<string> errors)
     {
-        string validationKey = BuildStrictLocalValidationEnvironmentKey();
-        if (string.Equals(LoadState.LastRejectedPayload, payload, StringComparison.Ordinal) &&
-            string.Equals(LoadState.LastRejectedValidationKey, validationKey, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        LoadState.LastRejectedPayload = payload;
-        LoadState.LastRejectedValidationKey = validationKey;
-        LoadState.PendingStrictPayload = "";
-        DropNSpawnPlugin.DropNSpawnLogger.LogError(
-            "Rejected spawnsystem reload. Keeping the previous authoritative spawnsystem configuration.");
-        foreach (string error in errors
-                     .Where(message => !string.IsNullOrWhiteSpace(message))
-                     .Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogError(error);
-        }
+        ConfigurationDomainHost.RejectLocalConfigurationPayload(
+            LoadState,
+            payload,
+            errors,
+            "spawnsystem",
+            BuildStrictLocalValidationEnvironmentKey());
     }
 
     private static void CommitConfigurationState(SyncedSpawnSystemConfigurationState state, string payloadToken)

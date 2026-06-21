@@ -2,25 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using BepInEx.Configuration;
-using UnityEngine;
 
 namespace DropNSpawn;
 
 internal static class PluginSettingsFacade
 {
-    internal static bool ShouldShowLocationProxyOfferingBowlHoverInfo() =>
-        PluginBoundSettings.ShowLocationProxyOfferingBowlHoverInfo?.Value != DropNSpawnPlugin.Toggle.Off;
-
-    internal static bool IsPerPlayerBossStonesEnabled() =>
-        PluginBoundSettings.PerPlayerBossStones?.Value != DropNSpawnPlugin.Toggle.Off;
-
-    internal static bool IsRemoteForsakenPowerSelectionEnabled() =>
-        PluginBoundSettings.RemoteForsakenPowerSelection?.Value != DropNSpawnPlugin.Toggle.Off;
-
-    internal static bool IsBossTamedPressureEnabled() =>
-        PluginBoundSettings.EnableBossTamedPressure?.Value != DropNSpawnPlugin.Toggle.Off;
-
     internal static bool IsObjectDomainEnabled() =>
         PluginBoundSettings.EnableObjectOverrides?.Value != DropNSpawnPlugin.Toggle.Off;
 
@@ -30,20 +16,8 @@ internal static class PluginSettingsFacade
     internal static bool IsSpawnerDomainEnabled() =>
         PluginBoundSettings.EnableSpawnerOverrides?.Value != DropNSpawnPlugin.Toggle.Off;
 
-    internal static bool IsLocationDomainEnabled() =>
-        PluginBoundSettings.EnableLocationOverrides?.Value != DropNSpawnPlugin.Toggle.Off;
-
     internal static bool IsSpawnSystemDomainEnabled() =>
         PluginBoundSettings.EnableSpawnSystemOverrides?.Value != DropNSpawnPlugin.Toggle.Off;
-
-    internal static bool IsRunestoneGlobalPinsEnabled() =>
-        LocationRunestoneGlobalPinsConfig.IsEnabled();
-
-    internal static bool IsVegvisirGlobalEffectsEnabled() =>
-        LocationVegvisirGlobalEffectsConfig.IsEnabled();
-
-    internal static KeyboardShortcut GetRotateForsakenPowerShortcut() =>
-        PluginBoundSettings.RotateForsakenPowerShortcut?.Value ?? default;
 
     internal static bool IsGlobalCharacterDropInStackEnabled() =>
         CharacterDropGlobalConfig.IsGlobalDropInStackEnabled();
@@ -57,17 +31,8 @@ internal static class PluginSettingsFacade
     internal static string GetCharacterDropTrophyLevelMultiplierSignature() =>
         CharacterDropGlobalConfig.GetTrophyLevelMultiplierSignature();
 
-    internal static float GetSameBossDuplicateBlockRadius() =>
-        BossRulesConfig.GetSameBossDuplicateBlockRadius();
-
     internal static int GetDefaultSpawnAreaMaxTotalSpawns() =>
         SpawnerGlobalConfig.GetDefaultSpawnAreaMaxTotalSpawns();
-
-    internal static float GetDefaultDespawnRange() =>
-        DespawnRulesConfig.GetDefaultDespawnRange();
-
-    internal static float GetDefaultDespawnDelaySeconds() =>
-        DespawnRulesConfig.GetDefaultDespawnDelaySeconds();
 
     internal static float GetCharacterDropOnePerPlayerNearbyRange() =>
         CharacterDropGlobalConfig.GetOnePerPlayerNearbyRange();

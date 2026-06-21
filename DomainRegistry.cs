@@ -113,7 +113,6 @@ internal static class DomainRegistry
         ObjectDropManager.Module,
         CharacterDropManager.Module,
         SpawnerManager.Module,
-        LocationManager.Module,
         SpawnSystemManager.Module
     };
 
@@ -127,7 +126,10 @@ internal static class DomainRegistry
         SelectDescriptors(DomainWorkKinds.Reconcile);
 
     internal static readonly DomainTransportMetadata[] Transports =
-        AllRegistrations.Select(static registration => registration.TransportMetadata).ToArray();
+        AllRegistrations
+            .Where(static registration => (registration.WorkKinds & DomainWorkKinds.Runtime) != 0)
+            .Select(static registration => registration.TransportMetadata)
+            .ToArray();
 
     static DomainRegistry()
     {
