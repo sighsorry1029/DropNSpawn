@@ -11,33 +11,50 @@ internal static class CharacterDropGenerateDropListPatch
 {
     private readonly struct State
     {
-        internal State(List<CharacterDrop.Drop>? previousDrops, bool hasOnePerPlayerScope)
+        internal State(
+            List<CharacterDrop.Drop>? previousDrops,
+            bool hasOnePerPlayerScope,
+            IReadOnlyList<CharacterDrop.Drop>? trophyAmountSourceDrops)
         {
             PreviousDrops = previousDrops;
             HasOnePerPlayerScope = hasOnePerPlayerScope;
+            TrophyAmountSourceDrops = trophyAmountSourceDrops;
         }
 
         internal List<CharacterDrop.Drop>? PreviousDrops { get; }
         internal bool HasOnePerPlayerScope { get; }
+        internal IReadOnlyList<CharacterDrop.Drop>? TrophyAmountSourceDrops { get; }
     }
 
     private static void Prefix(CharacterDrop __instance, out State __state)
     {
-        if (!PluginSettingsFacade.IsCharacterDomainEnabled())
+        bool isCharacterDomainEnabled = PluginSettingsFacade.IsCharacterDomainEnabled();
+        if (!isCharacterDomainEnabled &&
+            !PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled())
         {
-            __state = new State(previousDrops: null, hasOnePerPlayerScope: false);
+            __state = new State(previousDrops: null, hasOnePerPlayerScope: false, trophyAmountSourceDrops: null);
             return;
         }
 
-        List<CharacterDrop.Drop>? previousDrops = CharacterDropManager.OverrideConditionalDrops(__instance);
-        previousDrops ??= CharacterDropManager.OverrideTrophyLevelMultiplierDrops(__instance);
+        List<CharacterDrop.Drop>? previousDrops = isCharacterDomainEnabled
+            ? CharacterDropManager.OverrideConditionalDrops(__instance)
+            : null;
+        List<CharacterDrop.Drop>? previousTrophyDrops = CharacterDropManager.SuppressGlobalTrophyLevelMultiplierDrops(__instance);
+        previousDrops ??= previousTrophyDrops;
+        IReadOnlyList<CharacterDrop.Drop>? trophyAmountSourceDrops = PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled()
+            ? __instance.m_drops
+            : null;
         __state = new State(
             previousDrops,
-            CharacterDropManager.BeginOnePerPlayerNearbyPlayerScope(__instance));
+            isCharacterDomainEnabled && CharacterDropManager.BeginOnePerPlayerNearbyPlayerScope(__instance),
+            trophyAmountSourceDrops);
     }
 
-    private static void Postfix(CharacterDrop __instance, State __state)
+    [HarmonyPriority(Priority.Last)]
+    private static void Postfix(CharacterDrop __instance, List<KeyValuePair<GameObject, int>> __result, State __state)
     {
+        CharacterDropManager.ApplyGlobalTrophyLevelMultiplier(__instance, __result, __state.TrophyAmountSourceDrops);
+
         if (__state.PreviousDrops != null)
         {
             __instance.m_drops = __state.PreviousDrops;
@@ -134,5 +151,43 @@ internal static class CharacterDropDropItemsPatch
         }
 
         CharacterDropManager.ApplyGlobalDropInStack(ref drops, centerPos, dropArea);
+    }
+}
+
+[HarmonyPatch(typeof(Ragdoll), nameof(Ragdoll.Setup))]
+internal static class RagdollSetupMonsterInstantLootDropPatch
+{
+    private static void Postfix(Ragdoll __instance, CharacterDrop characterDrop)
+    {
+        if (!PluginSettingsFacade.IsMonsterInstantLootDropEnabled())
+        {
+            return;
+        }
+
+        if (characterDrop == null || !__instance.m_dropItems)
+        {
+            return;
+        }
+
+        ZNetView netView = __instance.m_nview;
+        if (netView == null || !netView.IsValid() || !netView.IsOwner())
+        {
+            return;
+        }
+
+        ZDO zdo = netView.GetZDO();
+        if (zdo.GetInt(ZDOVars.s_drops) <= 0)
+        {
+            return;
+        }
+
+        Vector3 center = __instance.GetAverageBodyPosition();
+        if (__instance.m_lootSpawnJoint != null)
+        {
+            center = __instance.m_lootSpawnJoint.transform.position;
+        }
+
+        __instance.SpawnLoot(center);
+        zdo.Set(ZDOVars.s_drops, 0);
     }
 }

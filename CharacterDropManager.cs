@@ -23,6 +23,7 @@ namespace DropNSpawn;
 internal static partial class CharacterDropManager
 {
     private const string ReferenceAutoUpdateStateKey = "character";
+    private const float GlobalTrophyAmountBonusPerLevel = 0.5f;
     internal static readonly DomainModuleDefinition<CharacterDropPrefabEntry> Module =
         new(new DomainModuleOptions<CharacterDropPrefabEntry>
         {
@@ -875,7 +876,7 @@ internal static partial class CharacterDropManager
         }
     }
 
-    internal static List<CharacterDrop.Drop>? OverrideTrophyLevelMultiplierDrops(CharacterDrop characterDrop)
+    internal static List<CharacterDrop.Drop>? SuppressGlobalTrophyLevelMultiplierDrops(CharacterDrop characterDrop)
     {
         if (!PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled() ||
             characterDrop == null ||
@@ -891,14 +892,14 @@ internal static partial class CharacterDropManager
         {
             CharacterDrop.Drop drop = sourceDrops[index];
             if (drop == null ||
-                drop.m_levelMultiplier ||
-                !ShouldForceTrophyLevelMultiplier(drop.m_prefab))
+                !drop.m_levelMultiplier ||
+                !ShouldApplyGlobalTrophyLevelMultiplier(drop.m_prefab))
             {
                 continue;
             }
 
             adjustedDrops ??= CloneDrops(sourceDrops);
-            adjustedDrops[index].m_levelMultiplier = true;
+            adjustedDrops[index].m_levelMultiplier = false;
         }
 
         if (adjustedDrops == null)
@@ -908,6 +909,133 @@ internal static partial class CharacterDropManager
 
         characterDrop.m_drops = adjustedDrops;
         return sourceDrops;
+    }
+
+    internal static void ApplyGlobalTrophyLevelMultiplier(
+        CharacterDrop characterDrop,
+        List<KeyValuePair<GameObject, int>> drops,
+        IReadOnlyList<CharacterDrop.Drop>? sourceDrops)
+    {
+        if (!PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled() ||
+            characterDrop == null ||
+            drops == null ||
+            drops.Count == 0)
+        {
+            return;
+        }
+
+        Character? character = characterDrop.GetComponent<Character>();
+        int characterLevel = character != null ? character.GetLevel() : 1;
+        if (characterLevel <= 1)
+        {
+            return;
+        }
+
+        int vanillaLevelFactor = GetVanillaDropLevelFactor(characterLevel);
+        int sourceIndex = 0;
+        for (int index = 0; index < drops.Count; index++)
+        {
+            KeyValuePair<GameObject, int> result = drops[index];
+            if (!ShouldApplyGlobalTrophyLevelMultiplier(result.Key))
+            {
+                continue;
+            }
+
+            CharacterDrop.Drop? sourceDrop = FindNextMatchingSourceDrop(sourceDrops, ref sourceIndex, result.Key);
+            if (sourceDrop?.m_onePerPlayer == true)
+            {
+                continue;
+            }
+
+            int baseAmount = NormalizeGeneratedTrophyAmount(result.Value, vanillaLevelFactor, sourceDrop);
+            int scaledAmount = ScaleGlobalTrophyAmount(baseAmount, characterLevel);
+            if (scaledAmount != result.Value)
+            {
+                drops[index] = new KeyValuePair<GameObject, int>(result.Key, scaledAmount);
+            }
+        }
+    }
+
+    private static CharacterDrop.Drop? FindNextMatchingSourceDrop(
+        IReadOnlyList<CharacterDrop.Drop>? sourceDrops,
+        ref int sourceIndex,
+        GameObject prefab)
+    {
+        if (sourceDrops == null || prefab == null)
+        {
+            return null;
+        }
+
+        for (; sourceIndex < sourceDrops.Count; sourceIndex++)
+        {
+            CharacterDrop.Drop candidate = sourceDrops[sourceIndex];
+            if (candidate == null || candidate.m_prefab != prefab)
+            {
+                continue;
+            }
+
+            sourceIndex++;
+            return candidate;
+        }
+
+        return null;
+    }
+
+    private static int NormalizeGeneratedTrophyAmount(
+        int amount,
+        int vanillaLevelFactor,
+        CharacterDrop.Drop? sourceDrop)
+    {
+        if (amount <= 0 || vanillaLevelFactor <= 1)
+        {
+            return amount;
+        }
+
+        if (sourceDrop != null)
+        {
+            int configuredMax = Math.Max(1, Math.Max(sourceDrop.m_amountMin, sourceDrop.m_amountMax));
+            if (amount <= configuredMax)
+            {
+                return amount;
+            }
+
+            if (amount >= 100 && vanillaLevelFactor > configuredMax)
+            {
+                return configuredMax;
+            }
+        }
+        else if (amount < vanillaLevelFactor)
+        {
+            return amount;
+        }
+
+        return amount % vanillaLevelFactor == 0
+            ? Math.Max(1, amount / vanillaLevelFactor)
+            : amount;
+    }
+
+    private static int ScaleGlobalTrophyAmount(int amount, int characterLevel)
+    {
+        if (amount <= 0 || characterLevel <= 1)
+        {
+            return amount;
+        }
+
+        float multiplier = 1f + GlobalTrophyAmountBonusPerLevel * (characterLevel - 1);
+        float scaledAmount = amount * multiplier;
+        int roundedAmount = Mathf.FloorToInt(scaledAmount);
+        float fractionalAmount = scaledAmount - roundedAmount;
+        if (fractionalAmount > 0f && UnityEngine.Random.value < fractionalAmount)
+        {
+            roundedAmount++;
+        }
+
+        return Math.Min(100, Math.Max(1, roundedAmount));
+    }
+
+    private static int GetVanillaDropLevelFactor(int characterLevel)
+    {
+        return Mathf.Max(1, (int)Mathf.Pow(2f, characterLevel - 1));
     }
 
     internal static List<CharacterDrop.Drop>? OverrideConditionalDrops(CharacterDrop characterDrop)
@@ -1049,24 +1177,15 @@ internal static partial class CharacterDropManager
         }
 
         int gameDataSignature = ComputeGameDataSignature();
-        string effectiveConfigurationSignature = BuildEffectiveCharacterDropConfigurationSignature();
         if (_compiledStateGameDataSignature == gameDataSignature &&
-            string.Equals(_compiledStateConfigurationSignature, effectiveConfigurationSignature, StringComparison.Ordinal))
+            string.Equals(_compiledStateConfigurationSignature, _configurationSignature, StringComparison.Ordinal))
         {
             return;
         }
 
         _compiledState = BuildCompiledState();
         _compiledStateGameDataSignature = gameDataSignature;
-        _compiledStateConfigurationSignature = effectiveConfigurationSignature;
-    }
-
-    private static string BuildEffectiveCharacterDropConfigurationSignature()
-    {
-        string trophyLevelMultiplierSignature = PluginSettingsFacade.GetCharacterDropTrophyLevelMultiplierSignature();
-        return string.Equals(trophyLevelMultiplierSignature, "off", StringComparison.Ordinal)
-            ? _configurationSignature
-            : $"{_configurationSignature}|trophyLevelMultiplier:{trophyLevelMultiplierSignature}";
+        _compiledStateConfigurationSignature = _configurationSignature;
     }
 
     private static CharacterCompiledState BuildCompiledState()
@@ -1395,21 +1514,20 @@ internal static partial class CharacterDropManager
 
         bool domainEnabled = ShouldApplyLocally();
         Dictionary<string, string> currentEntrySignatures = CloneCurrentEntrySignaturesByPrefab();
-        string effectiveConfigurationSignature = BuildEffectiveCharacterDropConfigurationSignature();
         if (StandardDomainApplySupport.IsAlreadyApplied(
                 _lastAppliedGameDataSignature,
                 gameDataSignature,
                 _lastAppliedDomainEnabled,
                 domainEnabled,
                 _lastAppliedConfigurationSignature,
-                effectiveConfigurationSignature,
+                _configurationSignature,
                 _lastAppliedSynchronizedPayloadReady,
                 synchronizedPayloadReady))
         {
             return;
         }
 
-        RunApplyCoordinator(gameDataSignature, domainEnabled, currentEntrySignatures, effectiveConfigurationSignature);
+        RunApplyCoordinator(gameDataSignature, domainEnabled, currentEntrySignatures, _configurationSignature);
     }
 
     private static readonly Dictionary<string, string> EmptyEntrySignatures = new(StringComparer.OrdinalIgnoreCase);
@@ -1513,14 +1631,13 @@ internal static partial class CharacterDropManager
         int gameDataSignature = ComputeGameDataSignature();
         bool domainEnabled = ShouldApplyLocally();
         bool synchronizedPayloadReady = Volatile.Read(ref _synchronizedPayloadReady);
-        string effectiveConfigurationSignature = BuildEffectiveCharacterDropConfigurationSignature();
         if (!StandardDomainApplySupport.IsAlreadyApplied(
                 _lastAppliedGameDataSignature,
                 gameDataSignature,
                 _lastAppliedDomainEnabled,
                 domainEnabled,
                 _lastAppliedConfigurationSignature,
-                effectiveConfigurationSignature,
+                _configurationSignature,
                 _lastAppliedSynchronizedPayloadReady,
                 synchronizedPayloadReady))
         {
@@ -2175,7 +2292,8 @@ internal static partial class CharacterDropManager
     private static List<ResolvedConfiguredDrop> GenerateConfiguredDrops(Character character, List<CharacterDropEntryDefinition> definitions, string context)
     {
         List<ResolvedConfiguredDrop> drops = new();
-        int levelFactor = Mathf.Max(1, (int)Mathf.Pow(2f, character.GetLevel() - 1));
+        int characterLevel = character.GetLevel();
+        int levelFactor = GetVanillaDropLevelFactor(characterLevel);
         int playerCount = GetOnePerPlayerDropCount(character);
 
         foreach (CharacterDropEntryDefinition definition in definitions)
@@ -2195,7 +2313,9 @@ internal static partial class CharacterDropManager
 
             float chance = Mathf.Max(0f, definition.Chance ?? 1f);
             bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab);
-            if (levelMultiplier)
+            bool applyGlobalTrophyMultiplier = ShouldApplyGlobalTrophyLevelMultiplier(dropPrefab);
+            bool applyVanillaLevelMultiplier = levelMultiplier && !applyGlobalTrophyMultiplier;
+            if (applyVanillaLevelMultiplier)
             {
                 chance *= levelFactor;
             }
@@ -2211,14 +2331,20 @@ internal static partial class CharacterDropManager
                 ? UnityEngine.Random.Range(amountMin, amountMax)
                 : RollConfiguredDropAmount(dropPrefab, amountMin, amountMax);
 
-            if (levelMultiplier)
+            if (applyVanillaLevelMultiplier)
             {
                 amount *= levelFactor;
             }
 
-            if (definition.OnePerPlayer ?? false)
+            bool onePerPlayer = definition.OnePerPlayer ?? false;
+            if (onePerPlayer)
             {
                 amount = playerCount;
+            }
+
+            if (applyGlobalTrophyMultiplier && !onePerPlayer)
+            {
+                amount = ScaleGlobalTrophyAmount(amount, characterLevel);
             }
 
             amount = Math.Min(amount, 100);
@@ -2246,13 +2372,16 @@ internal static partial class CharacterDropManager
     private static List<ResolvedConfiguredDrop> GenerateConfiguredDrops(Character character, IReadOnlyList<CompiledCharacterDropDefinition> definitions)
     {
         List<ResolvedConfiguredDrop> drops = new();
-        int levelFactor = Mathf.Max(1, (int)Mathf.Pow(2f, character.GetLevel() - 1));
+        int characterLevel = character.GetLevel();
+        int levelFactor = GetVanillaDropLevelFactor(characterLevel);
         int playerCount = GetOnePerPlayerDropCount(character);
 
         foreach (CompiledCharacterDropDefinition definition in definitions)
         {
             float chance = definition.Chance;
-            if (definition.LevelMultiplier)
+            bool applyGlobalTrophyMultiplier = ShouldApplyGlobalTrophyLevelMultiplier(definition.Prefab);
+            bool applyVanillaLevelMultiplier = definition.LevelMultiplier && !applyGlobalTrophyMultiplier;
+            if (applyVanillaLevelMultiplier)
             {
                 chance *= levelFactor;
             }
@@ -2266,7 +2395,7 @@ internal static partial class CharacterDropManager
                 ? UnityEngine.Random.Range(definition.AmountMin, definition.AmountMax)
                 : RollConfiguredDropAmount(definition.Prefab, definition.AmountMin, definition.AmountMax);
 
-            if (definition.LevelMultiplier)
+            if (applyVanillaLevelMultiplier)
             {
                 amount *= levelFactor;
             }
@@ -2274,6 +2403,11 @@ internal static partial class CharacterDropManager
             if (definition.OnePerPlayer)
             {
                 amount = playerCount;
+            }
+
+            if (applyGlobalTrophyMultiplier && !definition.OnePerPlayer)
+            {
+                amount = ScaleGlobalTrophyAmount(amount, characterLevel);
             }
 
             amount = Math.Min(amount, 100);
@@ -2339,10 +2473,7 @@ internal static partial class CharacterDropManager
 
     private static bool GetEffectiveCharacterDropLevelMultiplier(CharacterDropEntryDefinition definition, GameObject? dropPrefab)
     {
-        bool configuredLevelMultiplier = definition.LevelMultiplier ?? GetDefaultCharacterDropLevelMultiplier(dropPrefab);
-        return ShouldForceTrophyLevelMultiplier(dropPrefab)
-            ? true
-            : configuredLevelMultiplier;
+        return definition.LevelMultiplier ?? GetDefaultCharacterDropLevelMultiplier(dropPrefab);
     }
 
     private static bool GetConfiguredCharacterDropLevelMultiplierForOutput(CharacterDropEntryDefinition definition)
@@ -2360,7 +2491,7 @@ internal static partial class CharacterDropManager
         return IsItemDropPrefab(dropPrefab) && levelMultiplier;
     }
 
-    private static bool ShouldForceTrophyLevelMultiplier(GameObject? itemPrefab)
+    private static bool ShouldApplyGlobalTrophyLevelMultiplier(GameObject? itemPrefab)
     {
         return PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled() &&
                itemPrefab != null &&

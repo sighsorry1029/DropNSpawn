@@ -15,6 +15,7 @@ internal static class CharacterDropGlobalConfig
     private static HashSet<string> _dropInStackBlacklist = new(StringComparer.OrdinalIgnoreCase);
     private static HashSet<string> _trophyLevelMultiplierBlacklist = new(StringComparer.OrdinalIgnoreCase);
 
+    private static ConfigEntry<DropNSpawnPlugin.Toggle> _monsterInstantLootDrop = null!;
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _globalDropInStack = null!;
     private static ConfigEntry<string> _dropInStackBlacklistEntry = null!;
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _globalTrophyLevelMultiplier = null!;
@@ -32,6 +33,13 @@ internal static class CharacterDropGlobalConfig
                 new AcceptableValueRange<float>(0f, 100f)),
             synchronizedSetting: true,
             configManagerOrder: 500);
+        _monsterInstantLootDrop = plugin.BindConfigEntry(
+            "3 - Character",
+            "monster instant loot drop",
+            DropNSpawnPlugin.Toggle.Off,
+            "If on, monster ragdoll loot saved from CharacterDrop is spawned immediately while the ragdoll remains for its vanilla lifetime. The saved ragdoll loot list is consumed so vanilla ragdoll cleanup does not drop the same items again.",
+            synchronizedSetting: true,
+            configManagerOrder: 450);
         _globalDropInStack = plugin.BindConfigEntry(
             "3 - Character",
             "global drop in stack",
@@ -50,14 +58,14 @@ internal static class CharacterDropGlobalConfig
             "3 - Character",
             "global trophy level multiplier",
             DropNSpawnPlugin.Toggle.Off,
-            "If on, character drops whose item prefab type is Trophy are treated as levelMultiplier: true. Items listed in global trophy level multiplier blacklist are exempt and keep their vanilla or YAML levelMultiplier value.",
+            "If on, successful character trophy drops keep their original drop chance and scale their final amount by 50% per character level above 1. Eligible trophies are kept out of vanilla levelMultiplier amount scaling to avoid very large 2^(level-1) trophy stacks. Items listed in global trophy level multiplier blacklist are exempt and keep their vanilla or YAML levelMultiplier behavior.",
             synchronizedSetting: true,
             configManagerOrder: 200);
         _trophyLevelMultiplierBlacklistEntry = plugin.BindConfigEntry(
             "3 - Character",
             "global trophy level multiplier blacklist",
             "",
-            "Comma, semicolon, or newline separated trophy item prefab names that should not be forced to levelMultiplier: true. Blacklisted items follow the vanilla or YAML levelMultiplier value exactly. Example: TrophyEikthyr,TrophyDragonQueen",
+            "Comma, semicolon, or newline separated trophy item prefab names that should not use global trophy amount scaling. Blacklisted items follow the vanilla or YAML levelMultiplier value exactly. Example: TrophyEikthyr,TrophyDragonQueen",
             synchronizedSetting: true,
             configManagerOrder: 100);
     }
@@ -65,6 +73,11 @@ internal static class CharacterDropGlobalConfig
     internal static bool IsGlobalDropInStackEnabled()
     {
         return _globalDropInStack?.Value == DropNSpawnPlugin.Toggle.On;
+    }
+
+    internal static bool IsMonsterInstantLootDropEnabled()
+    {
+        return _monsterInstantLootDrop?.Value == DropNSpawnPlugin.Toggle.On;
     }
 
     internal static bool IsGlobalTrophyLevelMultiplierEnabled()
@@ -119,20 +132,6 @@ internal static class CharacterDropGlobalConfig
         {
             EnsureTrophyLevelMultiplierBlacklistCache();
             return _trophyLevelMultiplierBlacklist.Contains(normalizedPrefabName);
-        }
-    }
-
-    internal static string GetTrophyLevelMultiplierSignature()
-    {
-        if (!IsGlobalTrophyLevelMultiplierEnabled())
-        {
-            return "off";
-        }
-
-        lock (TrophyLevelMultiplierBlacklistLock)
-        {
-            EnsureTrophyLevelMultiplierBlacklistCache();
-            return "on:" + string.Join(",", _trophyLevelMultiplierBlacklist.OrderBy(value => value, StringComparer.OrdinalIgnoreCase));
         }
     }
 

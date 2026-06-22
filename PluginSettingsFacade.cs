@@ -22,14 +22,14 @@ internal static class PluginSettingsFacade
     internal static bool IsGlobalCharacterDropInStackEnabled() =>
         CharacterDropGlobalConfig.IsGlobalDropInStackEnabled();
 
+    internal static bool IsMonsterInstantLootDropEnabled() =>
+        CharacterDropGlobalConfig.IsMonsterInstantLootDropEnabled();
+
     internal static bool IsGlobalCharacterDropTrophyLevelMultiplierEnabled() =>
         CharacterDropGlobalConfig.IsGlobalTrophyLevelMultiplierEnabled();
 
     internal static bool IsCharacterDropTrophyLevelMultiplierBlacklisted(string? prefabName) =>
         CharacterDropGlobalConfig.IsTrophyLevelMultiplierBlacklisted(prefabName);
-
-    internal static string GetCharacterDropTrophyLevelMultiplierSignature() =>
-        CharacterDropGlobalConfig.GetTrophyLevelMultiplierSignature();
 
     internal static int GetDefaultSpawnAreaMaxTotalSpawns() =>
         SpawnerGlobalConfig.GetDefaultSpawnAreaMaxTotalSpawns();
