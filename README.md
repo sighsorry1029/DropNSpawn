@@ -15,7 +15,7 @@ Configure object and creature drops, object loot, spawners, and world spawning. 
 ## Location
 DropNSpawn no longer owns a user-editable `DNS_location.yml` domain. Boss altar, altar `ItemStand`, same-boss duplicate blocking, boss despawn, and boss-tamed pressure rules live in the standalone `BossRules` mod. DropNSpawn keeps internal location lookup helpers for object and spawner `locations:` selectors.
 
-RuneStone global pins and Vegvisir biome buffs live in the standalone `VegvisirRunestones` mod.
+RuneStone global pins and Vegvisir rewards live in the standalone `UsefulRunestones` mod.
 
 ## Character
 ![](https://i.ibb.co/nMZ7gcZR/characterdrop.png)
