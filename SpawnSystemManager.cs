@@ -325,10 +325,6 @@ internal static partial class SpawnSystemManager
     }
 
     private static HashSet<string>? _capturedStrictValidationWarnings;
-    private static string _lastLoggedSyncedConfigPayloadToken = "";
-    private static bool _loggedPayloadWaiting;
-    private static string _lastLoggedVanillaRetainedSignature = "";
-    private static string _lastLoggedRuntimeAttachSignature = "";
     private static bool _forceApplyAfterSyncedCommit;
     private static int _cachedGameDataSignatureFrame = -1;
     private static int _cachedGameDataSignatureValue;
@@ -366,8 +362,7 @@ internal static partial class SpawnSystemManager
                     ConfigurationDomainHost.TryGetSyncedEntries(
                         Descriptor,
                         out configuration,
-                        out payloadToken,
-                        ClearPayloadWaitingLogState),
+                        out payloadToken),
                 payloadToken => ConfigurationDomainHost.ShouldSkipSyncedPayload(
                     LoadState,
                     payloadToken,
@@ -377,9 +372,7 @@ internal static partial class SpawnSystemManager
                 state => state.Configuration.Count,
                 "ServerSync:DropNSpawnSpawnSystem",
                 () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(
-                    MarkSyncedPayloadPending,
-                    "Waiting for synchronized spawnsystem override payload from the server.",
-                    LogPayloadWaitingIfNeeded),
+                    MarkSyncedPayloadPending),
                 LogSyncedSpawnSystemConfigurationLoaded,
                 LogSyncedSpawnSystemConfigurationFailure));
     internal static bool ShouldReloadForPath(string? path)
@@ -403,7 +396,6 @@ internal static partial class SpawnSystemManager
                 {
                     ClearQueuedReconcileState();
                     ResetPreparedEntriesBuildPipelineLocked(clearPendingTargetSignature: true);
-                    ClearPayloadWaitingLogState();
                     _configurationReady = false;
                     _forceApplyAfterSyncedCommit = false;
                 });
@@ -465,11 +457,6 @@ internal static partial class SpawnSystemManager
             true,
             liveSystems);
         RetireCompiledTableAfterMigrationLocked(previousSelectedTable, baselineTable, liveSystems);
-        LogVanillaRetainedIfNeeded(
-            $"cutover_pending|{gameDataSignature.ToString(CultureInfo.InvariantCulture)}",
-            "authority_cutover_pending",
-            baselineTable,
-            liveSystems.Count);
     }
 
     internal static void Initialize()
@@ -561,7 +548,6 @@ internal static partial class SpawnSystemManager
             ApplyIfReady(
                 queueEspRefreshForLiveSystems: false,
                 queueLiveSystemAttach: true);
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"SpawnSystem processing scheduled after {source}.");
         }
     }
 
@@ -781,7 +767,6 @@ internal static partial class SpawnSystemManager
     private static void ResetLoadedConfigurationState()
     {
         ClearQueuedReconcileState();
-        ClearPayloadWaitingLogState();
         ResetPreparedEntriesBuildPipelineLocked(clearPendingTargetSignature: true);
         InvalidEntryWarnings.Clear();
         RuntimeState.Reset();
@@ -981,32 +966,11 @@ internal static partial class SpawnSystemManager
 
     private static void LogSyncedSpawnSystemConfigurationLoaded(string payloadToken, int acceptedEntryCount)
     {
-        LogSyncedConfigCommittedIfNeeded(payloadToken, acceptedEntryCount);
+        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
+            $"Loaded {acceptedEntryCount} synchronized spawnsystem configuration(s) from the server.");
     }
 
     private static void LogSyncedSpawnSystemConfigurationFailure(string payloadToken, Exception ex)
-    {
-        LogSyncedConfigurationFailureOnce(payloadToken, ex);
-    }
-
-    private static void LogPayloadWaitingIfNeeded()
-    {
-        if (_loggedPayloadWaiting)
-        {
-            return;
-        }
-
-        _loggedPayloadWaiting = true;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=payload_waiting lastCommittedHash={(LoadState.LastLoadedPayload.Length > 0 ? LoadState.LastLoadedPayload : "<none>")}");
-    }
-
-    private static void ClearPayloadWaitingLogState()
-    {
-        _loggedPayloadWaiting = false;
-    }
-
-    private static void LogSyncedConfigurationFailureOnce(string payloadToken, Exception ex)
     {
         if (!string.Equals(_lastFailedConfigurationPayload, payloadToken, StringComparison.Ordinal))
         {
@@ -1283,19 +1247,6 @@ internal static partial class SpawnSystemManager
             queueEspRefreshForLiveSystems);
     }
 
-    private static void LogSyncedConfigCommittedIfNeeded(string payloadToken, int entryCount)
-    {
-        string normalizedPayloadToken = payloadToken ?? "";
-        if (string.Equals(_lastLoggedSyncedConfigPayloadToken, normalizedPayloadToken, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _lastLoggedSyncedConfigPayloadToken = normalizedPayloadToken;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=config_committed hash={(normalizedPayloadToken.Length > 0 ? normalizedPayloadToken : "<empty>")} entries={entryCount.ToString(CultureInfo.InvariantCulture)}");
-    }
-
     private static void RetainCurrentCompiledTableWhilePending(
         int gameDataSignature,
         bool queueEspRefreshForLiveSystems,
@@ -1324,50 +1275,11 @@ internal static partial class SpawnSystemManager
             }
         }
 
-        LogRuntimeTableAttachedIfNeeded(
-            applyTargetSignature,
-            "retained_pending",
-            _activeCompiledTable,
-            liveSystems.Count);
         RecordAppliedState(
             gameDataSignature,
             true,
             _lastAppliedPreparedEntriesSignature,
             applyTargetSignature);
-    }
-
-    private static void LogVanillaRetainedIfNeeded(
-        string applyTargetSignature,
-        string reason,
-        CompiledSpawnSystemTable? table,
-        int liveSystemCount)
-    {
-        if (string.Equals(_lastLoggedVanillaRetainedSignature, applyTargetSignature, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _lastLoggedVanillaRetainedSignature = applyTargetSignature;
-        _lastLoggedRuntimeAttachSignature = "";
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=vanilla_retained reason={reason} liveSystems={liveSystemCount.ToString(CultureInfo.InvariantCulture)} rows={CountSpawnRows(table).ToString(CultureInfo.InvariantCulture)}");
-    }
-
-    private static void LogRuntimeTableAttachedIfNeeded(
-        string applyTargetSignature,
-        string kind,
-        CompiledSpawnSystemTable? table,
-        int liveSystemCount)
-    {
-        if (string.Equals(_lastLoggedRuntimeAttachSignature, applyTargetSignature, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        _lastLoggedRuntimeAttachSignature = applyTargetSignature;
-        _lastLoggedVanillaRetainedSignature = "";
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            $"Spawnsystem sync stage=runtime_table_attached kind={kind} liveSystems={liveSystemCount.ToString(CultureInfo.InvariantCulture)} rows={CountSpawnRows(table).ToString(CultureInfo.InvariantCulture)}");
     }
 
     private static SpawnListSummary SummarizeSpawnLists(IEnumerable<SpawnSystemList>? spawnLists)
@@ -1500,10 +1412,6 @@ internal static partial class SpawnSystemManager
         CompiledSpawnSystemTable? selectedTable = GetSelectedCompiledTableForCurrentState();
         QueueLiveSystemAttachForTable(selectedTable, _preparedEntriesBuildVersion, queueEspRefreshForLiveSystems, liveSystems);
         RetireCompiledTableAfterMigrationLocked(previousSelectedTable, selectedTable, liveSystems);
-        string reason = !domainEnabled
-            ? "domain_disabled"
-            : (_configurationReady ? "authoritative_unavailable" : "config_not_ready");
-        LogVanillaRetainedIfNeeded(applyTargetSignature, reason, selectedTable, liveSystems.Count);
         RecordAppliedState(gameDataSignature, domainEnabled, "", applyTargetSignature);
     }
 
@@ -1801,14 +1709,6 @@ internal static partial class SpawnSystemManager
         bool publishSyncedConfiguration)
     {
         DeferredBiomeState.Defer(queueEspRefreshForLiveSystems, queueLiveSystemAttach, publishSyncedConfiguration);
-        if (DeferredBiomeState.LoggedWait)
-        {
-            return;
-        }
-
-        DeferredBiomeState.LoggedWait = true;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-            "Deferring spawnsystem build until ExpandWorldData biome sync is ready.");
     }
 
     private static bool TryProcessDeferredExpandWorldDataBiomeReadyLocked()
@@ -1961,7 +1861,6 @@ internal static partial class SpawnSystemManager
         _activeCompiledTable = buildState.DomainEnabled ? buildState.BuildingActiveTable : null;
         QueueLiveSystemAttachForTable(_activeCompiledTable, buildState.BuildVersion, buildState.QueueEspRefreshForLiveSystems, liveSystems);
         RetireCompiledTableAfterMigrationLocked(previousSelectedTable, _activeCompiledTable, liveSystems);
-        LogRuntimeTableAttachedIfNeeded(buildState.ApplyTargetSignature, "authoritative", _activeCompiledTable, liveSystems.Count);
         DestroyCompiledTableIfInactiveLocked(buildState.PreviousActiveTable);
         DestroyCompiledTableIfInactiveLocked(buildState.PreviousVanillaTable);
         RecordAppliedState(

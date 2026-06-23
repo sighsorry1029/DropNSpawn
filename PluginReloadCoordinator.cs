@@ -49,7 +49,6 @@ internal sealed class PluginReloadCoordinator
 
     internal void HandleSourceOfTruthChanged(bool isSourceOfTruth)
     {
-        DropNSpawnPlugin.DropNSpawnLogger.LogDebug($"Config source of truth changed. Local is owner: {isSourceOfTruth}.");
         NetworkPayloadSyncSupport.HandleSourceOfTruthChanged(isSourceOfTruth);
         if (!isSourceOfTruth)
         {
@@ -298,7 +297,6 @@ internal sealed class PluginReloadCoordinator
 
             try
             {
-                DropNSpawnPlugin.DropNSpawnLogger.LogDebug("Reloading configuration...");
                 DropNSpawnPlugin.DomainToggleState previousState = CaptureDomainToggleState();
                 IsConfigEntryReloadSuppressed = true;
                 _host.SaveWithRespectToConfigSet(reload: true, save: false);
@@ -330,7 +328,6 @@ internal sealed class PluginReloadCoordinator
         {
             try
             {
-                DropNSpawnPlugin.DropNSpawnLogger.LogDebug("Reloading override YAML configuration...");
                 ReloadDomains(domains);
                 DropNSpawnPlugin.DropNSpawnLogger.LogInfo("Override YAML configuration reload complete.");
             }

@@ -10,16 +10,10 @@ internal static partial class SpawnerManager
 
     private sealed class SpawnerSelectorCacheStore
     {
-        private readonly HashSet<string> _locationSelectorDiagnostics = new(StringComparer.Ordinal);
         private readonly Dictionary<SpawnArea, MatchingEntryCache> _matchingSpawnAreaEntriesByInstance = new();
         private readonly Dictionary<CreatureSpawner, MatchingEntryCache> _matchingCreatureSpawnerEntriesByInstance = new();
         private readonly Dictionary<string, SharedMatchingEntryTemplate> _sharedMatchingEntryTemplates = new(StringComparer.Ordinal);
         private readonly Dictionary<int, StaticSelectorContextSnapshot> _staticSelectorContextsByInstance = new();
-
-        public bool TryAddLocationSelectorDiagnostic(string key)
-        {
-            return _locationSelectorDiagnostics.Add(key);
-        }
 
         public bool TryGetSpawnAreaEntryCache(SpawnArea? spawnArea, out MatchingEntryCache entryCache)
         {
@@ -171,7 +165,6 @@ internal static partial class SpawnerManager
 
         public void Clear()
         {
-            _locationSelectorDiagnostics.Clear();
             _matchingSpawnAreaEntriesByInstance.Clear();
             _matchingCreatureSpawnerEntriesByInstance.Clear();
             _sharedMatchingEntryTemplates.Clear();

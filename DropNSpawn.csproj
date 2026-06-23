@@ -548,7 +548,6 @@
         <Compile Include="PluginManifestCoordinator.cs"/>
         <Compile Include="PluginReloadCoordinator.cs"/>
         <Compile Include="PluginRuntimeWorkCoordinator.cs"/>
-        <Compile Include="RuntimeWorkProfiler.cs"/>
         <Compile Include="PluginBoundSettings.cs"/>
         <Compile Include="PluginSettingsFacade.cs"/>
         <Compile Include="DomainTransportHooks.cs"/>

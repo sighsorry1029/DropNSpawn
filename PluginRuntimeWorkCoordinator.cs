@@ -42,13 +42,11 @@ internal sealed class PluginRuntimeWorkCoordinator
 
     internal void ProcessUpdateFrame()
     {
-        RuntimeWorkProfiler.Update(Time.realtimeSinceStartup);
         ObserveExpandWorldDataReadyTransition();
         if (!NetworkPayloadSyncSupport.HasPendingWork() &&
             !HasPendingSnapshotBuildWork() &&
             !HasPendingReconcileWork())
         {
-            RuntimeWorkProfiler.Update(Time.realtimeSinceStartup);
             return;
         }
 
@@ -60,7 +58,6 @@ internal sealed class PluginRuntimeWorkCoordinator
             idlePasses = processed ? 0 : idlePasses + 1;
         }
 
-        RuntimeWorkProfiler.Update(Time.realtimeSinceStartup);
     }
 
     internal void QueueGameDataRefresh(DropNSpawnPlugin.ReloadDomain domains, string source)
@@ -127,16 +124,9 @@ internal sealed class PluginRuntimeWorkCoordinator
             return;
         }
 
-        bool replayed = false;
         foreach (DomainDescriptor domain in DomainRegistry.RuntimeDomains)
         {
-            replayed |= domain.HandleExpandWorldDataReady();
-        }
-
-        if (replayed)
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
-                "ExpandWorldData biome sync became ready; replayed synchronized biome-mask publish for object, character, spawner, and spawnsystem domains.");
+            domain.HandleExpandWorldDataReady();
         }
     }
 
@@ -174,13 +164,7 @@ internal sealed class PluginRuntimeWorkCoordinator
             }
 
             _snapshotBuildRoundRobinCursor = (domainIndex + 1) % DomainRegistry.SnapshotBuildDomains.Length;
-            return ProcessProfiledDomainWork(
-                domain,
-                RuntimeWorkProfileKind.SnapshotBuild,
-                domain.GetPendingSnapshotBuildWorkCount,
-                domain.HasPendingSnapshotBuildWork,
-                domain.ProcessPendingSnapshotBuildStep,
-                deadline);
+            return domain.ProcessPendingSnapshotBuildStep(deadline);
         }
 
         return false;
@@ -200,32 +184,10 @@ internal sealed class PluginRuntimeWorkCoordinator
     {
         return lane switch
         {
-            0 => ProcessProfiledNetworkPayloadWork(deadline),
+            0 => NetworkPayloadSyncSupport.ProcessPendingWork(deadline),
             1 => ProcessNextPendingSnapshotBuildStep(deadline),
             _ => ProcessNextQueuedReconcileStep(deadline)
         };
-    }
-
-    private static bool ProcessProfiledNetworkPayloadWork(float deadline)
-    {
-        if (!RuntimeWorkProfiler.IsEnabled())
-        {
-            return NetworkPayloadSyncSupport.ProcessPendingWork(deadline);
-        }
-
-        int pendingBefore = NetworkPayloadSyncSupport.GetPendingWorkCount();
-        float startedAt = Time.realtimeSinceStartup;
-        bool processed = NetworkPayloadSyncSupport.ProcessPendingWork(deadline);
-        float elapsedSeconds = Time.realtimeSinceStartup - startedAt;
-        int pendingAfter = NetworkPayloadSyncSupport.GetPendingWorkCount();
-        RuntimeWorkProfiler.Record(
-            "network",
-            RuntimeWorkProfileKind.NetworkPayload,
-            processed,
-            pendingBefore,
-            pendingAfter,
-            elapsedSeconds);
-        return processed;
     }
 
     private bool ProcessNextQueuedReconcileStep(float deadline)
@@ -242,54 +204,10 @@ internal sealed class PluginRuntimeWorkCoordinator
             }
 
             _reconcileRoundRobinCursor = (domainIndex + 1) % DomainRegistry.ReconcileDomains.Length;
-            return ProcessProfiledDomainWork(
-                domain,
-                RuntimeWorkProfileKind.Reconcile,
-                domain.GetPendingReconcileWorkCount,
-                domain.HasPendingReconcileWork,
-                domain.ProcessPendingReconcileStep,
-                deadline);
+            return domain.ProcessPendingReconcileStep(deadline);
         }
 
         return false;
-    }
-
-    private static bool ProcessProfiledDomainWork(
-        DomainDescriptor domain,
-        RuntimeWorkProfileKind kind,
-        Func<int>? countPendingWork,
-        Func<bool>? hasPendingWork,
-        Func<float, bool> processStep,
-        float deadline)
-    {
-        if (!RuntimeWorkProfiler.IsEnabled())
-        {
-            return processStep(deadline);
-        }
-
-        int pendingBefore = GetPendingWorkCount(countPendingWork, hasPendingWork);
-        float startedAt = Time.realtimeSinceStartup;
-        bool processed = processStep(deadline);
-        float elapsedSeconds = Time.realtimeSinceStartup - startedAt;
-        int pendingAfter = GetPendingWorkCount(countPendingWork, hasPendingWork);
-        RuntimeWorkProfiler.Record(
-            domain.DomainKey,
-            kind,
-            processed,
-            pendingBefore,
-            pendingAfter,
-            elapsedSeconds);
-        return processed;
-    }
-
-    private static int GetPendingWorkCount(Func<int>? countPendingWork, Func<bool>? hasPendingWork)
-    {
-        if (countPendingWork != null)
-        {
-            return Math.Max(0, countPendingWork());
-        }
-
-        return hasPendingWork?.Invoke() == true ? 1 : 0;
     }
 
     private bool HasPendingReconcileWork()
@@ -359,7 +277,6 @@ internal sealed class PluginRuntimeWorkCoordinator
                 yield break;
             }
 
-            DropNSpawnPlugin.DropNSpawnLogger.LogDebug($"Processing queued game-data refresh after {source} for domains: {domains}.");
             PrefabOwnerResolver.Invalidate();
 
             foreach (DomainDescriptor domain in DomainRegistry.RuntimeDomains)

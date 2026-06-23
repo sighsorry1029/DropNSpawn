@@ -432,8 +432,7 @@ internal static partial class SpawnerManager
                 state => state.ActiveEntries.Count,
                 "ServerSync:DropNSpawnSpawner",
                 () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(
-                    MarkSyncedPayloadPending,
-                    "Waiting for synchronized spawner override payload from the server."),
+                    MarkSyncedPayloadPending),
                 LogSyncedSpawnerConfigurationLoaded,
                 LogSyncedSpawnerConfigurationFailure));
 
@@ -603,7 +602,6 @@ internal static partial class SpawnerManager
 
             ApplyIfReady(queueLiveReconcile: true);
             _lastProcessedGameDataSignature = gameDataSignature;
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Spawners processed after {source}.");
         }
     }
 
@@ -1391,13 +1389,6 @@ internal static partial class SpawnerManager
             : "prefab-only";
     }
 
-    private static string BuildLocationSelectorDiagnosticKey(List<string>? locations)
-    {
-        return HasLocationSelector(locations)
-            ? string.Join(",", locations!)
-            : "";
-    }
-
     private static Dictionary<string, string>? NormalizeOptionalStringDictionary(Dictionary<string, string>? values)
     {
         if (values == null)
@@ -1504,7 +1495,6 @@ internal static partial class SpawnerManager
         }
 
         _snapshotsCaptured = true;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Captured {SpawnAreaSnapshots.Count} SpawnArea snapshot(s) and {CreatureSpawnerSnapshots.Count} CreatureSpawner snapshot(s).");
     }
 
     private static void ResetReferenceSnapshots()
@@ -2988,65 +2978,6 @@ internal static partial class SpawnerManager
         {
             DropNSpawnPlugin.DropNSpawnLogger.LogWarning($"Spawner configuration references {componentName}, but no matching '{key.Split(':')[0]}' component name was found.");
         }
-    }
-
-    private static void LogLocationSelectorDiagnostic(GameObject gameObject, SpawnerConfigurationEntry entry, string reason, string? resolvedLocation = null, string? resolvedPath = null)
-    {
-        if (gameObject == null || entry == null)
-        {
-            return;
-        }
-
-        string configPrefabName = GetConfigPrefabName(gameObject, entry.SpawnArea != null ? nameof(SpawnArea) : nameof(CreatureSpawner));
-        string key = string.Join(
-            "|",
-            configPrefabName,
-            DescribeInstance(gameObject),
-            entry.RuleId,
-            reason,
-            BuildLocationSelectorDiagnosticKey(entry.Locations),
-            resolvedLocation ?? "");
-        if (!SelectorCacheStore.TryAddLocationSelectorDiagnostic(key))
-        {
-            return;
-        }
-
-        string selectorDescription = FormatLocationSelector(entry.Locations);
-        string resolvedDescription = resolvedLocation != null
-            ? $"resolved location='{resolvedLocation}'"
-            : "resolved location unavailable";
-        DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-            $"Spawner selector mismatch for '{configPrefabName}@{DescribeInstance(gameObject)}' using {selectorDescription}. {reason}; {resolvedDescription}.");
-    }
-
-    private static void LogLocationSelectorDiagnostic(GameObject gameObject, SpawnerRuntimeEntry entry, string reason, string? resolvedLocation = null, string? resolvedPath = null)
-    {
-        if (gameObject == null || entry == null)
-        {
-            return;
-        }
-
-        string componentName = ResolveRuntimeSpawnerComponentName(gameObject);
-        string configPrefabName = GetConfigPrefabName(gameObject, componentName);
-        string key = string.Join(
-            "|",
-            configPrefabName,
-            DescribeInstance(gameObject),
-            entry.RuleId,
-            reason,
-            BuildLocationSelectorDiagnosticKey(entry.Locations),
-            resolvedLocation ?? "");
-        if (!SelectorCacheStore.TryAddLocationSelectorDiagnostic(key))
-        {
-            return;
-        }
-
-        string selectorDescription = FormatLocationSelector(entry.Locations);
-        string resolvedDescription = resolvedLocation != null
-            ? $"resolved location='{resolvedLocation}'"
-            : "resolved location unavailable";
-        DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-            $"Spawner selector mismatch for '{configPrefabName}@{DescribeInstance(gameObject)}' using {selectorDescription}. {reason}; {resolvedDescription}.");
     }
 
     private static string ResolveRuntimeSpawnerComponentName(GameObject gameObject)

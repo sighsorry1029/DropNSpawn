@@ -24,27 +24,19 @@ internal static class LocationProxySpawnLocationPatch
 
     private static void Postfix(LocationProxy __instance, bool __result)
     {
-        float sample = RuntimeWorkProfiler.BeginHookSample();
-        try
+        if (!__result)
         {
-            if (!__result)
-            {
-                return;
-            }
-
-            bool spawnerDomainEnabled = PluginSettingsFacade.IsSpawnerDomainEnabled() &&
-                                        !DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner);
-            if (!spawnerDomainEnabled)
-            {
-                return;
-            }
-
-            GameObject? instance = __instance != null ? InstanceRef(__instance) : null;
-            SpawnerManager.RecordSpawnedLocationProxyProvenance(__instance, instance);
+            return;
         }
-        finally
+
+        bool spawnerDomainEnabled = PluginSettingsFacade.IsSpawnerDomainEnabled() &&
+                                    !DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner);
+        if (!spawnerDomainEnabled)
         {
-            RuntimeWorkProfiler.EndHookSample("LocationProxy.SpawnLocation", sample);
+            return;
         }
+
+        GameObject? instance = __instance != null ? InstanceRef(__instance) : null;
+        SpawnerManager.RecordSpawnedLocationProxyProvenance(__instance, instance);
     }
 }

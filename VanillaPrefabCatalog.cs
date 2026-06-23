@@ -80,7 +80,6 @@ internal static class VanillaPrefabCatalog
             }
 
             _state = CatalogState.Loaded;
-            DropNSpawnPlugin.DropNSpawnLogger.LogDebug($"Loaded {PrefabNames.Count} vanilla prefab names from '{manifestPath}'.");
         }
     }
 }

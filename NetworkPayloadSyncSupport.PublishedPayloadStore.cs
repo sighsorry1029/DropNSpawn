@@ -623,10 +623,8 @@ internal static partial class NetworkPayloadSyncSupport
             artifact.EstimatedBytes = EstimateTransferArtifactBytes(artifact);
             return true;
         }
-        catch (Exception ex)
+        catch
         {
-            DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-                $"Failed to prebuild synchronized {transport.DisplayName} primary delta artifact '{normalizedBaseHash}->{targetHash}'. {ex.Message}");
             return false;
         }
     }

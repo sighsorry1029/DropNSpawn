@@ -24,7 +24,6 @@ internal static partial class SpawnSystemManager
         public bool QueueEspRefreshForLiveSystems { get; private set; }
         public bool QueueLiveSystemAttach { get; private set; }
         public bool PublishSyncedConfiguration { get; private set; }
-        public bool LoggedWait { get; set; }
         public bool HasWork => WaitingForBiomeReady || PublishSyncedConfiguration;
 
         public void Defer(
@@ -60,7 +59,6 @@ internal static partial class SpawnSystemManager
             QueueEspRefreshForLiveSystems = false;
             QueueLiveSystemAttach = false;
             PublishSyncedConfiguration = false;
-            LoggedWait = false;
         }
     }
 

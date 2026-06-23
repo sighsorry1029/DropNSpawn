@@ -540,7 +540,7 @@ internal static partial class NetworkPayloadSyncSupport
                     }
                 }, roleEpoch);
             }
-            catch (Exception ex)
+            catch
             {
                 QueueMainThreadPayloadCommitLocked(() =>
                 {
@@ -548,9 +548,6 @@ internal static partial class NetworkPayloadSyncSupport
                     {
                         transport.PendingArtifactBuildKeys.Remove(cacheKey);
                     }
-
-                    DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-                        $"Failed to prebuild synchronized {transport.DisplayName} delta artifact '{normalizedBaseHash}->{targetHash}'. {ex.Message}");
                 }, roleEpoch);
             }
         }, roleEpoch);
@@ -656,7 +653,6 @@ internal static partial class NetworkPayloadSyncSupport
     {
         string desiredHash = transport.DesiredPayloadManifest.Hash;
         ClearPendingInboundTransferLocked(transport);
-        transport.LastWaitingLogHash = "";
         DropNSpawnPlugin.DropNSpawnLogger.LogWarning(message);
 
         if (!string.IsNullOrWhiteSpace(desiredHash))
@@ -723,7 +719,6 @@ internal static partial class NetworkPayloadSyncSupport
             transport.AvailablePayloadIndex = payloadIndex;
             ClearBlockedManifestLocked(transport);
             ClearPendingInboundTransferLocked(transport);
-            transport.LastWaitingLogHash = "";
             transport.ProcessingInFlight = false;
             transport.ProcessingHash = "";
             committed = true;
@@ -733,7 +728,6 @@ internal static partial class NetworkPayloadSyncSupport
         if (committed)
         {
             NotifyTransportPayloadReadyIfNeeded(transport, hash, entryCount, successLogMessage);
-            DropNSpawnPlugin.DropNSpawnLogger.LogDebug(successLogMessage);
         }
     }
 
@@ -1168,7 +1162,6 @@ internal static partial class NetworkPayloadSyncSupport
         int compressedLength = GetInboundCompressedLength(pendingTransfer);
 
         ClearPendingInboundTransferLocked(transport);
-        transport.LastWaitingLogHash = "";
 
         QueueCriticalPayloadProcessingJobLocked(() =>
         {

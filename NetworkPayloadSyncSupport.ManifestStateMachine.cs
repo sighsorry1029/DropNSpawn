@@ -59,7 +59,6 @@ internal static partial class NetworkPayloadSyncSupport
         transport.DesiredPayloadManifest = new PayloadManifest();
         ClearBlockedManifestLocked(transport);
         ClearPendingInboundTransferLocked(transport);
-        transport.LastWaitingLogHash = "";
         transport.ProcessingInFlight = false;
         transport.ProcessingHash = "";
         transport.ProcessingVersion++;
@@ -110,7 +109,6 @@ internal static partial class NetworkPayloadSyncSupport
         ClearPendingInboundTransferLocked(transport);
         transport.RequestInFlight = false;
         transport.RequestStartedAt = 0f;
-        transport.LastWaitingLogHash = hash ?? "";
         transport.BlockedManifestHash = hash ?? "";
         transport.BlockedManifestReason = reason ?? "";
         DeleteCacheFileIfPresent(transport.CacheDirectoryName, hash ?? "");
@@ -159,7 +157,6 @@ internal static partial class NetworkPayloadSyncSupport
                     transport.AvailableEntries = null;
                     transport.AvailablePayloadIndex = null;
                     ClearPendingInboundTransferLocked(transport);
-                    transport.LastWaitingLogHash = "";
                     transport.ProcessingInFlight = false;
                     transport.ProcessingHash = "";
                     transport.ProcessingVersion++;
@@ -176,11 +173,9 @@ internal static partial class NetworkPayloadSyncSupport
                 else if (TryScheduleCachedPayloadLoadLocked(transport, manifest))
                 {
                 }
-                else if (EnsurePayloadRequestedLocked(transport, manifest))
+                else
                 {
-                    transport.LastWaitingLogHash = manifest.Hash;
-                    DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-                        $"Requesting synchronized {transport.DisplayName} payload '{manifest.Hash}' from the server.");
+                    EnsurePayloadRequestedLocked(transport, manifest);
                 }
             }
         }
@@ -242,12 +237,7 @@ internal static partial class NetworkPayloadSyncSupport
 
                             transport.ProcessingInFlight = false;
                             transport.ProcessingHash = "";
-                            if (EnsurePayloadRequestedLocked(transport, transport.DesiredPayloadManifest))
-                            {
-                                transport.LastWaitingLogHash = manifest.Hash;
-                                DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-                                    $"Requesting synchronized {transport.DisplayName} payload '{manifest.Hash}' from the server.");
-                            }
+                            EnsurePayloadRequestedLocked(transport, transport.DesiredPayloadManifest);
                         }
                     }, roleEpoch);
                     return;
@@ -280,12 +270,7 @@ internal static partial class NetworkPayloadSyncSupport
                         transport.ProcessingHash = "";
                         DropNSpawnPlugin.DropNSpawnLogger.LogWarning(
                             $"Failed to read cached {transport.DisplayName} payload '{manifest.Hash}'. {ex.Message}");
-                        if (EnsurePayloadRequestedLocked(transport, transport.DesiredPayloadManifest))
-                        {
-                            transport.LastWaitingLogHash = manifest.Hash;
-                            DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-                                $"Requesting synchronized {transport.DisplayName} payload '{manifest.Hash}' from the server.");
-                        }
+                        EnsurePayloadRequestedLocked(transport, transport.DesiredPayloadManifest);
                     }
                 }, roleEpoch);
             }

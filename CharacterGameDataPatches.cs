@@ -97,20 +97,12 @@ internal static class CharacterDropStartPatch
 {
     private static void Postfix(CharacterDrop __instance)
     {
-        float sample = RuntimeWorkProfiler.BeginHookSample();
-        try
+        if (!PluginSettingsFacade.IsCharacterDomainEnabled())
         {
-            if (!PluginSettingsFacade.IsCharacterDomainEnabled())
-            {
-                return;
-            }
+            return;
+        }
 
-            CharacterDropManager.TrackCharacterDropInstance(__instance);
-        }
-        finally
-        {
-            RuntimeWorkProfiler.EndHookSample("CharacterDrop.Start", sample);
-        }
+        CharacterDropManager.TrackCharacterDropInstance(__instance);
     }
 }
 

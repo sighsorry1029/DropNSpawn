@@ -223,17 +223,9 @@ internal static class ConfigurationDomainHost
                string.Equals(loadState.LastLoadedPayload, payloadToken, StringComparison.Ordinal);
     }
 
-    internal static void HandleWaitingForSyncedPayload(
-        Action markPending,
-        string? debugMessage = null,
-        Action? onWaiting = null)
+    internal static void HandleWaitingForSyncedPayload(Action markPending)
     {
         markPending?.Invoke();
-        onWaiting?.Invoke();
-        if (!string.IsNullOrWhiteSpace(debugMessage))
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogDebug(debugMessage);
-        }
     }
 
     internal static void ResetLoadState(DomainLoadState loadState)

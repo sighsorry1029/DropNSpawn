@@ -471,8 +471,7 @@ internal static partial class ObjectDropManager
                 state => state.ActiveEntriesByPrefab.Count,
                 "ServerSync:DropNSpawnObject",
                 () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(
-                    MarkSyncedPayloadPending,
-                    "Waiting for synchronized object override payload from the server."),
+                    MarkSyncedPayloadPending),
                 LogSyncedObjectConfigurationLoaded,
                 LogSyncedObjectConfigurationFailure));
 
@@ -864,7 +863,6 @@ internal static partial class ObjectDropManager
         ApplyIfReady(queueLiveReconcile: true);
         _lastProcessedSnapshotSignature = snapshotSignature;
         _lastProcessedGameDataSignature = gameDataSignature;
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"{DropNSpawnPlugin.ModName} processed after {source}.");
     }
 
     private static void ResetLoadedConfigurationState()
@@ -1749,8 +1747,6 @@ internal static partial class ObjectDropManager
                 SnapshotsByPrefab.Add(snapshot.Prefab.name, snapshot);
             }
         }
-
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Captured {Snapshots.Count} relevant prefab snapshot(s).");
     }
 
     private static void RefreshSnapshots()

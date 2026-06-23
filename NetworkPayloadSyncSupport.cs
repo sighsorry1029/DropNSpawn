@@ -294,7 +294,6 @@ internal static partial class NetworkPayloadSyncSupport
         public long NextRequestId;
         public bool RequestInFlight;
         public float RequestStartedAt;
-        public string LastWaitingLogHash = "";
         public bool ProcessingInFlight;
         public string ProcessingHash = "";
         public int ProcessingVersion;
@@ -647,7 +646,6 @@ internal static partial class NetworkPayloadSyncSupport
         transport.NextRequestId = 0L;
         transport.RequestInFlight = false;
         transport.RequestStartedAt = 0f;
-        transport.LastWaitingLogHash = "";
         transport.ProcessingInFlight = false;
         transport.ProcessingHash = "";
         transport.ProcessingVersion++;
@@ -1118,19 +1116,7 @@ PublishExit:
                 return false;
             }
 
-            bool requestStarted = EnsurePayloadRequestedLocked(transport, manifest);
-            if (requestStarted)
-            {
-                transport.LastWaitingLogHash = manifest.Hash;
-                DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-                    $"Requesting synchronized {transport.DisplayName} payload '{manifest.Hash}' from the server.");
-            }
-            else if (!string.Equals(transport.LastWaitingLogHash, manifest.Hash, StringComparison.Ordinal))
-            {
-                transport.LastWaitingLogHash = manifest.Hash;
-                DropNSpawnPlugin.DropNSpawnLogger.LogDebug(
-                    $"Waiting for synchronized {transport.DisplayName} payload '{manifest.Hash}' from the server.");
-            }
+            EnsurePayloadRequestedLocked(transport, manifest);
 
             entries = new List<TEntry>();
             payloadToken = manifest.Hash;

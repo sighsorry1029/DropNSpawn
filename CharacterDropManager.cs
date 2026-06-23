@@ -168,8 +168,7 @@ internal static partial class CharacterDropManager
                 state => state.ActiveEntriesByPrefab.Count,
                 "ServerSync:DropNSpawnCharacter",
                 () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(
-                    MarkSyncedPayloadPending,
-                    "Waiting for synchronized character override payload from the server."),
+                    MarkSyncedPayloadPending),
                 LogSyncedCharacterConfigurationLoaded,
                 LogSyncedCharacterConfigurationFailure));
     internal static bool ShouldReloadForPath(string? path)
@@ -418,7 +417,6 @@ internal static partial class CharacterDropManager
         }
 
         ApplyIfReady();
-        DropNSpawnPlugin.DropNSpawnLogger.LogInfo("Character drops processed after " + source + ".");
     }
 
     private static void ResetLoadedConfigurationState()
@@ -1152,21 +1150,12 @@ internal static partial class CharacterDropManager
 
     private static void CaptureSnapshotsIfNeeded()
     {
-        int snapshotCountBefore = CharacterDropRuntime.SnapshotCount();
         CharacterDropRuntime.CaptureSnapshotsIfNeeded(EnumerateRelevantPrefabs(), CaptureSnapshot);
-        if (snapshotCountBefore == 0 && CharacterDropRuntime.SnapshotCount() > 0)
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Captured {CharacterDropRuntime.SnapshotCount()} character drop prefab snapshot(s).");
-        }
     }
 
     private static void RefreshSnapshots()
     {
         CharacterDropRuntime.RefreshSnapshots(EnumerateRelevantPrefabs(), CaptureSnapshot);
-        if (CharacterDropRuntime.SnapshotCount() > 0)
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"Captured {CharacterDropRuntime.SnapshotCount()} character drop prefab snapshot(s).");
-        }
     }
 
     private static void EnsureCompiledState()

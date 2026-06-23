@@ -10,28 +10,12 @@ internal static class SpawnSystemAwakePatch
 {
     private static void Prefix(SpawnSystem __instance)
     {
-        float sample = RuntimeWorkProfiler.BeginHookSample();
-        try
-        {
-            SpawnSystemManager.PreAttachCompiledTableToAwakeningSystem(__instance);
-        }
-        finally
-        {
-            RuntimeWorkProfiler.EndHookSample("SpawnSystem.Awake.prefix", sample);
-        }
+        SpawnSystemManager.PreAttachCompiledTableToAwakeningSystem(__instance);
     }
 
     private static void Postfix(SpawnSystem __instance)
     {
-        float sample = RuntimeWorkProfiler.BeginHookSample();
-        try
-        {
-            SpawnSystemManager.OnSpawnSystemAwake(__instance);
-        }
-        finally
-        {
-            RuntimeWorkProfiler.EndHookSample("SpawnSystem.Awake.postfix", sample);
-        }
+        SpawnSystemManager.OnSpawnSystemAwake(__instance);
     }
 }
 

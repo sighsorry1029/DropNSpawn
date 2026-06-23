@@ -50,13 +50,6 @@ internal sealed class PluginBootstrapCoordinator
             DropNSpawnPlugin.Toggle.On,
             "If on, the configuration is locked and can be changed by server admins only.",
             configManagerOrder: 800);
-        PluginBoundSettings.DebugRuntimeWorkProfiling = _host.BindConfigEntry(
-            "1 - General",
-            "Debug Runtime Work Profiling",
-            DropNSpawnPlugin.Toggle.Off,
-            "If on, writes one local Info log per second summarizing runtime queue work and immediate Harmony hook costs, including pending counts, processed steps, total time, and max step/hook time.",
-            synchronizedSetting: false,
-            configManagerOrder: 50);
         SpawnerGlobalConfig.Bind(_host);
         CharacterDropGlobalConfig.Bind(_host);
 

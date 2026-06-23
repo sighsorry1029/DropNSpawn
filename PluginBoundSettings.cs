@@ -9,7 +9,6 @@ internal static class PluginBoundSettings
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? EnableCharacterOverrides { get; set; }
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? EnableSpawnerOverrides { get; set; }
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? EnableSpawnSystemOverrides { get; set; }
-    internal static ConfigEntry<DropNSpawnPlugin.Toggle>? DebugRuntimeWorkProfiling { get; set; }
 
     internal static void Clear()
     {
@@ -18,6 +17,5 @@ internal static class PluginBoundSettings
         EnableCharacterOverrides = null;
         EnableSpawnerOverrides = null;
         EnableSpawnSystemOverrides = null;
-        DebugRuntimeWorkProfiling = null;
     }
 }

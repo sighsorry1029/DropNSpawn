@@ -328,13 +328,11 @@ internal static partial class SpawnerManager
 
         if (!hasResolvedLocation)
         {
-            LogLocationSelectorDiagnostic(gameObject, entry, "no live location context");
             return false;
         }
 
         if (!MatchesLocationSelector(entry.Locations, resolvedLocationPrefab))
         {
-            LogLocationSelectorDiagnostic(gameObject, entry, $"location mismatch via {sourceLabel}", resolvedLocationPrefab ?? "");
             return false;
         }
 
@@ -364,13 +362,11 @@ internal static partial class SpawnerManager
 
         if (!hasResolvedLocation)
         {
-            LogLocationSelectorDiagnostic(gameObject, entry, "no live location context");
             return false;
         }
 
         if (!MatchesLocationSelector(entry.Locations, resolvedLocationPrefab))
         {
-            LogLocationSelectorDiagnostic(gameObject, entry, $"location mismatch via {sourceLabel}", resolvedLocationPrefab ?? "");
             return false;
         }
 

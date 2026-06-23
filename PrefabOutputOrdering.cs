@@ -533,7 +533,6 @@ internal static class PrefabOwnerCatalog
         _loadedPluginResourcesSignature = pluginResourcesSignature;
         RefreshSnapshot();
         SaveMappingsToCache();
-        DropNSpawnPlugin.DropNSpawnLogger.LogDebug($"Tracked {PrefabOwners.Count} prefab owner mapping(s) across {bundleToOwner.Count} mod asset bundle(s).");
     }
 
     private static Dictionary<string, AssetBundle> GetLoadedBundlesByName()
