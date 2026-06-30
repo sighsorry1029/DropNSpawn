@@ -4,6 +4,13 @@ namespace DropNSpawn;
 
 internal static partial class SpawnSystemManager
 {
+    private static readonly Heightmap.Biome LowTierBiomeGlobalKeySpawnSystemFilter =
+        Heightmap.Biome.Meadows |
+        Heightmap.Biome.BlackForest |
+        Heightmap.Biome.Swamp |
+        Heightmap.Biome.Mountain |
+        Heightmap.Biome.Plains;
+
     private static List<PreparedSpawnSystemEntry> BuildPreparedEntriesCore()
     {
         if (IsPreparedEntriesCacheValid())
@@ -18,6 +25,11 @@ internal static partial class SpawnSystemManager
             SpawnSystem.SpawnData data = new();
             string context = CreateConfigurationContext(index, entry);
             if (!ApplyEntry(data, entry, context, applyCustomData: false))
+            {
+                continue;
+            }
+
+            if (ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(data))
             {
                 continue;
             }
@@ -46,5 +58,20 @@ internal static partial class SpawnSystemManager
         return NetworkPayloadSyncSupport.ComputeSpawnSystemProjectedConfigurationSignature(
             entries,
             static entry => entry.Entry);
+    }
+
+    private static bool ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(SpawnSystem.SpawnData data)
+    {
+        if (!PluginSettingsFacade.ShouldDisableLowTierBiomeGlobalKeySpawnSystemEntries())
+        {
+            return false;
+        }
+
+        if (data == null || string.IsNullOrWhiteSpace(data.m_requiredGlobalKey))
+        {
+            return false;
+        }
+
+        return (data.m_biome & LowTierBiomeGlobalKeySpawnSystemFilter) != Heightmap.Biome.None;
     }
 }

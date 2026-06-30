@@ -14,46 +14,45 @@ internal static class CharacterDropGenerateDropListPatch
         internal State(
             List<CharacterDrop.Drop>? previousDrops,
             bool hasOnePerPlayerScope,
-            IReadOnlyList<CharacterDrop.Drop>? trophyAmountSourceDrops)
+            IReadOnlyList<CharacterDrop.Drop>? amountSourceDrops)
         {
             PreviousDrops = previousDrops;
             HasOnePerPlayerScope = hasOnePerPlayerScope;
-            TrophyAmountSourceDrops = trophyAmountSourceDrops;
+            AmountSourceDrops = amountSourceDrops;
         }
 
         internal List<CharacterDrop.Drop>? PreviousDrops { get; }
         internal bool HasOnePerPlayerScope { get; }
-        internal IReadOnlyList<CharacterDrop.Drop>? TrophyAmountSourceDrops { get; }
+        internal IReadOnlyList<CharacterDrop.Drop>? AmountSourceDrops { get; }
     }
 
     private static void Prefix(CharacterDrop __instance, out State __state)
     {
         bool isCharacterDomainEnabled = PluginSettingsFacade.IsCharacterDomainEnabled();
         if (!isCharacterDomainEnabled &&
-            !PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled())
+            !CharacterDropManager.IsGlobalCharacterLootLevelScalingEnabled())
         {
-            __state = new State(previousDrops: null, hasOnePerPlayerScope: false, trophyAmountSourceDrops: null);
+            __state = new State(previousDrops: null, hasOnePerPlayerScope: false, amountSourceDrops: null);
             return;
         }
 
         List<CharacterDrop.Drop>? previousDrops = isCharacterDomainEnabled
             ? CharacterDropManager.OverrideConditionalDrops(__instance)
             : null;
-        List<CharacterDrop.Drop>? previousTrophyDrops = CharacterDropManager.SuppressGlobalTrophyLevelMultiplierDrops(__instance);
-        previousDrops ??= previousTrophyDrops;
-        IReadOnlyList<CharacterDrop.Drop>? trophyAmountSourceDrops = PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled()
-            ? __instance.m_drops
-            : null;
+        List<CharacterDrop.Drop>? previousScaledDrops = CharacterDropManager.SuppressGlobalCharacterLootLevelMultiplierDrops(
+            __instance,
+            out IReadOnlyList<CharacterDrop.Drop>? amountSourceDrops);
+        previousDrops ??= previousScaledDrops;
         __state = new State(
             previousDrops,
             isCharacterDomainEnabled && CharacterDropManager.BeginOnePerPlayerNearbyPlayerScope(__instance),
-            trophyAmountSourceDrops);
+            amountSourceDrops);
     }
 
     [HarmonyPriority(Priority.Last)]
     private static void Postfix(CharacterDrop __instance, List<KeyValuePair<GameObject, int>> __result, State __state)
     {
-        CharacterDropManager.ApplyGlobalTrophyLevelMultiplier(__instance, __result, __state.TrophyAmountSourceDrops);
+        CharacterDropManager.ApplyGlobalCharacterLootLevelMultiplier(__instance, __result, __state.AmountSourceDrops);
 
         if (__state.PreviousDrops != null)
         {

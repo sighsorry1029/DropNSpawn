@@ -19,11 +19,38 @@ internal static class PluginSettingsFacade
     internal static bool IsSpawnSystemDomainEnabled() =>
         PluginBoundSettings.EnableSpawnSystemOverrides?.Value != DropNSpawnPlugin.Toggle.Off;
 
+    internal static bool IsEventDomainEnabled() =>
+        PluginBoundSettings.EnableEventOverrides?.Value != DropNSpawnPlugin.Toggle.Off;
+
+    internal static bool ShouldDisableLowTierBiomeGlobalKeySpawnSystemEntries() =>
+        PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes?.Value == DropNSpawnPlugin.Toggle.On;
+
+    internal static bool IsMultipleEventsEnabled() =>
+        EventGlobalConfig.IsMultipleEventsEnabled();
+
+    internal static bool IsEventCheckPerPlayerEnabled() =>
+        EventGlobalConfig.IsCheckPerPlayerEnabled();
+
+    internal static float GetMinimumDistanceBetweenEvents() =>
+        EventGlobalConfig.GetMinimumDistanceBetweenEvents();
+
+    internal static float GetRandomEventChance() =>
+        EventGlobalConfig.GetRandomEventChance();
+
+    internal static float GetRandomEventIntervalMinutes() =>
+        EventGlobalConfig.GetRandomEventIntervalMinutes();
+
     internal static bool IsGlobalCharacterDropInStackEnabled() =>
         CharacterDropGlobalConfig.IsGlobalDropInStackEnabled();
 
     internal static bool IsMonsterInstantLootDropEnabled() =>
         CharacterDropGlobalConfig.IsMonsterInstantLootDropEnabled();
+
+    internal static bool IsCharacterDropCalculateChanceLootSystemEnabled() =>
+        CharacterDropGlobalConfig.IsCalculateChanceLootSystemEnabled();
+
+    internal static int GetCharacterDropAdditionalLootChancePerStar(bool boss) =>
+        CharacterDropGlobalConfig.GetAdditionalLootChancePerStar(boss);
 
     internal static bool IsGlobalCharacterDropTrophyLevelMultiplierEnabled() =>
         CharacterDropGlobalConfig.IsGlobalTrophyLevelMultiplierEnabled();

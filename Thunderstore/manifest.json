@@ -1,6 +1,6 @@
 {
   "name": "DropNSpawn",
-  "version_number": "1.2.5",
+  "version_number": "1.2.6",
   "website_url": "https://discord.com/invite/VFRJcPwUdm",
   "description": "Server-synced spawn and loot control for Valheim: tune creature drops, object loot, pickables, trees, rocks, spawners, and world SpawnSystem rows with stacked drops, trophy scaling, VNEI display data, references, and location-scoped rules.",
   "dependencies": [

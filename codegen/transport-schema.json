@@ -107,6 +107,30 @@
       "payloadWriterExpression": "WriteSpawnSystemModifiersDefinition",
       "payloadReaderExpression": "ReadSpawnSystemModifiersDefinition",
       "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemModifiersDefinition(value)!"
+    },
+    {
+      "name": "EventConditionsValueCodec",
+      "typeName": "EventConditionsDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteEventConditionsDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteEventConditionsDefinition",
+      "payloadReaderExpression": "ReadEventConditionsDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneEventConditionsDefinition(value)!"
+    },
+    {
+      "name": "EventSpawnModifiersValueCodec",
+      "typeName": "EventSpawnModifiersDefinition",
+      "signatureWriterExpression": "static (builder, definition, _) => WriteEventSpawnModifiersDefinition(builder, definition)",
+      "payloadWriterExpression": "WriteEventSpawnModifiersDefinition",
+      "payloadReaderExpression": "ReadEventSpawnModifiersDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneEventSpawnModifiersDefinition(value)!"
+    },
+    {
+      "name": "EventSpawnValueCodec",
+      "typeName": "EventSpawnDefinition",
+      "signatureWriterExpression": "(builder, definition, context) => WriteEventSpawnDefinition(builder, definition, context.IncludeResolvedBiomeMask)",
+      "payloadWriterExpression": "WriteEventSpawnDefinition",
+      "payloadReaderExpression": "ReadEventSpawnDefinition",
+      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneEventSpawnDefinition(value)!"
     }
   ],
   "entrySchemas": [
@@ -185,6 +209,25 @@
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceLine = source.SourceLine)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceColumn = source.SourceColumn)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.ReferenceOwnerName = source.ReferenceOwnerName)" }
+      ]
+    },
+    {
+      "methodName": "CreateEventEntrySchema",
+      "entryTypeName": "EventDefinition",
+      "dtoVersionExpression": "EventManager.TransportMetadata.DtoVersion",
+      "createEntryExpression": "() => new EventDefinition()",
+      "fields": [
+        { "expression": "StringField<EventDefinition>(entry => entry.Event, (entry, value) => entry.Event = value)" },
+        { "expression": "ListField<EventDefinition, string>(entry => entry.Settings, (entry, value) => entry.Settings = value, static (builder, value, _) => builder.WriteString(value ?? \"\"), static (package, value) => package.Write(value ?? \"\"), static package => package.ReadString(), static value => value ?? \"\")" },
+        { "expression": "ListField<EventDefinition, float>(entry => entry.Standalone, (entry, value) => entry.Standalone = value, static (builder, value, _) => builder.WriteFloat(value), static (package, value) => package.Write(value), static package => package.ReadSingle(), static value => value)" },
+        { "expression": "NullableFloatField<EventDefinition>(entry => entry.SpawnerDelay, (entry, value) => entry.SpawnerDelay = value)" },
+        { "expression": "OptionalField<EventDefinition, EventConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, EventConditionsValueCodec)" },
+        { "expression": "ListField<EventDefinition, string>(entry => entry.Messages, (entry, value) => entry.Messages = value, static (builder, value, _) => builder.WriteString(value ?? \"\"), static (package, value) => package.Write(value ?? \"\"), static package => package.ReadString(), static value => value ?? \"\")" },
+        { "expression": "NullableStringField<EventDefinition>(entry => entry.ForceEnvironment, (entry, value) => entry.ForceEnvironment = value)" },
+        { "expression": "NullableStringField<EventDefinition>(entry => entry.ForceMusic, (entry, value) => entry.ForceMusic = value)" },
+        { "expression": "ListField<EventDefinition, string>(entry => entry.StartCommands, (entry, value) => entry.StartCommands = value, static (builder, value, _) => builder.WriteString(value ?? \"\"), static (package, value) => package.Write(value ?? \"\"), static package => package.ReadString(), static value => value ?? \"\")" },
+        { "expression": "ListField<EventDefinition, string>(entry => entry.EndCommands, (entry, value) => entry.EndCommands = value, static (builder, value, _) => builder.WriteString(value ?? \"\"), static (package, value) => package.Write(value ?? \"\"), static package => package.ReadString(), static value => value ?? \"\")" },
+        { "expression": "ListField<EventDefinition, EventSpawnDefinition>(entry => entry.Spawns, (entry, value) => entry.Spawns = value, EventSpawnValueCodec)" }
       ]
     }
   ],

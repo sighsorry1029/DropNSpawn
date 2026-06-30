@@ -17,11 +17,17 @@ namespace DropNSpawn;
     typeof(ZoneSystem.SpawnMode),
     typeof(List<GameObject>)
 })]
+[HarmonyAfter("expand_world_data")]
 internal static class ZoneSystemSpawnLocationContextPatch
 {
-    private static void Prefix(ZoneSystem.ZoneLocation location, ref bool __state)
+    private sealed class SpawnLocationContextState
     {
-        __state = false;
+        public bool HasContext { get; set; }
+    }
+
+    private static void Prefix(ZoneSystem.ZoneLocation location, ref SpawnLocationContextState? __state)
+    {
+        __state = null;
         if (!PluginSettingsFacade.IsSpawnerDomainEnabled() ||
             DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Spawner))
         {
@@ -29,12 +35,25 @@ internal static class ZoneSystemSpawnLocationContextPatch
         }
 
         SpawnerManager.BeginLocationSpawnContext(location);
-        __state = true;
+        __state = new SpawnLocationContextState
+        {
+            HasContext = true
+        };
     }
 
-    private static void Finalizer(bool __state)
+    private static void Postfix(GameObject __result, SpawnLocationContextState? __state)
     {
-        if (!__state)
+        if (__state?.HasContext != true)
+        {
+            return;
+        }
+
+        SpawnerManager.RecordSpawnedLocationRootProvenance(__result);
+    }
+
+    private static void Finalizer(SpawnLocationContextState? __state)
+    {
+        if (__state?.HasContext != true)
         {
             return;
         }

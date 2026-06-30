@@ -406,6 +406,7 @@ internal static partial class NetworkPayloadSyncSupport
             DomainTransportMetadata<CharacterDropPrefabEntry> typed => new DomainTransport<CharacterDropPrefabEntry>(typed, CharacterCodec),
             DomainTransportMetadata<SpawnerConfigurationEntry> typed => new DomainTransport<SpawnerConfigurationEntry>(typed, SpawnerCodec),
             DomainTransportMetadata<CanonicalSpawnSystemEntry> typed => new DomainTransport<CanonicalSpawnSystemEntry>(typed, SpawnSystemCodec),
+            DomainTransportMetadata<EventDefinition> typed => new DomainTransport<EventDefinition>(typed, EventCodec),
             _ => throw new InvalidOperationException($"Unsupported transport metadata for domain '{metadata.DomainKey}'.")
         };
     }

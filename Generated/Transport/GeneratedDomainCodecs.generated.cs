@@ -21,4 +21,8 @@ internal static partial class NetworkPayloadSyncSupport
     private static DomainCodec<CanonicalSpawnSystemEntry> SpawnSystemCodec =>
         _spawnSystemCodec ??= new(CreateSpawnSystemEntrySchema());
 
+    private static DomainCodec<EventDefinition> _eventCodec;
+    private static DomainCodec<EventDefinition> EventCodec =>
+        _eventCodec ??= new(CreateEventEntrySchema());
+
 }

@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.Reflection;
-using ServerSync;
 
 namespace DropNSpawn;
 
@@ -50,8 +49,16 @@ internal sealed class PluginBootstrapCoordinator
             DropNSpawnPlugin.Toggle.On,
             "If on, the configuration is locked and can be changed by server admins only.",
             configManagerOrder: 800);
+        PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes = _host.BindConfigEntry(
+            "1 - General",
+            "Disable global key SpawnSystem entries in low tier biomes",
+            DropNSpawnPlugin.Toggle.Off,
+            "If on, SpawnSystem entries with requiredGlobalKey in Meadows, BlackForest, Swamp, Mountain, or Plains are disabled globally. This prevents global keys from making high tier monsters appear in low tier biomes.",
+            synchronizedSetting: true,
+            configManagerOrder: 700);
         SpawnerGlobalConfig.Bind(_host);
         CharacterDropGlobalConfig.Bind(_host);
+        EventGlobalConfig.Bind(_host);
 
         BindDomainConfigurationEntries();
     }
@@ -86,6 +93,13 @@ internal sealed class PluginBootstrapCoordinator
             "If off, DropNSpawn world SpawnSystem runtime overrides and extended global key handling are not applied and existing SpawnSystem changes are restored to vanilla. Turn this off for Expand World Spawns. Turn this off with Enable Spawner when using Spawn That! world spawning.",
             synchronizedSetting: true,
             configManagerOrder: 300);
+        PluginBoundSettings.EnableEventOverrides = _host.BindConfigEntry(
+            "4 - Domains",
+            "Enable Event Overrides",
+            DropNSpawnPlugin.Toggle.On,
+            "If off, DropNSpawn event YAML files stay on disk but RandEventSystem event overrides are not applied and existing event changes are restored to vanilla.",
+            synchronizedSetting: true,
+            configManagerOrder: 200);
     }
 
     private void InitializeCoordinators()
@@ -96,7 +110,8 @@ internal sealed class PluginBootstrapCoordinator
             PluginBoundSettings.EnableObjectOverrides!,
             PluginBoundSettings.EnableCharacterOverrides!,
             PluginBoundSettings.EnableSpawnerOverrides!,
-            PluginBoundSettings.EnableSpawnSystemOverrides!);
+            PluginBoundSettings.EnableSpawnSystemOverrides!,
+            PluginBoundSettings.EnableEventOverrides!);
     }
 
     private void AttachReloadAndManifestHandlers()
@@ -107,7 +122,14 @@ internal sealed class PluginBootstrapCoordinator
         PluginBoundSettings.EnableCharacterOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
         PluginBoundSettings.EnableSpawnerOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
         PluginBoundSettings.EnableSpawnSystemOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
+        PluginBoundSettings.EnableEventOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
+        PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes!.SettingChanged += HandleSpawnSystemGlobalFilterSettingChanged;
         PluginManifestCoordinator.AttachRuntimeDomainHandlers();
+    }
+
+    internal static void HandleSpawnSystemGlobalFilterSettingChanged(object? sender, EventArgs e)
+    {
+        SpawnSystemManager.ReloadConfiguration();
     }
 
     private void InitializeRuntimeSystems()

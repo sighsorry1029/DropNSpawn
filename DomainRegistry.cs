@@ -113,7 +113,8 @@ internal static class DomainRegistry
         ObjectDropManager.Module,
         CharacterDropManager.Module,
         SpawnerManager.Module,
-        SpawnSystemManager.Module
+        SpawnSystemManager.Module,
+        EventManager.Module
     };
 
     internal static readonly DomainDescriptor[] RuntimeDomains =

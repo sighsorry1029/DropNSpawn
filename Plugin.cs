@@ -31,28 +31,31 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         Character = 1 << 1,
         Spawner = 1 << 2,
         SpawnSystem = 1 << 3,
-        All = Object | Character | Spawner | SpawnSystem
+        Event = 1 << 4,
+        All = Object | Character | Spawner | SpawnSystem | Event
     }
 
     internal readonly struct DomainToggleState
     {
-        internal DomainToggleState(Toggle @object, Toggle character, Toggle spawner, Toggle spawnSystem)
+        internal DomainToggleState(Toggle @object, Toggle character, Toggle spawner, Toggle spawnSystem, Toggle @event)
         {
             Object = @object;
             Character = character;
             Spawner = spawner;
             SpawnSystem = spawnSystem;
+            Event = @event;
         }
 
         internal Toggle Object { get; }
         internal Toggle Character { get; }
         internal Toggle Spawner { get; }
         internal Toggle SpawnSystem { get; }
+        internal Toggle Event { get; }
     }
 
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
-    internal const string ModVersion = "1.2.5";
+    internal const string ModVersion = "1.2.6";
     internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
     internal static readonly string RuntimeBuildStamp = BuildRuntimeBuildStamp();
@@ -122,6 +125,8 @@ public class DropNSpawnPlugin : BaseUnityPlugin
             PluginBoundSettings.EnableCharacterOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
             PluginBoundSettings.EnableSpawnerOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
             PluginBoundSettings.EnableSpawnSystemOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableEventOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes?.SettingChanged -= PluginBootstrapCoordinator.HandleSpawnSystemGlobalFilterSettingChanged;
         }
         PluginManifestCoordinator.DetachRuntimeDomainHandlers();
         _runtimeWorkCoordinator?.Dispose();
@@ -130,6 +135,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         _reloadCoordinator = null;
         PluginBoundSettings.Clear();
 
+        EventManager.Dispose();
         NetworkPayloadSyncSupport.Shutdown();
     }
 

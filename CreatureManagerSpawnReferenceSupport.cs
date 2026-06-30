@@ -864,26 +864,7 @@ internal static class CreatureManagerSpawnReferenceSupport
 
     private static List<string> ConvertBiomes(Heightmap.Biome biomes)
     {
-        if (biomes == Heightmap.Biome.All)
-        {
-            return new List<string> { nameof(Heightmap.Biome.All) };
-        }
-
-        List<string> values = new();
-        foreach (Heightmap.Biome biome in Enum.GetValues(typeof(Heightmap.Biome)))
-        {
-            if (biome == Heightmap.Biome.None || biome == Heightmap.Biome.All)
-            {
-                continue;
-            }
-
-            if ((biomes & biome) == biome)
-            {
-                values.Add(biome.ToString());
-            }
-        }
-
-        return values;
+        return BiomeResolutionSupport.ConvertBiomeMaskToNames(biomes);
     }
 
     private static List<string>? ConvertRequiredEnvironments(ProviderHandle provider, object? value)

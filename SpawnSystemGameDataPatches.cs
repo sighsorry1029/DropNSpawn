@@ -104,7 +104,8 @@ internal static class SpawnSystemSpawnPatch
     private static void Prefix(SpawnSystem.SpawnData critter, Vector3 spawnPoint, out bool __state)
     {
         __state = false;
-        if (!PluginSettingsFacade.IsSpawnSystemDomainEnabled())
+        if (!PluginSettingsFacade.IsSpawnSystemDomainEnabled() &&
+            !SpawnSystemCustomDataSupport.HasPreparedPayload(critter))
         {
             return;
         }

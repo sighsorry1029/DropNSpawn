@@ -701,7 +701,7 @@ internal static class DropConditionEvaluator
             return resolvedPrefabName;
         }
 
-        string prefabName = (locationInstance.m_location.m_prefab.Name ?? "").Trim();
+        string prefabName = GetZoneLocationPrefabName(locationInstance.m_location);
         return prefabName.Length > 0 ? prefabName : null;
     }
 
@@ -791,7 +791,7 @@ internal static class DropConditionEvaluator
             Vector2i zone = ZoneSystem.GetZone(location.transform.position);
             if (ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
             {
-                string prefabName = (locationInstance.m_location.m_prefab.Name ?? "").Trim();
+                string prefabName = GetZoneLocationPrefabName(locationInstance.m_location);
                 if (prefabName.Length > 0)
                 {
                     return prefabName;
@@ -839,7 +839,7 @@ internal static class DropConditionEvaluator
             return false;
         }
 
-        string candidate = (locationInstance.m_location.m_prefabName ?? locationInstance.m_location.m_prefab.Name ?? "").Trim();
+        string candidate = GetZoneLocationPrefabName(locationInstance.m_location);
         if (candidate.Length == 0)
         {
             return false;
@@ -847,6 +847,11 @@ internal static class DropConditionEvaluator
 
         prefabName = candidate;
         return true;
+    }
+
+    private static string GetZoneLocationPrefabName(ZoneSystem.ZoneLocation? location)
+    {
+        return (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
     }
 
     private static string TrimCloneSuffix(string name)

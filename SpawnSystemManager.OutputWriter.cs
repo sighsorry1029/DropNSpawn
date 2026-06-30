@@ -92,18 +92,22 @@ internal static partial class SpawnSystemManager
         AppendYamlSpawnSystemPayloadBlock(builder, 1, entry, defaults, includeEmptyPlaceholder: true);
     }
 
-    private static void AppendYamlSpawnSystemPayloadBlock(StringBuilder builder, int indent, SpawnSystemConfigurationEntry entry, SpawnSystem.SpawnData defaults, bool includeEmptyPlaceholder)
+    internal static void AppendYamlSpawnSystemPayloadBlock(StringBuilder builder, int indent, SpawnSystemConfigurationEntry entry, SpawnSystem.SpawnData defaults, bool includeEmptyPlaceholder)
     {
-        if (!includeEmptyPlaceholder &&
-            !HasAnySpawnFields(entry) &&
-            !HasAnyConditionFields(entry) &&
-            !HasAnyModifierFields(entry))
+        bool hasSpawnFields = HasAnySpawnFields(entry);
+        bool hasConditionFields = HasAnyConditionFields(entry);
+        bool hasModifierFields = HasAnyModifierFields(entry);
+        if (!includeEmptyPlaceholder && !hasSpawnFields && !hasConditionFields && !hasModifierFields)
         {
             return;
         }
 
-        AppendYamlLine(builder, indent, "spawnSystem:");
-        AppendYamlSpawnSystemSpawnBlock(builder, indent + 1, entry, defaults, includeEmptyPlaceholder);
+        if (includeEmptyPlaceholder || hasSpawnFields)
+        {
+            AppendYamlLine(builder, indent, "spawnSystem:");
+            AppendYamlSpawnSystemSpawnBlock(builder, indent + 1, entry, defaults, includeEmptyPlaceholder);
+        }
+
         AppendYamlSpawnSystemConditionsBlock(builder, indent, entry, defaults, includeEmptyPlaceholder);
         AppendYamlSpawnSystemModifiersBlock(builder, indent, entry, includeEmptyPlaceholder);
     }

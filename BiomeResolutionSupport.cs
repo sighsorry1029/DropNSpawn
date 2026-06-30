@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Reflection;
@@ -18,6 +19,8 @@ internal static class BiomeResolutionSupport
         ?.GetMethod("TryGetBiome", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string), typeof(Heightmap.Biome).MakeByRefType() }, null);
     private static readonly MethodInfo? ExpandWorldDataTryGetDisplayNameMethod = ExpandWorldDataBiomeManagerType
         ?.GetMethod("TryGetDisplayName", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(Heightmap.Biome), typeof(string).MakeByRefType() }, null);
+    private static readonly FieldInfo? ExpandWorldDataBiomeToDisplayNameField = ExpandWorldDataBiomeManagerType
+        ?.GetField("BiomeToDisplayName", BindingFlags.Public | BindingFlags.Static);
 
     internal static bool TryResolveBiomeToken(string? configuredBiome, out Heightmap.Biome biome)
     {
@@ -30,7 +33,7 @@ internal static class BiomeResolutionSupport
 
         if (string.Equals(trimmedName, nameof(Heightmap.Biome.All), StringComparison.OrdinalIgnoreCase))
         {
-            biome = Heightmap.Biome.All;
+            biome = GetKnownBiomeMask();
             return true;
         }
 
@@ -85,12 +88,6 @@ internal static class BiomeResolutionSupport
                 return false;
             }
 
-            if (resolvedBiome == Heightmap.Biome.All)
-            {
-                biomeMask = Heightmap.Biome.All;
-                return true;
-            }
-
             biomeMask |= resolvedBiome;
         }
 
@@ -113,6 +110,52 @@ internal static class BiomeResolutionSupport
 
         return Enum.GetName(typeof(Heightmap.Biome), biome) ??
                ((int)biome).ToString(CultureInfo.InvariantCulture);
+    }
+
+    internal static Heightmap.Biome GetKnownBiomeMask()
+    {
+        Heightmap.Biome mask = Heightmap.Biome.All;
+        if (TryGetExpandWorldDataKnownBiomeMask(out Heightmap.Biome expandWorldDataMask))
+        {
+            mask |= expandWorldDataMask;
+        }
+
+        return mask;
+    }
+
+    internal static bool IsKnownAllBiomeMask(Heightmap.Biome biomes)
+    {
+        return biomes == Heightmap.Biome.All || biomes == GetKnownBiomeMask();
+    }
+
+    internal static List<string> ConvertBiomeMaskToNames(Heightmap.Biome biomes)
+    {
+        if (biomes == Heightmap.Biome.None)
+        {
+            return new List<string>();
+        }
+
+        if (IsKnownAllBiomeMask(biomes))
+        {
+            return new List<string> { nameof(Heightmap.Biome.All) };
+        }
+
+        List<string> values = new();
+        uint remainingMask = unchecked((uint)(int)biomes);
+        foreach (Heightmap.Biome biome in GetKnownBiomeValues())
+        {
+            uint biomeMask = unchecked((uint)(int)biome);
+            if (biomeMask == 0 || (remainingMask & biomeMask) != biomeMask)
+            {
+                continue;
+            }
+
+            values.Add(GetBiomeDisplayName(biome));
+            remainingMask &= ~biomeMask;
+        }
+
+        AppendRemainingBiomeBits(values, remainingMask);
+        return values;
     }
 
     internal static bool IsExpandWorldDataPresent()
@@ -139,9 +182,18 @@ internal static class BiomeResolutionSupport
 
     internal static bool ShouldWaitForExpandWorldDataBiomeResolution(IEnumerable<string>? configuredBiomes, Heightmap.Biome? resolvedBiomeMask)
     {
-        if (resolvedBiomeMask.HasValue ||
-            !IsExpandWorldDataPresent() ||
+        if (!IsExpandWorldDataPresent() ||
             IsExpandWorldDataReadyOrUnavailable())
+        {
+            return false;
+        }
+
+        if (ContainsAllBiomeToken(configuredBiomes))
+        {
+            return true;
+        }
+
+        if (resolvedBiomeMask.HasValue)
         {
             return false;
         }
@@ -215,5 +267,123 @@ internal static class BiomeResolutionSupport
         }
 
         return false;
+    }
+
+    private static List<Heightmap.Biome> GetKnownBiomeValues()
+    {
+        List<Heightmap.Biome> values = new();
+        HashSet<int> seen = new();
+
+        foreach (Heightmap.Biome biome in Enum.GetValues(typeof(Heightmap.Biome)))
+        {
+            AddKnownBiomeValue(values, seen, biome);
+        }
+
+        foreach (Heightmap.Biome biome in GetExpandWorldDataKnownBiomeValues())
+        {
+            AddKnownBiomeValue(values, seen, biome);
+        }
+
+        return values;
+    }
+
+    private static void AddKnownBiomeValue(List<Heightmap.Biome> values, HashSet<int> seen, Heightmap.Biome biome)
+    {
+        if (biome == Heightmap.Biome.None || biome == Heightmap.Biome.All)
+        {
+            return;
+        }
+
+        int numeric = (int)biome;
+        if (numeric == 0 || !seen.Add(numeric))
+        {
+            return;
+        }
+
+        values.Add(biome);
+    }
+
+    private static IEnumerable<Heightmap.Biome> GetExpandWorldDataKnownBiomeValues()
+    {
+        if (!TryGetExpandWorldDataBiomeDictionary(out IDictionary? biomeDictionary))
+        {
+            yield break;
+        }
+
+        foreach (DictionaryEntry entry in biomeDictionary!)
+        {
+            if (entry.Key is Heightmap.Biome biome)
+            {
+                yield return biome;
+            }
+        }
+    }
+
+    private static bool TryGetExpandWorldDataKnownBiomeMask(out Heightmap.Biome mask)
+    {
+        mask = Heightmap.Biome.None;
+        bool sawBiome = false;
+        foreach (Heightmap.Biome biome in GetExpandWorldDataKnownBiomeValues())
+        {
+            if (biome == Heightmap.Biome.None || biome == Heightmap.Biome.All)
+            {
+                continue;
+            }
+
+            mask |= biome;
+            sawBiome = true;
+        }
+
+        return sawBiome;
+    }
+
+    private static bool TryGetExpandWorldDataBiomeDictionary(out IDictionary? biomeDictionary)
+    {
+        biomeDictionary = null;
+        if (ExpandWorldDataBiomeToDisplayNameField == null)
+        {
+            return false;
+        }
+
+        try
+        {
+            biomeDictionary = ExpandWorldDataBiomeToDisplayNameField.GetValue(null) as IDictionary;
+            return biomeDictionary != null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool ContainsAllBiomeToken(IEnumerable<string>? configuredBiomes)
+    {
+        foreach (string? rawBiome in configuredBiomes ?? Array.Empty<string>())
+        {
+            if (string.Equals((rawBiome ?? "").Trim(), nameof(Heightmap.Biome.All), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void AppendRemainingBiomeBits(List<string> values, uint remainingMask)
+    {
+        if (remainingMask == 0)
+        {
+            return;
+        }
+
+        for (uint bit = 1; bit != 0 && bit <= remainingMask; bit <<= 1)
+        {
+            if ((remainingMask & bit) == 0)
+            {
+                continue;
+            }
+
+            values.Add(GetBiomeDisplayName((Heightmap.Biome)(int)bit));
+        }
     }
 }

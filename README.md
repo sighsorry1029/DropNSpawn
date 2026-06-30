@@ -118,10 +118,15 @@ General and character settings include:
 - `Lock Configuration`
 - `Default SpawnArea Max Total Spawns`
 - `OnePerPlayer drop check range`
+- `character loot system`
+- `chance for additional loot per star for creatures`
+- `chance for additional loot per star for bosses`
 - `global drop in stack`
 - `global drop in stack blacklist`
 - `global trophy level multiplier`
 - `global trophy level multiplier blacklist`
+
+`character loot system = CalculateChance` keeps each successful character-drop chance intact and scales the final item amount by the configured per-star chance. Trophy drops join that same linear scaling only when `global trophy level multiplier` is on.
 
 Boss altar rules, same boss duplicate blocking for altars and `CreatureSpawner`, per-player boss stones, remote Forsaken Power selection, boss despawn, and boss tamed pressure live in BossRules.
 

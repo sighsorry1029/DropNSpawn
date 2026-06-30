@@ -457,6 +457,7 @@
     </ItemGroup>
     <ItemGroup>
          <Compile Include="GameDataPatches.cs"/>
+         <Compile Include="EventGameDataPatches.cs"/>
          <Compile Include="SpawnerLocationGameDataPatches.cs"/>
          <Compile Include="ObjectGameDataPatches.cs"/>
          <Compile Include="CharacterGameDataPatches.cs"/>
@@ -478,6 +479,7 @@
         <Compile Include="CharacterDropManager.Vnei.cs"/>
         <Compile Include="CommentedYamlTemplateSupport.cs"/>
         <Compile Include="ConfigurationEntryCloneSupport.cs"/>
+        <Compile Include="ConfigurationEntryCloneSupport.Event.cs"/>
         <Compile Include="ConfigurationEntryCloneSupport.Object.cs"/>
         <Compile Include="ConfigurationEntryCloneSupport.SpawnSystem.cs"/>
         <Compile Include="ConfigurationDomainHost.cs"/>
@@ -499,6 +501,8 @@
         <Compile Include="DropNSpawnConsoleCommands.cs"/>
         <Compile Include="ExpandWorldFieldOverrideSupport.cs"/>
         <Compile Include="ExpandWorldSpawnDataSupport.cs"/>
+        <Compile Include="EventConfiguration.cs"/>
+        <Compile Include="EventManager.cs"/>
         <Compile Include="ExampleContentWriter.cs"/>
         <Compile Include="ExampleContentWriter.Spawner.cs"/>
         <Compile Include="ExampleContentWriter.SpawnSystem.cs"/>
@@ -508,6 +512,7 @@
         <Compile Include="NetworkPayloadSyncSupport.Codecs.cs"/>
         <Compile Include="NetworkPayloadSyncSupport.EntrySchemas.cs"/>
         <Compile Include="NetworkPayloadSyncSupport.InboundTransferCoordinator.cs"/>
+        <Compile Include="NetworkPayloadSyncSupport.Events.cs"/>
         <Compile Include="NetworkPayloadSyncSupport.ManifestStateMachine.cs"/>
         <Compile Include="NetworkPayloadSyncSupport.ProcessingRuntime.cs"/>
         <Compile Include="NetworkPayloadSyncSupport.PublishedPayloadStore.cs"/>
@@ -552,6 +557,7 @@
         <Compile Include="PluginSettingsFacade.cs"/>
         <Compile Include="DomainTransportHooks.cs"/>
         <Compile Include="CharacterDropGlobalConfig.cs"/>
+        <Compile Include="EventGlobalConfig.cs"/>
         <Compile Include="SpawnerGlobalConfig.cs"/>
         <Compile Include="EspSpawnSystemCompatibility.cs"/>
         <Compile Include="SceneProximityQueries.cs"/>

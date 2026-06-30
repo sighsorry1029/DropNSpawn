@@ -122,4 +122,31 @@ internal static partial class NetworkPayloadSyncSupport
                 ReadSpawnSystemModifiersDefinition,
                 value => ConfigurationEntryCloneSupport.CloneSpawnSystemModifiersDefinition(value)!);
 
+    private static ValueCodec<EventConditionsDefinition> _eventConditionsValueCodec;
+    private static ValueCodec<EventConditionsDefinition> EventConditionsValueCodec =>
+        _eventConditionsValueCodec ??=
+            new(
+                static (builder, definition, _) => WriteEventConditionsDefinition(builder, definition),
+                WriteEventConditionsDefinition,
+                ReadEventConditionsDefinition,
+                value => ConfigurationEntryCloneSupport.CloneEventConditionsDefinition(value)!);
+
+    private static ValueCodec<EventSpawnModifiersDefinition> _eventSpawnModifiersValueCodec;
+    private static ValueCodec<EventSpawnModifiersDefinition> EventSpawnModifiersValueCodec =>
+        _eventSpawnModifiersValueCodec ??=
+            new(
+                static (builder, definition, _) => WriteEventSpawnModifiersDefinition(builder, definition),
+                WriteEventSpawnModifiersDefinition,
+                ReadEventSpawnModifiersDefinition,
+                value => ConfigurationEntryCloneSupport.CloneEventSpawnModifiersDefinition(value)!);
+
+    private static ValueCodec<EventSpawnDefinition> _eventSpawnValueCodec;
+    private static ValueCodec<EventSpawnDefinition> EventSpawnValueCodec =>
+        _eventSpawnValueCodec ??=
+            new(
+                (builder, definition, context) => WriteEventSpawnDefinition(builder, definition, context.IncludeResolvedBiomeMask),
+                WriteEventSpawnDefinition,
+                ReadEventSpawnDefinition,
+                value => ConfigurationEntryCloneSupport.CloneEventSpawnDefinition(value)!);
+
 }

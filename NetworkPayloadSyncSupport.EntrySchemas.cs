@@ -243,6 +243,27 @@ internal static partial class NetworkPayloadSyncSupport
             (source, target) => setter(target, getter(source)));
     }
 
+    private static EntryFieldSpec<TEntry> NullableFloatField<TEntry>(
+        Func<TEntry, float?> getter,
+        Action<TEntry, float?> setter,
+        Func<EntrySignatureContext, bool>? includeInSignature = null)
+    {
+        Func<EntrySignatureContext, bool> signatureFilter = includeInSignature ?? AlwaysIncludeInSignature;
+        return new EntryFieldSpec<TEntry>(
+            (builder, entry, context) =>
+            {
+                if (!signatureFilter(context))
+                {
+                    return;
+                }
+
+                WriteNullableFloat(builder, getter(entry));
+            },
+            (package, entry) => WriteNullableFloat(package, getter(entry)),
+            (package, entry) => setter(entry, ReadNullableFloat(package)),
+            (source, target) => setter(target, getter(source)));
+    }
+
     private static EntryFieldSpec<TEntry> OptionalField<TEntry, TValue>(
         Func<TEntry, TValue?> getter,
         Action<TEntry, TValue?> setter,

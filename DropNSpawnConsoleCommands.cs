@@ -12,6 +12,8 @@ internal static class DropNSpawnConsoleCommands
         "character",
         "spawner",
         "spawnsystem",
+        "event",
+        "events",
         "all"
     };
     private static readonly System.Collections.Generic.List<string> InspectTabOptions = new()
@@ -30,12 +32,12 @@ internal static class DropNSpawnConsoleCommands
         _registered = true;
         new Terminal.ConsoleCommand(
             WriteFullCommandName,
-            "Write non-loaded full scaffold YAML files for object/character/spawner/spawnsystem entries with explicit defaults.",
+            "Write non-loaded full scaffold YAML files for object/character/spawner/spawnsystem entries with explicit defaults. Event full scaffold is folded into the event reference.",
             WriteFullScaffoldFiles,
             optionsFetcher: GetScopedDomainTabOptions);
         new Terminal.ConsoleCommand(
             WriteReferenceCommandName,
-            "Write current generated reference YAML files for object/character/spawner/spawnsystem.",
+            "Write current generated reference YAML files for object/character/spawner/spawnsystem/event.",
             WriteReferenceFiles,
             optionsFetcher: GetScopedDomainTabOptions);
         new Terminal.ConsoleCommand(
@@ -57,7 +59,7 @@ internal static class DropNSpawnConsoleCommands
 
     private static void WriteFullScaffoldFiles(Terminal.ConsoleEventArgs args)
     {
-        if (!TryParseScope(args, WriteFullCommandName, out bool includeObject, out bool includeCharacter, out bool includeSpawner, out bool includeSpawnSystem))
+        if (!TryParseScope(args, WriteFullCommandName, out bool includeObject, out bool includeCharacter, out bool includeSpawner, out bool includeSpawnSystem, out bool includeEvent))
         {
             return;
         }
@@ -109,11 +111,23 @@ internal static class DropNSpawnConsoleCommands
                 args.Context?.AddString(spawnSystemError);
             }
         }
+
+        if (includeEvent)
+        {
+            if (EventManager.TryWriteFullScaffoldConfigurationFile(out string eventPath, out string eventError))
+            {
+                args.Context?.AddString($"Wrote event full scaffold to {eventPath}");
+            }
+            else
+            {
+                args.Context?.AddString(eventError);
+            }
+        }
     }
 
     private static void WriteReferenceFiles(Terminal.ConsoleEventArgs args)
     {
-        if (!TryParseScope(args, WriteReferenceCommandName, out bool includeObject, out bool includeCharacter, out bool includeSpawner, out bool includeSpawnSystem))
+        if (!TryParseScope(args, WriteReferenceCommandName, out bool includeObject, out bool includeCharacter, out bool includeSpawner, out bool includeSpawnSystem, out bool includeEvent))
         {
             return;
         }
@@ -147,6 +161,18 @@ internal static class DropNSpawnConsoleCommands
                 args.Context?.AddString(spawnSystemError);
             }
         }
+
+        if (includeEvent)
+        {
+            if (EventManager.TryWriteReferenceConfigurationFile(out string eventPath, out string eventError))
+            {
+                args.Context?.AddString($"Wrote event reference to {eventPath}");
+            }
+            else
+            {
+                args.Context?.AddString(eventError);
+            }
+        }
     }
 
     private static void InspectRuntimeTarget(Terminal.ConsoleEventArgs args)
@@ -174,7 +200,7 @@ internal static class DropNSpawnConsoleCommands
         }
     }
 
-    private static bool TryParseScope(Terminal.ConsoleEventArgs args, string commandName, out bool includeObject, out bool includeCharacter, out bool includeSpawner, out bool includeSpawnSystem)
+    private static bool TryParseScope(Terminal.ConsoleEventArgs args, string commandName, out bool includeObject, out bool includeCharacter, out bool includeSpawner, out bool includeSpawnSystem, out bool includeEvent)
     {
         string scope = args.Length >= 2 ? (args[1] ?? "").Trim().ToLowerInvariant() : "all";
         if (scope.Length == 0)
@@ -189,37 +215,51 @@ internal static class DropNSpawnConsoleCommands
                 includeCharacter = true;
                 includeSpawner = true;
                 includeSpawnSystem = true;
+                includeEvent = true;
                 return true;
             case "object":
                 includeObject = true;
                 includeCharacter = false;
                 includeSpawner = false;
                 includeSpawnSystem = false;
+                includeEvent = false;
                 return true;
             case "character":
                 includeObject = false;
                 includeCharacter = true;
                 includeSpawner = false;
                 includeSpawnSystem = false;
+                includeEvent = false;
                 return true;
             case "spawner":
                 includeObject = false;
                 includeCharacter = false;
                 includeSpawner = true;
                 includeSpawnSystem = false;
+                includeEvent = false;
                 return true;
             case "spawnsystem":
                 includeObject = false;
                 includeCharacter = false;
                 includeSpawner = false;
                 includeSpawnSystem = true;
+                includeEvent = false;
+                return true;
+            case "event":
+            case "events":
+                includeObject = false;
+                includeCharacter = false;
+                includeSpawner = false;
+                includeSpawnSystem = false;
+                includeEvent = true;
                 return true;
             default:
                 includeObject = false;
                 includeCharacter = false;
                 includeSpawner = false;
                 includeSpawnSystem = false;
-                args.Context?.AddString($"Syntax: {commandName} [object|character|spawner|spawnsystem|all]");
+                includeEvent = false;
+                args.Context?.AddString($"Syntax: {commandName} [object|character|spawner|spawnsystem|event|all]");
                 return false;
         }
     }

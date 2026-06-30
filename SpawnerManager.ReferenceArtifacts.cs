@@ -366,7 +366,7 @@ internal static partial class SpawnerManager
                 continue;
             }
 
-            string locationPrefab = GetZoneLocationPrefabName(location);
+            string locationPrefab = (location.m_prefab.Name ?? "").Trim();
             if (locationPrefab.Length == 0 || !seen.Add(locationPrefab))
             {
                 continue;

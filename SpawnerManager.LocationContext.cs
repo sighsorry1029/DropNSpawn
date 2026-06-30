@@ -1,12 +1,18 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using UnityEngine;
 
 namespace DropNSpawn;
 
 internal static partial class SpawnerManager
 {
+    private static readonly int ExpandWorldDataLocationReferenceHash = "locationreference".GetStableHashCode();
+    private static readonly int DropNSpawnLocationPrefabHash = "dropnspawn.locationPrefab".GetStableHashCode();
+    private static bool _expandWorldDataCurrentLocationFieldResolved;
+    private static FieldInfo? _expandWorldDataCurrentLocationField;
+
     private sealed class PendingLocationRootProvenanceScan
     {
         public int RootInstanceId { get; set; }
@@ -37,11 +43,27 @@ internal static partial class SpawnerManager
         }
     }
 
+    internal static void RecordSpawnedLocationRootProvenance(GameObject? spawnedRoot)
+    {
+        lock (Sync)
+        {
+            if (spawnedRoot == null ||
+                !TryGetActiveLocationSpawnContextPrefab(out string locationPrefab))
+            {
+                return;
+            }
+
+            Transform rootTransform = spawnedRoot.transform;
+            RecordSpawnedLocationRootProvenance(rootTransform, locationPrefab);
+            QueueSpawnedLocationRootProvenanceScan(rootTransform, locationPrefab);
+        }
+    }
+
     internal static void BeginLocationSpawnContext(ZoneSystem.ZoneLocation? location)
     {
         lock (Sync)
         {
-            PushLocationSpawnContext(GetZoneLocationPrefabName(location));
+            PushLocationSpawnContext(GetLocationSpawnContextPrefabName(location));
         }
     }
 
@@ -70,6 +92,20 @@ internal static partial class SpawnerManager
             PushLocationSpawnContext(locationPrefab);
             return true;
         }
+    }
+
+    internal static bool TryBeginDerivedLocationSpawnContext(DungeonGenerator? generator)
+    {
+        lock (Sync)
+        {
+            if (TryResolveDungeonGeneratorLocationContext(generator, out string locationPrefab))
+            {
+                PushLocationSpawnContext(locationPrefab);
+                return true;
+            }
+        }
+
+        return TryBeginDerivedLocationSpawnContext(generator as Component);
     }
 
     internal static void EndLocationSpawnContext()
@@ -104,6 +140,21 @@ internal static partial class SpawnerManager
         }
 
         if (TryGetLiveLocationProxyPrefab(gameObject, out locationPrefab))
+        {
+            return locationPrefab.Length > 0;
+        }
+
+        if (TryGetClonedZoneLocationContext(gameObject, out locationPrefab))
+        {
+            return true;
+        }
+
+        if (TryGetPersistedSpawnerLocationContext(gameObject, out locationPrefab, out _))
+        {
+            return true;
+        }
+
+        if (TryGetDungeonGeneratorLocationContext(gameObject, out locationPrefab))
         {
             return locationPrefab.Length > 0;
         }
@@ -153,6 +204,21 @@ internal static partial class SpawnerManager
             }
 
             if (TryGetLiveLocationProxyContext(gameObject, out locationPrefab, out _))
+            {
+                return locationPrefab.Length > 0;
+            }
+
+            if (TryGetClonedZoneLocationContext(gameObject, out locationPrefab))
+            {
+                return true;
+            }
+
+            if (TryGetPersistedSpawnerLocationContext(gameObject, out locationPrefab, out _))
+            {
+                return true;
+            }
+
+            if (TryGetDungeonGeneratorLocationContext(gameObject, out locationPrefab))
             {
                 return locationPrefab.Length > 0;
             }
@@ -219,6 +285,12 @@ internal static partial class SpawnerManager
 
         ZNetView? nview = proxy.GetComponent<ZNetView>();
         ZDO? zdo = nview?.GetZDO();
+        int expandWorldDataLocationHash = zdo?.GetInt(ExpandWorldDataLocationReferenceHash) ?? 0;
+        if (expandWorldDataLocationHash != 0 && TryGetZoneLocationPrefabName(expandWorldDataLocationHash, out prefabName))
+        {
+            return true;
+        }
+
         int locationHash = zdo?.GetInt(ZDOVars.s_location) ?? 0;
         if (locationHash != 0 && TryGetZoneLocationPrefabName(locationHash, out prefabName))
         {
@@ -305,6 +377,21 @@ internal static partial class SpawnerManager
         return false;
     }
 
+    private static bool TryGetPersistedSpawnerLocationContext(GameObject gameObject, out string locationPrefab, out string relativePath)
+    {
+        locationPrefab = "";
+        relativePath = "";
+        if (gameObject == null)
+        {
+            return false;
+        }
+
+        ZNetView? netView = gameObject.GetComponent<ZNetView>();
+        ZDO? zdo = netView?.GetZDO();
+        locationPrefab = (zdo?.GetString(DropNSpawnLocationPrefabHash, "") ?? "").Trim();
+        return locationPrefab.Length > 0;
+    }
+
     private static bool TryGetCurrentLocationSpawnContext(GameObject gameObject, out string locationPrefab, out string relativePath)
     {
         locationPrefab = "";
@@ -331,7 +418,17 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        Vector3 position = gameObject.transform.position;
+        return TryGetSpatialLocationPrefabName(gameObject.transform.position, out locationPrefab);
+    }
+
+    private static bool TryGetSpatialLocationPrefabName(Vector3 position, out string locationPrefab)
+    {
+        locationPrefab = "";
+        if (ZoneSystem.instance == null)
+        {
+            return false;
+        }
+
         float bestDistance = float.MaxValue;
         bool found = false;
         foreach (ZoneSystem.LocationInstance locationInstance in ZoneSystem.instance.m_locationInstances.Values)
@@ -386,6 +483,48 @@ internal static partial class SpawnerManager
         }
 
         locationPrefab = candidate;
+        return true;
+    }
+
+    private static bool TryGetDungeonGeneratorLocationContext(GameObject gameObject, out string locationPrefab)
+    {
+        locationPrefab = "";
+        if (gameObject == null)
+        {
+            return false;
+        }
+
+        return TryResolveDungeonGeneratorLocationContext(gameObject.GetComponentInParent<DungeonGenerator>(true), out locationPrefab);
+    }
+
+    private static bool TryResolveDungeonGeneratorLocationContext(DungeonGenerator? generator, out string locationPrefab)
+    {
+        locationPrefab = "";
+        if (generator == null)
+        {
+            return false;
+        }
+
+        Vector3 originalPosition = generator.m_originalPosition;
+        if (originalPosition == Vector3.zero)
+        {
+            return false;
+        }
+
+        return TryGetZoneLocationPrefabName(originalPosition, out locationPrefab) ||
+               TryGetSpatialLocationPrefabName(originalPosition, out locationPrefab);
+    }
+
+    private static bool TryGetClonedZoneLocationContext(GameObject gameObject, out string locationPrefab)
+    {
+        locationPrefab = "";
+        if (!TryGetZoneLocationContext(gameObject, out string zoneLocationPrefab) ||
+            !zoneLocationPrefab.Contains(':'))
+        {
+            return false;
+        }
+
+        locationPrefab = zoneLocationPrefab;
         return true;
     }
 
@@ -535,6 +674,24 @@ internal static partial class SpawnerManager
             return relativePath.Length > 0;
         }
 
+        if (TryGetClonedZoneLocationContext(gameObject, out locationPrefab))
+        {
+            rootTransform = GetRootTransform(gameObject.transform);
+            return locationPrefab.Length > 0;
+        }
+
+        if (TryGetPersistedSpawnerLocationContext(gameObject, out locationPrefab, out relativePath))
+        {
+            rootTransform = GetRootTransform(gameObject.transform);
+            return locationPrefab.Length > 0;
+        }
+
+        if (TryGetDungeonGeneratorLocationContext(gameObject, out locationPrefab))
+        {
+            rootTransform = GetRootTransform(gameObject.transform);
+            return locationPrefab.Length > 0;
+        }
+
         Location? location = gameObject.GetComponentInParent<Location>(true);
         if (location != null && TryGetLocationPrefabName(location, out locationPrefab))
         {
@@ -600,6 +757,7 @@ internal static partial class SpawnerManager
             LocationPrefab = locationPrefab,
             RelativePath = resolvedRelativePath
         });
+        StorePersistedSpawnerLocationContext(spawnArea, locationPrefab);
         SelectorCacheStore.RemoveSpawnAreaEntryCache(spawnArea);
         if (LiveRegistryStore.TryGetTrackedPrefabName(spawnArea, out _))
         {
@@ -622,11 +780,26 @@ internal static partial class SpawnerManager
             LocationPrefab = locationPrefab,
             RelativePath = resolvedRelativePath
         });
+        StorePersistedSpawnerLocationContext(creatureSpawner, locationPrefab);
         SelectorCacheStore.RemoveCreatureSpawnerEntryCache(creatureSpawner);
         if (LiveRegistryStore.TryGetTrackedPrefabName(creatureSpawner, out _))
         {
             RefreshCreatureSpawnerLocationBucketMembership(creatureSpawner);
         }
+    }
+
+    private static void StorePersistedSpawnerLocationContext(Component? component, string locationPrefab)
+    {
+        if (component == null ||
+            string.IsNullOrWhiteSpace(locationPrefab) ||
+            ZNet.instance == null ||
+            !ZNet.instance.IsServer())
+        {
+            return;
+        }
+
+        ZDO? zdo = component.GetComponent<ZNetView>()?.GetZDO();
+        zdo?.Set(DropNSpawnLocationPrefabHash, locationPrefab);
     }
 
     private static bool TryGetActiveLocationSpawnContextPrefab(out string locationPrefab)
@@ -704,6 +877,46 @@ internal static partial class SpawnerManager
         return (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
     }
 
+    private static string GetLocationSpawnContextPrefabName(ZoneSystem.ZoneLocation? location)
+    {
+        string locationPrefab = GetZoneLocationPrefabName(location);
+        if (!locationPrefab.Contains(':') &&
+            TryGetExpandWorldDataCurrentLocationPrefabName(out string currentLocationPrefab) &&
+            currentLocationPrefab.Contains(':') &&
+            string.Equals(GetExpandWorldDataBaseLocationName(currentLocationPrefab), locationPrefab, StringComparison.OrdinalIgnoreCase))
+        {
+            return currentLocationPrefab;
+        }
+
+        return locationPrefab;
+    }
+
+    private static bool TryGetExpandWorldDataCurrentLocationPrefabName(out string locationPrefab)
+    {
+        locationPrefab = "";
+        if (!_expandWorldDataCurrentLocationFieldResolved)
+        {
+            Type? locationSpawningType = SafeTypeLookup.FindLoadedType("ExpandWorldData.LocationSpawning", "ExpandWorldData");
+            _expandWorldDataCurrentLocationField = locationSpawningType?.GetField("CurrentLocation", BindingFlags.Public | BindingFlags.Static);
+            _expandWorldDataCurrentLocationFieldResolved = true;
+        }
+
+        try
+        {
+            if (_expandWorldDataCurrentLocationField?.GetValue(null) is not ZoneSystem.ZoneLocation currentLocation)
+            {
+                return false;
+            }
+
+            locationPrefab = GetZoneLocationPrefabName(currentLocation);
+            return locationPrefab.Length > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private static bool TryGetZoneLocationPrefabName(int locationHash, out string prefabName)
     {
         prefabName = "";
@@ -755,6 +968,14 @@ internal static partial class SpawnerManager
 
         prefabName = candidate;
         return true;
+    }
+
+
+    private static string GetExpandWorldDataBaseLocationName(string? locationPrefab)
+    {
+        string normalized = (locationPrefab ?? "").Trim();
+        int separatorIndex = normalized.IndexOf(':');
+        return separatorIndex > 0 ? normalized[..separatorIndex].Trim() : normalized;
     }
 
     private static string TryGetRelativePathIfDescendant(Transform root, Transform target)

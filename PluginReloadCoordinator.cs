@@ -33,7 +33,8 @@ internal sealed class PluginReloadCoordinator
         ConfigEntry<DropNSpawnPlugin.Toggle> enableObjectOverrides,
         ConfigEntry<DropNSpawnPlugin.Toggle> enableCharacterOverrides,
         ConfigEntry<DropNSpawnPlugin.Toggle> enableSpawnerOverrides,
-        ConfigEntry<DropNSpawnPlugin.Toggle> enableSpawnSystemOverrides)
+        ConfigEntry<DropNSpawnPlugin.Toggle> enableSpawnSystemOverrides,
+        ConfigEntry<DropNSpawnPlugin.Toggle> enableEventOverrides)
     {
         _host = host;
         _domainToggles = new[]
@@ -41,7 +42,8 @@ internal sealed class PluginReloadCoordinator
             (enableObjectOverrides, DropNSpawnPlugin.ReloadDomain.Object),
             (enableCharacterOverrides, DropNSpawnPlugin.ReloadDomain.Character),
             (enableSpawnerOverrides, DropNSpawnPlugin.ReloadDomain.Spawner),
-            (enableSpawnSystemOverrides, DropNSpawnPlugin.ReloadDomain.SpawnSystem)
+            (enableSpawnSystemOverrides, DropNSpawnPlugin.ReloadDomain.SpawnSystem),
+            (enableEventOverrides, DropNSpawnPlugin.ReloadDomain.Event)
         };
     }
 
@@ -344,7 +346,8 @@ internal sealed class PluginReloadCoordinator
             GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Object),
             GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Character),
             GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Spawner),
-            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.SpawnSystem));
+            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.SpawnSystem),
+            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Event));
     }
 
     private DropNSpawnPlugin.ReloadDomain GetReloadDomainForToggleSetting(object? sender)
@@ -397,6 +400,11 @@ internal sealed class PluginReloadCoordinator
         if (previous.SpawnSystem != current.SpawnSystem)
         {
             domains |= DropNSpawnPlugin.ReloadDomain.SpawnSystem;
+        }
+
+        if (previous.Event != current.Event)
+        {
+            domains |= DropNSpawnPlugin.ReloadDomain.Event;
         }
 
         return domains;

@@ -82,4 +82,23 @@ internal static partial class NetworkPayloadSyncSupport
         );
     }
 
+    private static EntryTransportSchema<EventDefinition> CreateEventEntrySchema()
+    {
+        return new(
+            EventManager.TransportMetadata.DtoVersion,
+            () => new EventDefinition(),
+            StringField<EventDefinition>(entry => entry.Event, (entry, value) => entry.Event = value),
+            ListField<EventDefinition, string>(entry => entry.Settings, (entry, value) => entry.Settings = value, static (builder, value, _) => builder.WriteString(value ?? ""), static (package, value) => package.Write(value ?? ""), static package => package.ReadString(), static value => value ?? ""),
+            ListField<EventDefinition, float>(entry => entry.Standalone, (entry, value) => entry.Standalone = value, static (builder, value, _) => builder.WriteFloat(value), static (package, value) => package.Write(value), static package => package.ReadSingle(), static value => value),
+            NullableFloatField<EventDefinition>(entry => entry.SpawnerDelay, (entry, value) => entry.SpawnerDelay = value),
+            OptionalField<EventDefinition, EventConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, EventConditionsValueCodec),
+            ListField<EventDefinition, string>(entry => entry.Messages, (entry, value) => entry.Messages = value, static (builder, value, _) => builder.WriteString(value ?? ""), static (package, value) => package.Write(value ?? ""), static package => package.ReadString(), static value => value ?? ""),
+            NullableStringField<EventDefinition>(entry => entry.ForceEnvironment, (entry, value) => entry.ForceEnvironment = value),
+            NullableStringField<EventDefinition>(entry => entry.ForceMusic, (entry, value) => entry.ForceMusic = value),
+            ListField<EventDefinition, string>(entry => entry.StartCommands, (entry, value) => entry.StartCommands = value, static (builder, value, _) => builder.WriteString(value ?? ""), static (package, value) => package.Write(value ?? ""), static package => package.ReadString(), static value => value ?? ""),
+            ListField<EventDefinition, string>(entry => entry.EndCommands, (entry, value) => entry.EndCommands = value, static (builder, value, _) => builder.WriteString(value ?? ""), static (package, value) => package.Write(value ?? ""), static package => package.ReadString(), static value => value ?? ""),
+            ListField<EventDefinition, EventSpawnDefinition>(entry => entry.Spawns, (entry, value) => entry.Spawns = value, EventSpawnValueCodec)
+        );
+    }
+
 }

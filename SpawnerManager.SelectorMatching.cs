@@ -401,6 +401,24 @@ internal static partial class SpawnerManager
             return locationPrefab.Length > 0;
         }
 
+        if (TryGetClonedZoneLocationContext(gameObject, out locationPrefab))
+        {
+            sourceLabel = "LocationZone";
+            return true;
+        }
+
+        if (TryGetPersistedSpawnerLocationContext(gameObject, out locationPrefab, out _))
+        {
+            sourceLabel = "PersistedProvenance";
+            return true;
+        }
+
+        if (TryGetDungeonGeneratorLocationContext(gameObject, out locationPrefab))
+        {
+            sourceLabel = "DungeonGenerator";
+            return true;
+        }
+
         if (TryGetDirectLocationContext(gameObject, out locationPrefab, out _))
         {
             sourceLabel = "LocationComponent";

@@ -103,6 +103,39 @@ internal static class SpawnSystemCustomDataSupport
         }
     }
 
+    internal static bool HasPreparedPayload(SpawnSystem.SpawnData? spawnData)
+    {
+        return spawnData != null &&
+               (CustomDataBySpawnData.ContainsKey(spawnData) ||
+                ObjectsBySpawnData.ContainsKey(spawnData));
+    }
+
+    internal static void CopyPreparedPayload(SpawnSystem.SpawnData? source, SpawnSystem.SpawnData? target)
+    {
+        if (source == null || target == null)
+        {
+            return;
+        }
+
+        if (CustomDataBySpawnData.TryGetValue(source, out EwdData.DataEntry? data) && data != null)
+        {
+            CustomDataBySpawnData[target] = data;
+        }
+        else
+        {
+            CustomDataBySpawnData.Remove(target);
+        }
+
+        if (ObjectsBySpawnData.TryGetValue(source, out List<EwdBlueprintObject>? objects) && objects.Count > 0)
+        {
+            ObjectsBySpawnData[target] = objects;
+        }
+        else
+        {
+            ObjectsBySpawnData.Remove(target);
+        }
+    }
+
     internal static void InitializeSpawn(SpawnSystem.SpawnData critter, Vector3 spawnPoint)
     {
         if (critter == null || !CustomDataBySpawnData.TryGetValue(critter, out EwdData.DataEntry? data) || data == null)

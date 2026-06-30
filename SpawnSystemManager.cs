@@ -1128,7 +1128,7 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    private static void NormalizeEntry(SpawnSystemConfigurationEntry entry)
+    internal static void NormalizeEntry(SpawnSystemConfigurationEntry entry)
     {
         entry.Prefab = NormalizeOptionalString(entry.Prefab);
         string context = entry.SpawnSystem?.Name ?? entry.Prefab ?? "(unnamed)";
@@ -1396,7 +1396,9 @@ internal static partial class SpawnSystemManager
             "|",
             _configurationReady ? "config_ready" : "config_pending",
             "|",
-            _configurationSignature);
+            _configurationSignature,
+            "|",
+            PluginSettingsFacade.ShouldDisableLowTierBiomeGlobalKeySpawnSystemEntries() ? "low_tier_global_key_filter_on" : "low_tier_global_key_filter_off");
     }
 
     private static void ApplySelectedTableWithoutActiveBuild(
@@ -1895,6 +1897,11 @@ internal static partial class SpawnSystemManager
             cachedEntry != null &&
             cachedEntry.GameDataSignature == gameDataSignature)
         {
+            if (ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(cachedEntry.Data))
+            {
+                return false;
+            }
+
             finalizedEntry = new PreparedSpawnSystemEntry
             {
                 Entry = model.Entry,
@@ -1908,6 +1915,11 @@ internal static partial class SpawnSystemManager
 
         SpawnSystem.SpawnData data = new();
         if (!ApplyEntry(data, model.Entry, model.Context, applyCustomData: false))
+        {
+            return false;
+        }
+
+        if (ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(data))
         {
             return false;
         }
@@ -2221,7 +2233,7 @@ internal static partial class SpawnSystemManager
         return ComputePreparedEntriesSignatureCore(entries);
     }
 
-    private static bool ApplyEntry(SpawnSystem.SpawnData data, CanonicalSpawnSystemEntry entry, string context, bool applyCustomData = true)
+    internal static bool ApplyEntry(SpawnSystem.SpawnData data, CanonicalSpawnSystemEntry entry, string context, bool applyCustomData = true)
     {
         bool valid = true;
         bool resolvedPrefab = false;
@@ -2604,12 +2616,6 @@ internal static partial class SpawnSystemManager
                 return false;
             }
 
-            if (parsedBiome == Heightmap.Biome.All)
-            {
-                biomes = Heightmap.Biome.All;
-                return true;
-            }
-
             biomes |= parsedBiome;
         }
 
@@ -2659,28 +2665,7 @@ internal static partial class SpawnSystemManager
 
     private static List<string> ConvertBiomes(Heightmap.Biome biomes)
     {
-        List<string> values = new();
-        int remainingMask = (int)biomes;
-        foreach (Heightmap.Biome biome in Enum.GetValues(typeof(Heightmap.Biome)))
-        {
-            if (biome == Heightmap.Biome.None || biome == Heightmap.Biome.All)
-            {
-                continue;
-            }
-
-            if ((biomes & biome) == biome)
-            {
-                values.Add(biome.ToString());
-                remainingMask &= ~(int)biome;
-            }
-        }
-
-        if (remainingMask != 0)
-        {
-            values.Add(remainingMask.ToString(CultureInfo.InvariantCulture));
-        }
-
-        return values;
+        return BiomeResolutionSupport.ConvertBiomeMaskToNames(biomes);
     }
 
     private static List<string> ConvertBiomeAreas(Heightmap.BiomeArea biomeAreas)

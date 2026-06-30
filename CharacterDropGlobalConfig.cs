@@ -8,6 +8,12 @@ namespace DropNSpawn;
 
 internal static class CharacterDropGlobalConfig
 {
+    internal enum CharacterLootSystem
+    {
+        Vanilla,
+        CalculateChance
+    }
+
     private static readonly object DropInStackBlacklistLock = new();
     private static readonly object TrophyLevelMultiplierBlacklistLock = new();
     private static string _dropInStackBlacklistRaw = "";
@@ -16,6 +22,9 @@ internal static class CharacterDropGlobalConfig
     private static HashSet<string> _trophyLevelMultiplierBlacklist = new(StringComparer.OrdinalIgnoreCase);
 
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _monsterInstantLootDrop = null!;
+    private static ConfigEntry<CharacterLootSystem> _characterLootSystem = null!;
+    private static ConfigEntry<int> _additionalLootChancePerStarCreature = null!;
+    private static ConfigEntry<int> _additionalLootChancePerStarBoss = null!;
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _globalDropInStack = null!;
     private static ConfigEntry<string> _dropInStackBlacklistEntry = null!;
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _globalTrophyLevelMultiplier = null!;
@@ -25,7 +34,7 @@ internal static class CharacterDropGlobalConfig
     internal static void Bind(DropNSpawnPlugin plugin)
     {
         _onePerPlayerNearbyRange = plugin.BindConfigEntry(
-            "3 - Character",
+            "2 - Character",
             "OnePerPlayer drop check range",
             32f,
             new ConfigDescription(
@@ -34,35 +43,60 @@ internal static class CharacterDropGlobalConfig
             synchronizedSetting: true,
             configManagerOrder: 500);
         _monsterInstantLootDrop = plugin.BindConfigEntry(
-            "3 - Character",
+            "2 - Character",
             "monster instant loot drop",
             DropNSpawnPlugin.Toggle.Off,
             "If on, monster ragdoll loot saved from CharacterDrop is spawned immediately while the ragdoll remains for its vanilla lifetime. The saved ragdoll loot list is consumed so vanilla ragdoll cleanup does not drop the same items again.",
             synchronizedSetting: true,
             configManagerOrder: 450);
+        _characterLootSystem = plugin.BindConfigEntry(
+            "2 - Character",
+            "character loot system",
+            CharacterLootSystem.CalculateChance,
+            "Vanilla leaves character-drop level scaling to the game and YAML levelMultiplier values. CalculateChance keeps each drop chance intact, suppresses vanilla exponential level scaling for eligible item drops, and scales successful drop amounts by the configured per-star chance.",
+            synchronizedSetting: true,
+            configManagerOrder: 440);
+        _additionalLootChancePerStarCreature = plugin.BindConfigEntry(
+            "2 - Character",
+            "chance for additional loot per star for creatures",
+            50,
+            new ConfigDescription(
+                "Percent of an additional successful item drop per creature star when character loot system is CalculateChance. Also controls trophy scaling for non-boss creatures when global trophy level multiplier is on.",
+                new AcceptableValueRange<int>(0, 100)),
+            synchronizedSetting: true,
+            configManagerOrder: 430);
+        _additionalLootChancePerStarBoss = plugin.BindConfigEntry(
+            "2 - Character",
+            "chance for additional loot per star for bosses",
+            50,
+            new ConfigDescription(
+                "Percent of an additional successful item drop per boss star when character loot system is CalculateChance. Also controls trophy scaling for bosses when global trophy level multiplier is on.",
+                new AcceptableValueRange<int>(0, 100)),
+            synchronizedSetting: true,
+            configManagerOrder: 420);
         _globalDropInStack = plugin.BindConfigEntry(
-            "3 - Character",
+            "2 - Character",
             "global drop in stack",
             DropNSpawnPlugin.Toggle.Off,
             "If on, all character loot drops in stacks whenever possible, including vanilla drops that are not overridden in YAML. Items listed in global drop in stack blacklist always stay as separate drops. Non-stackable items and single-quantity drops are unchanged. Turning this off only disables the global default; per-entry YAML dropInStack still works unless the item is blacklisted.",
             synchronizedSetting: true,
             configManagerOrder: 400);
         _dropInStackBlacklistEntry = plugin.BindConfigEntry(
-            "3 - Character",
+            "2 - Character",
             "global drop in stack blacklist",
             "",
             "Comma, semicolon, or newline separated item prefab names that should never use character loot drop-in-stack. Applies to both vanilla character drops and YAML-driven character drops when they pass through CharacterDrop. This blacklist has higher priority than the global default and higher priority than per-entry YAML dropInStack. Example: Coins,TrophyDeer",
             synchronizedSetting: true,
             configManagerOrder: 300);
         _globalTrophyLevelMultiplier = plugin.BindConfigEntry(
-            "3 - Character",
+            "2 - Character",
             "global trophy level multiplier",
             DropNSpawnPlugin.Toggle.Off,
-            "If on, successful character trophy drops keep their original drop chance and scale their final amount by 50% per character level above 1. Eligible trophies are kept out of vanilla levelMultiplier amount scaling to avoid very large 2^(level-1) trophy stacks. Items listed in global trophy level multiplier blacklist are exempt and keep their vanilla or YAML levelMultiplier behavior.",
+            "If on, successful character trophy drops keep their original drop chance and scale their final amount by the configured creature or boss additional-loot chance per star. Eligible trophies are kept out of vanilla levelMultiplier amount scaling to avoid very large 2^(level-1) trophy stacks. Items listed in global trophy level multiplier blacklist are exempt and keep their vanilla or YAML levelMultiplier behavior.",
             synchronizedSetting: true,
             configManagerOrder: 200);
         _trophyLevelMultiplierBlacklistEntry = plugin.BindConfigEntry(
-            "3 - Character",
+            "2 - Character",
             "global trophy level multiplier blacklist",
             "",
             "Comma, semicolon, or newline separated trophy item prefab names that should not use global trophy amount scaling. Blacklisted items follow the vanilla or YAML levelMultiplier value exactly. Example: TrophyEikthyr,TrophyDragonQueen",
@@ -78,6 +112,18 @@ internal static class CharacterDropGlobalConfig
     internal static bool IsMonsterInstantLootDropEnabled()
     {
         return _monsterInstantLootDrop?.Value == DropNSpawnPlugin.Toggle.On;
+    }
+
+    internal static bool IsCalculateChanceLootSystemEnabled()
+    {
+        return _characterLootSystem?.Value == CharacterLootSystem.CalculateChance;
+    }
+
+    internal static int GetAdditionalLootChancePerStar(bool boss)
+    {
+        return Mathf.Clamp(boss
+            ? _additionalLootChancePerStarBoss?.Value ?? 50
+            : _additionalLootChancePerStarCreature?.Value ?? 50, 0, 100);
     }
 
     internal static bool IsGlobalTrophyLevelMultiplierEnabled()

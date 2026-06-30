@@ -1379,7 +1379,7 @@ internal static partial class SpawnerManager
     {
         string resolved = (resolvedLocationPrefab ?? "").Trim();
         return resolved.Length > 0 &&
-               locations?.Any(location => string.Equals(location, resolved, StringComparison.OrdinalIgnoreCase)) == true;
+               locations?.Any(location => string.Equals((location ?? "").Trim(), resolved, StringComparison.OrdinalIgnoreCase)) == true;
     }
 
     private static string FormatLocationSelector(List<string>? locations)
@@ -2690,6 +2690,26 @@ internal static partial class SpawnerManager
         if (TryGetLiveLocationProxyContext(gameObject, out locationPrefab, out relativePath))
         {
             sourceLabel = nameof(LocationProxy);
+            return true;
+        }
+
+        if (TryGetClonedZoneLocationContext(gameObject, out locationPrefab))
+        {
+            sourceLabel = "LocationZone";
+            relativePath = "";
+            return true;
+        }
+
+        if (TryGetPersistedSpawnerLocationContext(gameObject, out locationPrefab, out relativePath))
+        {
+            sourceLabel = "PersistedProvenance";
+            return true;
+        }
+
+        if (TryGetDungeonGeneratorLocationContext(gameObject, out locationPrefab))
+        {
+            sourceLabel = "DungeonGenerator";
+            relativePath = "";
             return true;
         }
 

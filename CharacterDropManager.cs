@@ -23,7 +23,6 @@ namespace DropNSpawn;
 internal static partial class CharacterDropManager
 {
     private const string ReferenceAutoUpdateStateKey = "character";
-    private const float GlobalTrophyAmountBonusPerLevel = 0.5f;
     internal static readonly DomainModuleDefinition<CharacterDropPrefabEntry> Module =
         new(new DomainModuleOptions<CharacterDropPrefabEntry>
         {
@@ -874,9 +873,18 @@ internal static partial class CharacterDropManager
         }
     }
 
-    internal static List<CharacterDrop.Drop>? SuppressGlobalTrophyLevelMultiplierDrops(CharacterDrop characterDrop)
+    internal static bool IsGlobalCharacterLootLevelScalingEnabled()
     {
-        if (!PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled() ||
+        return PluginSettingsFacade.IsCharacterDropCalculateChanceLootSystemEnabled() ||
+               PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled();
+    }
+
+    internal static List<CharacterDrop.Drop>? SuppressGlobalCharacterLootLevelMultiplierDrops(
+        CharacterDrop characterDrop,
+        out IReadOnlyList<CharacterDrop.Drop>? sourceDrops)
+    {
+        sourceDrops = null;
+        if (!IsGlobalCharacterLootLevelScalingEnabled() ||
             characterDrop == null ||
             characterDrop.m_drops == null ||
             characterDrop.m_drops.Count == 0)
@@ -884,19 +892,20 @@ internal static partial class CharacterDropManager
             return null;
         }
 
-        List<CharacterDrop.Drop> sourceDrops = characterDrop.m_drops;
+        List<CharacterDrop.Drop> originalDrops = characterDrop.m_drops;
+        sourceDrops = originalDrops;
         List<CharacterDrop.Drop>? adjustedDrops = null;
-        for (int index = 0; index < sourceDrops.Count; index++)
+        for (int index = 0; index < originalDrops.Count; index++)
         {
-            CharacterDrop.Drop drop = sourceDrops[index];
+            CharacterDrop.Drop drop = originalDrops[index];
             if (drop == null ||
                 !drop.m_levelMultiplier ||
-                !ShouldApplyGlobalTrophyLevelMultiplier(drop.m_prefab))
+                !ShouldApplyGlobalCharacterLootLevelMultiplier(drop.m_prefab))
             {
                 continue;
             }
 
-            adjustedDrops ??= CloneDrops(sourceDrops);
+            adjustedDrops ??= CloneDrops(originalDrops);
             adjustedDrops[index].m_levelMultiplier = false;
         }
 
@@ -906,15 +915,15 @@ internal static partial class CharacterDropManager
         }
 
         characterDrop.m_drops = adjustedDrops;
-        return sourceDrops;
+        return originalDrops;
     }
 
-    internal static void ApplyGlobalTrophyLevelMultiplier(
+    internal static void ApplyGlobalCharacterLootLevelMultiplier(
         CharacterDrop characterDrop,
         List<KeyValuePair<GameObject, int>> drops,
         IReadOnlyList<CharacterDrop.Drop>? sourceDrops)
     {
-        if (!PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled() ||
+        if (!IsGlobalCharacterLootLevelScalingEnabled() ||
             characterDrop == null ||
             drops == null ||
             drops.Count == 0)
@@ -929,12 +938,13 @@ internal static partial class CharacterDropManager
             return;
         }
 
+        bool isBoss = IsBossCharacter(character);
         int vanillaLevelFactor = GetVanillaDropLevelFactor(characterLevel);
         int sourceIndex = 0;
         for (int index = 0; index < drops.Count; index++)
         {
             KeyValuePair<GameObject, int> result = drops[index];
-            if (!ShouldApplyGlobalTrophyLevelMultiplier(result.Key))
+            if (!ShouldApplyGlobalCharacterLootLevelMultiplier(result.Key))
             {
                 continue;
             }
@@ -945,8 +955,8 @@ internal static partial class CharacterDropManager
                 continue;
             }
 
-            int baseAmount = NormalizeGeneratedTrophyAmount(result.Value, vanillaLevelFactor, sourceDrop);
-            int scaledAmount = ScaleGlobalTrophyAmount(baseAmount, characterLevel);
+            int baseAmount = NormalizeGeneratedLevelScaledAmount(result.Value, vanillaLevelFactor, sourceDrop);
+            int scaledAmount = ScaleGlobalCharacterLootAmount(baseAmount, characterLevel, isBoss);
             if (scaledAmount != result.Value)
             {
                 drops[index] = new KeyValuePair<GameObject, int>(result.Key, scaledAmount);
@@ -979,7 +989,7 @@ internal static partial class CharacterDropManager
         return null;
     }
 
-    private static int NormalizeGeneratedTrophyAmount(
+    private static int NormalizeGeneratedLevelScaledAmount(
         int amount,
         int vanillaLevelFactor,
         CharacterDrop.Drop? sourceDrop)
@@ -1012,14 +1022,20 @@ internal static partial class CharacterDropManager
             : amount;
     }
 
-    private static int ScaleGlobalTrophyAmount(int amount, int characterLevel)
+    private static int ScaleGlobalCharacterLootAmount(int amount, int characterLevel, bool isBoss)
     {
         if (amount <= 0 || characterLevel <= 1)
         {
             return amount;
         }
 
-        float multiplier = 1f + GlobalTrophyAmountBonusPerLevel * (characterLevel - 1);
+        int additionalChancePerStar = PluginSettingsFacade.GetCharacterDropAdditionalLootChancePerStar(isBoss);
+        if (additionalChancePerStar <= 0)
+        {
+            return amount;
+        }
+
+        float multiplier = 1f + additionalChancePerStar / 100f * (characterLevel - 1);
         float scaledAmount = amount * multiplier;
         int roundedAmount = Mathf.FloorToInt(scaledAmount);
         float fractionalAmount = scaledAmount - roundedAmount;
@@ -1029,6 +1045,11 @@ internal static partial class CharacterDropManager
         }
 
         return Math.Min(100, Math.Max(1, roundedAmount));
+    }
+
+    private static bool IsBossCharacter(Character? character)
+    {
+        return character != null && character.IsBoss();
     }
 
     private static int GetVanillaDropLevelFactor(int characterLevel)
@@ -2284,6 +2305,7 @@ internal static partial class CharacterDropManager
         int characterLevel = character.GetLevel();
         int levelFactor = GetVanillaDropLevelFactor(characterLevel);
         int playerCount = GetOnePerPlayerDropCount(character);
+        bool isBoss = IsBossCharacter(character);
 
         foreach (CharacterDropEntryDefinition definition in definitions)
         {
@@ -2302,8 +2324,8 @@ internal static partial class CharacterDropManager
 
             float chance = Mathf.Max(0f, definition.Chance ?? 1f);
             bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab);
-            bool applyGlobalTrophyMultiplier = ShouldApplyGlobalTrophyLevelMultiplier(dropPrefab);
-            bool applyVanillaLevelMultiplier = levelMultiplier && !applyGlobalTrophyMultiplier;
+            bool applyGlobalCharacterLootMultiplier = ShouldApplyGlobalCharacterLootLevelMultiplier(dropPrefab);
+            bool applyVanillaLevelMultiplier = levelMultiplier && !applyGlobalCharacterLootMultiplier;
             if (applyVanillaLevelMultiplier)
             {
                 chance *= levelFactor;
@@ -2331,9 +2353,9 @@ internal static partial class CharacterDropManager
                 amount = playerCount;
             }
 
-            if (applyGlobalTrophyMultiplier && !onePerPlayer)
+            if (applyGlobalCharacterLootMultiplier && !onePerPlayer)
             {
-                amount = ScaleGlobalTrophyAmount(amount, characterLevel);
+                amount = ScaleGlobalCharacterLootAmount(amount, characterLevel, isBoss);
             }
 
             amount = Math.Min(amount, 100);
@@ -2364,12 +2386,13 @@ internal static partial class CharacterDropManager
         int characterLevel = character.GetLevel();
         int levelFactor = GetVanillaDropLevelFactor(characterLevel);
         int playerCount = GetOnePerPlayerDropCount(character);
+        bool isBoss = IsBossCharacter(character);
 
         foreach (CompiledCharacterDropDefinition definition in definitions)
         {
             float chance = definition.Chance;
-            bool applyGlobalTrophyMultiplier = ShouldApplyGlobalTrophyLevelMultiplier(definition.Prefab);
-            bool applyVanillaLevelMultiplier = definition.LevelMultiplier && !applyGlobalTrophyMultiplier;
+            bool applyGlobalCharacterLootMultiplier = ShouldApplyGlobalCharacterLootLevelMultiplier(definition.Prefab);
+            bool applyVanillaLevelMultiplier = definition.LevelMultiplier && !applyGlobalCharacterLootMultiplier;
             if (applyVanillaLevelMultiplier)
             {
                 chance *= levelFactor;
@@ -2394,9 +2417,9 @@ internal static partial class CharacterDropManager
                 amount = playerCount;
             }
 
-            if (applyGlobalTrophyMultiplier && !definition.OnePerPlayer)
+            if (applyGlobalCharacterLootMultiplier && !definition.OnePerPlayer)
             {
-                amount = ScaleGlobalTrophyAmount(amount, characterLevel);
+                amount = ScaleGlobalCharacterLootAmount(amount, characterLevel, isBoss);
             }
 
             amount = Math.Min(amount, 100);
@@ -2478,6 +2501,21 @@ internal static partial class CharacterDropManager
     private static bool NormalizeBaselineCharacterDropLevelMultiplier(GameObject? dropPrefab, bool levelMultiplier)
     {
         return IsItemDropPrefab(dropPrefab) && levelMultiplier;
+    }
+
+    private static bool ShouldApplyGlobalCharacterLootLevelMultiplier(GameObject? itemPrefab)
+    {
+        if (!IsItemDropPrefab(itemPrefab))
+        {
+            return false;
+        }
+
+        if (IsTrophyItemPrefab(itemPrefab!))
+        {
+            return ShouldApplyGlobalTrophyLevelMultiplier(itemPrefab);
+        }
+
+        return PluginSettingsFacade.IsCharacterDropCalculateChanceLootSystemEnabled();
     }
 
     private static bool ShouldApplyGlobalTrophyLevelMultiplier(GameObject? itemPrefab)
