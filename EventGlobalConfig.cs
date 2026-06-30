@@ -5,12 +5,21 @@ namespace DropNSpawn;
 
 internal static class EventGlobalConfig
 {
+    internal enum EventPlayerBaseDefault
+    {
+        Off,
+        Away,
+        Near,
+        AwayAndNear
+    }
+
     private const float DefaultMinimumDistanceBetweenEvents = 100f;
     private const float DefaultRandomEventChance = 20f;
     private const float DefaultRandomEventIntervalMinutes = 46f;
 
     private static ConfigEntry<DropNSpawnPlugin.Toggle>? _multipleEvents;
     private static ConfigEntry<DropNSpawnPlugin.Toggle>? _checkPerPlayer;
+    private static ConfigEntry<EventPlayerBaseDefault>? _defaultPlayerBase;
     private static ConfigEntry<float>? _minimumDistanceBetweenEvents;
     private static ConfigEntry<float>? _randomEventChance;
     private static ConfigEntry<float>? _randomEventIntervalMinutes;
@@ -34,6 +43,15 @@ internal static class EventGlobalConfig
             synchronizedSetting: true,
             configManagerOrder: 700);
         _checkPerPlayer.SettingChanged += HandleRuntimeSettingChanged;
+
+        _defaultPlayerBase = plugin.BindConfigEntry(
+            "3 - Events",
+            "Default event player base",
+            EventPlayerBaseDefault.Off,
+            "Global default player-base condition for events that do not specify conditions.playerBase in YAML. Off keeps each event's baseline value. Away acts like playerBase: [away], Near acts like [near], and AwayAndNear acts like [away, near]. YAML values always win. Forced boss events do not use this random-event start filter.",
+            synchronizedSetting: true,
+            configManagerOrder: 650);
+        _defaultPlayerBase.SettingChanged += HandleDefinitionSettingChanged;
 
         _minimumDistanceBetweenEvents = plugin.BindConfigEntry(
             "3 - Events",
@@ -79,6 +97,11 @@ internal static class EventGlobalConfig
         return _checkPerPlayer?.Value == DropNSpawnPlugin.Toggle.On;
     }
 
+    internal static EventPlayerBaseDefault GetDefaultPlayerBase()
+    {
+        return _defaultPlayerBase?.Value ?? EventPlayerBaseDefault.Off;
+    }
+
     internal static float GetMinimumDistanceBetweenEvents()
     {
         return Math.Max(0f, _minimumDistanceBetweenEvents?.Value ?? DefaultMinimumDistanceBetweenEvents);
@@ -97,6 +120,11 @@ internal static class EventGlobalConfig
     private static void HandleRuntimeSettingChanged(object? sender, EventArgs e)
     {
         EventManager.ApplyGlobalEventSettings();
+    }
+
+    private static void HandleDefinitionSettingChanged(object? sender, EventArgs e)
+    {
+        EventManager.ReapplyEventDefinitions("event global config");
     }
 
     private static float Clamp(float value, float min, float max)

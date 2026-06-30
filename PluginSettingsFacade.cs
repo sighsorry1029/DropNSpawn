@@ -31,6 +31,9 @@ internal static class PluginSettingsFacade
     internal static bool IsEventCheckPerPlayerEnabled() =>
         EventGlobalConfig.IsCheckPerPlayerEnabled();
 
+    internal static EventGlobalConfig.EventPlayerBaseDefault GetDefaultEventPlayerBase() =>
+        EventGlobalConfig.GetDefaultPlayerBase();
+
     internal static float GetMinimumDistanceBetweenEvents() =>
         EventGlobalConfig.GetMinimumDistanceBetweenEvents();
 

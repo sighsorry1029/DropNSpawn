@@ -112,6 +112,7 @@ Domain toggles live under `4 - Domains`:
 - `Enable Character Overrides`
 - `Enable Spawner Overrides`
 - `Enable SpawnSystem Overrides`
+- `Enable Event Overrides`
 
 General and character settings include:
 
@@ -127,6 +128,17 @@ General and character settings include:
 - `global trophy level multiplier blacklist`
 
 `character loot system = CalculateChance` keeps each successful character-drop chance intact and scales the final item amount by the configured per-star chance. Trophy drops join that same linear scaling only when `global trophy level multiplier` is on.
+
+Event settings include:
+
+- `Multiple events`
+- `Check per player`
+- `Default event player base`
+- `Minimum distance between events`
+- `Random event chance`
+- `Random event interval`
+
+`Default event player base` can globally treat events without YAML `conditions.playerBase` as `Off`, `Away`, `Near`, or `AwayAndNear`. YAML event overrides keep priority.
 
 Boss altar rules, same boss duplicate blocking for altars and `CreatureSpawner`, per-player boss stones, remote Forsaken Power selection, boss despawn, and boss tamed pressure live in BossRules.
 

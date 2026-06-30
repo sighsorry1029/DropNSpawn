@@ -180,6 +180,16 @@ internal static class EventManager
         }
     }
 
+    internal static void ReapplyEventDefinitions(string source)
+    {
+        lock (Sync)
+        {
+            CaptureBaselineIfNeeded();
+            ApplyActiveDefinitionsLocked(source);
+            EnsureReferenceConfigurationFileUpToDateLocked();
+        }
+    }
+
     internal static void OnRandEventSystemDestroyed()
     {
         lock (Sync)
@@ -885,43 +895,96 @@ internal static class EventManager
         ClearAppliedPayloadsLocked();
         EventMetadata.Clear();
 
-        if (!PluginSettingsFacade.IsEventDomainEnabled())
+        List<RandomEvent> events = CloneEvents(BaselineEvents);
+
+        if (PluginSettingsFacade.IsEventDomainEnabled())
         {
-            RandEventSystem.instance.m_events = CloneEvents(BaselineEvents);
-            RandEventSystem.SetRandomEventsNeedsRefresh();
+            Dictionary<string, RandomEvent> byName = events
+                .Where(ev => !string.IsNullOrWhiteSpace(ev.m_name))
+                .GroupBy(ev => ev.m_name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+
+            for (int index = 0; index < ActiveDefinitions.Count; index++)
+            {
+                EventDefinition definition = ActiveDefinitions[index];
+                string eventName = definition.Event ?? "";
+                if (eventName.Length == 0)
+                {
+                    DropNSpawnPlugin.DropNSpawnLogger.LogWarning($"Event override entry {index.ToString(CultureInfo.InvariantCulture)} is missing 'event'.");
+                    continue;
+                }
+
+                RandomEvent? target = byName.TryGetValue(eventName, out RandomEvent existing) ? existing : null;
+                if (target == null)
+                {
+                    target = new RandomEvent();
+                    events.Add(target);
+                }
+
+                target.m_name = eventName;
+                byName[eventName] = target;
+                ApplyDefinition(target, definition, $"{source}:{eventName}");
+            }
+        }
+
+        ApplyDefaultPlayerBaseConditions(events);
+        RandEventSystem.instance.m_events = events;
+        RandEventSystem.SetRandomEventsNeedsRefresh();
+    }
+
+    private static void ApplyDefaultPlayerBaseConditions(List<RandomEvent> events)
+    {
+        PlayerBaseCondition? defaultCondition =
+            CreateDefaultPlayerBaseCondition(PluginSettingsFacade.GetDefaultEventPlayerBase());
+        if (defaultCondition == null)
+        {
             return;
         }
 
-        List<RandomEvent> events = CloneEvents(BaselineEvents);
-        Dictionary<string, RandomEvent> byName = events
-            .Where(ev => !string.IsNullOrWhiteSpace(ev.m_name))
-            .GroupBy(ev => ev.m_name, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
-
-        for (int index = 0; index < ActiveDefinitions.Count; index++)
+        foreach (RandomEvent ev in events)
         {
-            EventDefinition definition = ActiveDefinitions[index];
-            string eventName = definition.Event ?? "";
-            if (eventName.Length == 0)
+            if (ev == null)
             {
-                DropNSpawnPlugin.DropNSpawnLogger.LogWarning($"Event override entry {index.ToString(CultureInfo.InvariantCulture)} is missing 'event'.");
                 continue;
             }
 
-            RandomEvent? target = byName.TryGetValue(eventName, out RandomEvent existing) ? existing : null;
-            if (target == null)
+            if (EventMetadata.TryGetValue(ev, out EventRuntimeMetadata metadata))
             {
-                target = new RandomEvent();
-                events.Add(target);
+                if (metadata.PlayerBase != null)
+                {
+                    continue;
+                }
+            }
+            else
+            {
+                metadata = new EventRuntimeMetadata();
             }
 
-            target.m_name = eventName;
-            byName[eventName] = target;
-            ApplyDefinition(target, definition, $"{source}:{eventName}");
+            metadata.PlayerBase = ClonePlayerBaseCondition(defaultCondition);
+            ev.m_nearBaseOnly = defaultCondition.IsNearOnly;
+            EventMetadata[ev] = metadata;
         }
+    }
 
-        RandEventSystem.instance.m_events = events;
-        RandEventSystem.SetRandomEventsNeedsRefresh();
+    private static PlayerBaseCondition? CreateDefaultPlayerBaseCondition(EventGlobalConfig.EventPlayerBaseDefault mode)
+    {
+        return mode switch
+        {
+            EventGlobalConfig.EventPlayerBaseDefault.Away => new PlayerBaseCondition
+            {
+                AllowAway = true
+            },
+            EventGlobalConfig.EventPlayerBaseDefault.Near => new PlayerBaseCondition
+            {
+                AllowNear = true
+            },
+            EventGlobalConfig.EventPlayerBaseDefault.AwayAndNear => new PlayerBaseCondition
+            {
+                AllowNear = true,
+                AllowAway = true
+            },
+            _ => null
+        };
     }
 
     private static void ApplyDefinition(RandomEvent target, EventDefinition definition, string context)
