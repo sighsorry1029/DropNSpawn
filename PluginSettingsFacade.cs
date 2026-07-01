@@ -52,6 +52,9 @@ internal static class PluginSettingsFacade
     internal static bool IsCharacterDropCalculateChanceLootSystemEnabled() =>
         CharacterDropGlobalConfig.IsCalculateChanceLootSystemEnabled();
 
+    internal static bool ShouldDisableCharacterLootScalingForCreatureLevelControl() =>
+        CharacterDropGlobalConfig.ShouldDisableLootScalingForCreatureLevelControl();
+
     internal static int GetCharacterDropAdditionalLootChancePerStar(bool boss) =>
         CharacterDropGlobalConfig.GetAdditionalLootChancePerStar(boss);
 
@@ -63,6 +66,9 @@ internal static class PluginSettingsFacade
 
     internal static int GetDefaultSpawnAreaMaxTotalSpawns() =>
         SpawnerGlobalConfig.GetDefaultSpawnAreaMaxTotalSpawns();
+
+    internal static int GetDefaultZeroCreatureSpawnerRespawnTimeMinutes() =>
+        SpawnerGlobalConfig.GetDefaultZeroCreatureSpawnerRespawnTimeMinutes();
 
     internal static float GetCharacterDropOnePerPlayerNearbyRange() =>
         CharacterDropGlobalConfig.GetOnePerPlayerNearbyRange();

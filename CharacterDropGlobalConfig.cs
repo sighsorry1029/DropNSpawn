@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using UnityEngine;
 
@@ -8,6 +9,8 @@ namespace DropNSpawn;
 
 internal static class CharacterDropGlobalConfig
 {
+    private const string CreatureLevelControlPluginGuid = "org.bepinex.plugins.creaturelevelcontrol";
+
     internal enum CharacterLootSystem
     {
         Vanilla,
@@ -20,9 +23,11 @@ internal static class CharacterDropGlobalConfig
     private static string _trophyLevelMultiplierBlacklistRaw = "";
     private static HashSet<string> _dropInStackBlacklist = new(StringComparer.OrdinalIgnoreCase);
     private static HashSet<string> _trophyLevelMultiplierBlacklist = new(StringComparer.OrdinalIgnoreCase);
+    private static bool? _isCreatureLevelControlLoaded;
 
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _monsterInstantLootDrop = null!;
     private static ConfigEntry<CharacterLootSystem> _characterLootSystem = null!;
+    private static ConfigEntry<DropNSpawnPlugin.Toggle> _disableCharacterLootScalingWhenCreatureLevelControlLoaded = null!;
     private static ConfigEntry<int> _additionalLootChancePerStarCreature = null!;
     private static ConfigEntry<int> _additionalLootChancePerStarBoss = null!;
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _globalDropInStack = null!;
@@ -56,6 +61,13 @@ internal static class CharacterDropGlobalConfig
             "Vanilla leaves character-drop level scaling to the game and YAML levelMultiplier values. CalculateChance keeps each drop chance intact, suppresses vanilla exponential level scaling for eligible item drops, and scales successful drop amounts by the configured per-star chance.",
             synchronizedSetting: true,
             configManagerOrder: 440);
+        _disableCharacterLootScalingWhenCreatureLevelControlLoaded = plugin.BindConfigEntry(
+            "2 - Character",
+            "disable DNS character loot scaling when CLLC is loaded",
+            DropNSpawnPlugin.Toggle.On,
+            "If on and Creature Level & Loot Control is loaded, DropNSpawn does not rewrite this config file but treats character loot system, both per-star loot chance options, and global trophy level multiplier as inactive at runtime. CLLC can then own loot quantities while Character YAML overrides, drop-in-stack, instant loot, and OnePerPlayer range still work. Turn this off only when CLLC loot is Vanilla and DropNSpawn should own loot scaling.",
+            synchronizedSetting: true,
+            configManagerOrder: 435);
         _additionalLootChancePerStarCreature = plugin.BindConfigEntry(
             "2 - Character",
             "chance for additional loot per star for creatures",
@@ -117,6 +129,12 @@ internal static class CharacterDropGlobalConfig
     internal static bool IsCalculateChanceLootSystemEnabled()
     {
         return _characterLootSystem?.Value == CharacterLootSystem.CalculateChance;
+    }
+
+    internal static bool ShouldDisableLootScalingForCreatureLevelControl()
+    {
+        return _disableCharacterLootScalingWhenCreatureLevelControlLoaded?.Value == DropNSpawnPlugin.Toggle.On &&
+               IsCreatureLevelControlLoaded();
     }
 
     internal static int GetAdditionalLootChancePerStar(bool boss)
@@ -212,5 +230,16 @@ internal static class CharacterDropGlobalConfig
             .Select(value => value.Trim())
             .Where(value => value.Length > 0)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool IsCreatureLevelControlLoaded()
+    {
+        if (_isCreatureLevelControlLoaded.HasValue)
+        {
+            return _isCreatureLevelControlLoaded.Value;
+        }
+
+        _isCreatureLevelControlLoaded = Chainloader.PluginInfos.ContainsKey(CreatureLevelControlPluginGuid);
+        return _isCreatureLevelControlLoaded.Value;
     }
 }

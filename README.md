@@ -118,8 +118,10 @@ General and character settings include:
 
 - `Lock Configuration`
 - `Default SpawnArea Max Total Spawns`
+- `Default zero CreatureSpawner respawn time minutes`
 - `OnePerPlayer drop check range`
 - `character loot system`
+- `disable DNS character loot scaling when CLLC is loaded`
 - `chance for additional loot per star for creatures`
 - `chance for additional loot per star for bosses`
 - `global drop in stack`
@@ -128,6 +130,10 @@ General and character settings include:
 - `global trophy level multiplier blacklist`
 
 `character loot system = CalculateChance` keeps each successful character-drop chance intact and scales the final item amount by the configured per-star chance. Trophy drops join that same linear scaling only when `global trophy level multiplier` is on.
+
+`disable DNS character loot scaling when CLLC is loaded` defaults to `On`. It does not rewrite the config values shown for DNS loot scaling; when Creature Level & Loot Control is installed, DNS treats `character loot system`, both per-star loot chance options, and `global trophy level multiplier` as inactive at runtime so CLLC can own loot quantities. YAML overrides, drop-in-stack, instant loot, and OnePerPlayer range still work.
+
+`Default zero CreatureSpawner respawn time minutes` defaults to `0` and accepts `0~60`; `0` disables the option. It changes only CreatureSpawner components whose current `respawnTimeMinutes` is `0`; YAML `creatureSpawner.respawnTimeMinutes` values keep priority.
 
 Event settings include:
 

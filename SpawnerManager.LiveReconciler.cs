@@ -22,6 +22,22 @@ internal static partial class SpawnerManager
         }
     }
 
+    internal static void ReapplyCreatureSpawnerGlobalDefaults()
+    {
+        lock (Sync)
+        {
+            if (!IsGameDataReady())
+            {
+                return;
+            }
+
+            LiveRegistryStore.ForEachTrackedCreatureSpawner((creatureSpawner, _) =>
+            {
+                ReconcileCreatureSpawnerInstanceCore(creatureSpawner);
+            });
+        }
+    }
+
     internal static void BeginSpawnAreaSpawnAttempt(SpawnArea spawnArea)
     {
         lock (Sync)

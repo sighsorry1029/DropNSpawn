@@ -95,6 +95,20 @@ internal static class EventManager
         }
     }
 
+    private sealed class EventReferenceOutputEntry
+    {
+        internal EventReferenceOutputEntry(EventDefinition definition, string ownerName)
+        {
+            Definition = definition;
+            OwnerName = string.IsNullOrWhiteSpace(ownerName)
+                ? PrefabOwnerCatalog.UnknownOwnerName
+                : ownerName.Trim();
+        }
+
+        internal EventDefinition Definition { get; }
+        internal string OwnerName { get; }
+    }
+
     private sealed class PlayerBaseCondition
     {
         internal bool AllowNear { get; set; }
@@ -274,12 +288,6 @@ internal static class EventManager
         {
             events = new List<RandomEvent>();
             return false;
-        }
-
-        if (RandEventSystem.instance?.m_events != null)
-        {
-            events = RandEventSystem.instance.m_events;
-            return true;
         }
 
         events = CloneEvents(BaselineEvents);
@@ -1215,17 +1223,88 @@ internal static class EventManager
 
     private static string BuildReferenceYaml(List<RandomEvent> events)
     {
-        List<EventDefinition> definitions = (events ?? new List<RandomEvent>())
+        PrefabOwnerResolver.OwnerSnapshot ownerSnapshot = PrefabOwnerResolver.GetSnapshot();
+        List<EventReferenceOutputEntry> entries = (events ?? new List<RandomEvent>())
             .Where(ev => ev != null)
-            .OrderBy(ev => ev.m_name, StringComparer.OrdinalIgnoreCase)
             .Select(ev =>
             {
                 EventDefinition definition = ConvertToDefinition(ev, includeEventDefaults: true, includeSpawnDefaults: false);
                 SuppressReferenceOnlyFields(definition);
-                return definition;
+                return new EventReferenceOutputEntry(definition, ResolveEventOwnerName(definition, ownerSnapshot));
             })
             .ToList();
-        return BuildGeneratedYamlHeader("reference") + BuildEventDefinitionsYaml(definitions, includeEventDefaults: true, includeEmptySpawnList: false);
+        return BuildGeneratedYamlHeader("reference") + BuildEventReferenceDefinitionsYaml(entries, includeEventDefaults: true, includeEmptySpawnList: false);
+    }
+
+    private static string BuildEventReferenceDefinitionsYaml(
+        List<EventReferenceOutputEntry> entries,
+        bool includeEventDefaults,
+        bool includeEmptySpawnList)
+    {
+        if (entries.Count == 0)
+        {
+            return "[]\n";
+        }
+
+        List<PrefabOwnerSection<EventReferenceOutputEntry>> sections = PrefabOutputSections.BuildSections(
+            entries,
+            entry => entry.Definition.Event ?? "",
+            entry => entry.OwnerName);
+
+        StringBuilder builder = new();
+        bool wroteSection = false;
+        foreach (PrefabOwnerSection<EventReferenceOutputEntry> section in sections)
+        {
+            if (section.Entries.Count == 0)
+            {
+                continue;
+            }
+
+            if (wroteSection)
+            {
+                builder.AppendLine();
+            }
+
+            PrefabOutputSections.AppendSectionHeaderComment(builder, section.OwnerName);
+            foreach (EventReferenceOutputEntry entry in section.Entries)
+            {
+                AppendEventDefinition(builder, entry.Definition, includeEventDefaults, includeEmptySpawnList);
+            }
+
+            wroteSection = true;
+        }
+
+        return wroteSection ? builder.ToString() : "[]\n";
+    }
+
+    private static string ResolveEventOwnerName(EventDefinition definition, PrefabOwnerResolver.OwnerSnapshot ownerSnapshot)
+    {
+        List<string> owners = (definition.Spawns ?? new List<EventSpawnDefinition>())
+            .Select(spawn => ownerSnapshot.GetOwnerName(spawn.Prefab))
+            .Where(ownerName => !string.IsNullOrWhiteSpace(ownerName))
+            .Select(ownerName => ownerName.Trim())
+            .ToList();
+
+        string? modOwner = owners
+            .Where(ownerName =>
+                !string.Equals(ownerName, PrefabOwnerCatalog.UnknownOwnerName, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(ownerName, PrefabOwnerCatalog.VanillaOwnerName, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(ownerName => ownerName, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(group => group.Count())
+            .ThenBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.Key)
+            .FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(modOwner))
+        {
+            return modOwner;
+        }
+
+        if (owners.Any(ownerName => string.Equals(ownerName, PrefabOwnerCatalog.VanillaOwnerName, StringComparison.OrdinalIgnoreCase)))
+        {
+            return PrefabOwnerCatalog.VanillaOwnerName;
+        }
+
+        return PrefabOwnerCatalog.UnknownOwnerName;
     }
 
     private static void SuppressReferenceOnlyFields(EventDefinition definition)

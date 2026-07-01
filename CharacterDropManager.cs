@@ -875,6 +875,11 @@ internal static partial class CharacterDropManager
 
     internal static bool IsGlobalCharacterLootLevelScalingEnabled()
     {
+        if (PluginSettingsFacade.ShouldDisableCharacterLootScalingForCreatureLevelControl())
+        {
+            return false;
+        }
+
         return PluginSettingsFacade.IsCharacterDropCalculateChanceLootSystemEnabled() ||
                PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled();
     }

@@ -2111,6 +2111,7 @@ internal static partial class SpawnerManager
         target.m_maxLevel = maxLevel;
         target.m_levelupChance = levelUpChance;
         target.m_respawnTimeMinuts = respawnTimeMinutes;
+        ApplyDefaultZeroCreatureSpawnerRespawnTime(target, yamlRespawnTimeSpecified: false);
         target.m_triggerDistance = triggerDistance;
         target.m_triggerNoise = triggerNoise;
         target.m_spawnAtNight = spawnAtNight;
@@ -2243,6 +2244,7 @@ internal static partial class SpawnerManager
         {
             target.m_respawnTimeMinuts = Mathf.Max(0f, definition.RespawnTimeMinutes.Value);
         }
+        ApplyDefaultZeroCreatureSpawnerRespawnTime(target, definition.RespawnTimeMinutes.HasValue);
 
         if (definition.TriggerDistance.HasValue)
         {
@@ -2383,6 +2385,22 @@ internal static partial class SpawnerManager
                 definition.MaxGroupSpawned.HasValue ||
                 definition.SpawnGroupRadius.HasValue ||
                 definition.SpawnerWeight.HasValue);
+    }
+
+    private static void ApplyDefaultZeroCreatureSpawnerRespawnTime(CreatureSpawner? target, bool yamlRespawnTimeSpecified)
+    {
+        if (target == null || yamlRespawnTimeSpecified || !ShouldApplyLocally())
+        {
+            return;
+        }
+
+        int defaultRespawnTimeMinutes = PluginSettingsFacade.GetDefaultZeroCreatureSpawnerRespawnTimeMinutes();
+        if (defaultRespawnTimeMinutes <= 0 || target.m_respawnTimeMinuts > 0f)
+        {
+            return;
+        }
+
+        target.m_respawnTimeMinuts = defaultRespawnTimeMinutes;
     }
 
     private static bool HasEntryConditions(SpawnerConfigurationEntry? entry)

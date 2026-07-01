@@ -91,6 +91,8 @@ internal static partial class SpawnerManager
                     out _) ||
                 !configuredEligible)
             {
+                CaptureLiveCreatureSpawnerSnapshotIfNeeded(creatureSpawner);
+                ApplyDefaultZeroCreatureSpawnerRespawnTime(creatureSpawner, yamlRespawnTimeSpecified: false);
                 return;
             }
 

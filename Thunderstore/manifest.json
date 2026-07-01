@@ -1,10 +1,10 @@
 {
   "name": "DropNSpawn",
-  "version_number": "1.2.6",
+  "version_number": "1.2.7",
   "website_url": "https://discord.com/invite/VFRJcPwUdm",
-  "description": "Server-synced spawn and loot control for Valheim: tune creature drops, object loot, pickables, trees, rocks, spawners, and world SpawnSystem rows with stacked drops, trophy scaling, VNEI display data, references, and location-scoped rules.",
+  "description": "Easy way to configure all drops, spawns and events(raid) by reference system. Prevent high tier mobs spawning on low tier biomes. Make dungeon creaturespawners respawn. Multiple trophies and stacked drop instantly from creatures with linear scaling.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333",
-    "JereKuusela-Expand_World_Data-1.63.0"
+    "JereKuusela-Expand_World_Data-1.66.0"
   ]
 }
