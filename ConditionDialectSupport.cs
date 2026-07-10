@@ -4,33 +4,9 @@ namespace DropNSpawn;
 
 internal static class ConditionDialectSupport
 {
-    private const string CharacterConditionLevelReason = "level filters are only valid for character conditions";
-    private const string CharacterConditionStateReason = "state filters are only valid for character conditions";
-    private const string CharacterConditionFactionReason = "faction filters are only valid for character conditions";
     private const string CharacterDropLevelReason = "level filters are only valid for character-drop conditions";
     private const string CharacterDropStateReason = "state filters are only valid for character-drop conditions";
     private const string CharacterDropFactionReason = "faction filters are only valid for character-drop conditions";
-
-    internal static void StripUnsupportedLocationComponentFields(
-        ConditionsDefinition? conditions,
-        string context,
-        string conditionPath,
-        Action<string> warn)
-    {
-        if (conditions == null)
-        {
-            return;
-        }
-
-        StripLevel(conditions, context, conditionPath, CharacterConditionLevelReason, warn);
-        StripTimeOfDay(conditions, context, conditionPath, "location conditions are evaluated only when the location is loaded or reconciled", warn);
-        StripRequiredEnvironments(conditions, context, conditionPath, "location conditions are evaluated only when the location is loaded or reconciled", warn);
-        StripRequiredGlobalKeys(conditions, context, conditionPath, "location conditions are static location filters only", warn);
-        StripForbiddenGlobalKeys(conditions, context, conditionPath, "location conditions are static location filters only", warn);
-        StripStates(conditions, context, conditionPath, CharacterConditionStateReason, warn);
-        StripFactions(conditions, context, conditionPath, CharacterConditionFactionReason, warn);
-        StripInsidePlayerBase(conditions, context, conditionPath, "location conditions are static location filters only", warn);
-    }
 
     internal static void StripUnsupportedObjectDropFields(
         ConditionsDefinition? conditions,
@@ -143,22 +119,6 @@ internal static class ConditionDialectSupport
 
         WarnUnsupported(context, conditionPath, "timeOfDay", reason, warn);
         conditions.TimeOfDay = null;
-    }
-
-    private static void StripRequiredEnvironments(
-        ConditionsDefinition conditions,
-        string context,
-        string conditionPath,
-        string reason,
-        Action<string> warn)
-    {
-        if (conditions.RequiredEnvironments == null || conditions.RequiredEnvironments.Count == 0)
-        {
-            return;
-        }
-
-        WarnUnsupported(context, conditionPath, "requiredEnvironments", reason, warn);
-        conditions.RequiredEnvironments = null;
     }
 
     private static void StripRequiredGlobalKeys(

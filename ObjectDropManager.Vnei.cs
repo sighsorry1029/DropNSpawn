@@ -237,7 +237,7 @@ internal static partial class ObjectDropManager
 
     private static void RebuildVneiDisplayEntries(IEnumerable<PrefabConfigurationEntry> entries)
     {
-        RebuildVneiDisplayEntries(entries, VneiEntriesByPrefab);
+        RebuildVneiDisplayEntries(entries, RuntimeState.VneiEntriesByPrefab);
     }
 
     private static void RebuildVneiDisplayEntries(
@@ -304,7 +304,7 @@ internal static partial class ObjectDropManager
 
     private static Dictionary<string, string> BuildVneiEntrySignaturesByPrefab()
     {
-        return BuildVneiEntrySignaturesByPrefab(VneiEntriesByPrefab);
+        return BuildVneiEntrySignaturesByPrefab(RuntimeState.VneiEntriesByPrefab);
     }
 
     private static Dictionary<string, string> BuildVneiEntrySignaturesByPrefab(
@@ -319,12 +319,12 @@ internal static partial class ObjectDropManager
 
     private static List<PrefabConfigurationEntry>? GetVneiEntries(string prefabName)
     {
-        if (VneiEntriesByPrefab.TryGetValue(prefabName ?? "", out List<PrefabConfigurationEntry>? projectedEntries))
+        if (RuntimeState.VneiEntriesByPrefab.TryGetValue(prefabName ?? "", out List<PrefabConfigurationEntry>? projectedEntries))
         {
             return projectedEntries;
         }
 
-        return ActiveEntriesByPrefab.TryGetValue(prefabName ?? "", out List<PrefabConfigurationEntry>? activeEntries)
+        return RuntimeState.ActiveEntriesByPrefab.TryGetValue(prefabName ?? "", out List<PrefabConfigurationEntry>? activeEntries)
             ? activeEntries
             : null;
     }
@@ -466,7 +466,7 @@ internal static partial class ObjectDropManager
 
             string prefabName = GetPrefabName(prefab);
             List<PrefabConfigurationEntry>? entries = GetVneiEntries(prefabName);
-            SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot);
+            SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot);
             PickableSnapshot? pickableSnapshot = snapshot?.Pickable;
             bool hasRelevantEntries = entries?.Any(entry => entry.Pickable != null) == true;
             if (!hasRelevantEntries && pickableSnapshot == null)
@@ -570,7 +570,7 @@ internal static partial class ObjectDropManager
             GameObject prefab = destructible.gameObject;
             string prefabName = GetPrefabName(prefab);
             List<PrefabConfigurationEntry>? entries = GetVneiEntries(prefabName);
-            SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot);
+            SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot);
             GameObject? baseSpawnPrefab = snapshot?.Destructible?.SpawnWhenDestroyed;
             bool hasRelevantEntries = false;
             bool hasUnconditionalOverride = false;
@@ -713,7 +713,7 @@ internal static partial class ObjectDropManager
 
         string prefabName = GetPrefabName(prefab);
         List<PrefabConfigurationEntry>? entries = GetVneiEntries(prefabName);
-        SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot);
+        SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot);
         DropTable? snapshotTable = snapshot != null ? snapshotSelector(snapshot) : null;
 
         bool hasCustomBlock = false;

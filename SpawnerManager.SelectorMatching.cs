@@ -43,7 +43,7 @@ internal static partial class SpawnerManager
 
     private static string BuildSelectorLocationCacheKey(GameObject gameObject)
     {
-        return TryGetLiveLocationContextForSelector(gameObject, out string locationPrefab, out _)
+        return TryGetLiveLocationContextForSelector(gameObject, out string locationPrefab)
             ? NormalizeSelectorLocationCacheKey(locationPrefab)
             : UnresolvedSelectorLocationCacheKey;
     }
@@ -183,7 +183,6 @@ internal static partial class SpawnerManager
         bool locationContextEvaluated = false;
         bool hasResolvedLocation = false;
         string resolvedLocationPrefab = "";
-        string resolvedLocationSourceLabel = "";
         int winningSpecificity = -1;
         foreach (SpawnerRuntimeEntry entry in entries)
         {
@@ -206,11 +205,16 @@ internal static partial class SpawnerManager
 
             if (!locationContextEvaluated && HasLocationSelector(entry))
             {
-                hasResolvedLocation = TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab, out resolvedLocationSourceLabel);
+                hasResolvedLocation = TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab);
                 locationContextEvaluated = true;
             }
 
-            if (!TryGetEntryMatchSpecificity(gameObject, entry, hasResolvedLocation, hasResolvedLocation ? resolvedLocationPrefab : null, hasResolvedLocation ? resolvedLocationSourceLabel : "", out int specificity))
+            if (!TryGetLocationMatchSpecificity(
+                    gameObject,
+                    entry.Locations,
+                    hasResolvedLocation,
+                    hasResolvedLocation ? resolvedLocationPrefab : null,
+                    out int specificity))
             {
                 continue;
             }
@@ -244,7 +248,6 @@ internal static partial class SpawnerManager
         bool locationContextEvaluated = false;
         bool hasResolvedLocation = false;
         string resolvedLocationPrefab = "";
-        string resolvedLocationSourceLabel = "";
         int winningSpecificity = -1;
         foreach (SpawnerConfigurationEntry entry in entries)
         {
@@ -267,11 +270,16 @@ internal static partial class SpawnerManager
 
             if (!locationContextEvaluated && HasLocationSelector(entry))
             {
-                hasResolvedLocation = TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab, out resolvedLocationSourceLabel);
+                hasResolvedLocation = TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab);
                 locationContextEvaluated = true;
             }
 
-            if (!TryGetEntryMatchSpecificity(gameObject, entry, hasResolvedLocation, hasResolvedLocation ? resolvedLocationPrefab : null, hasResolvedLocation ? resolvedLocationSourceLabel : "", out int specificity))
+            if (!TryGetLocationMatchSpecificity(
+                    gameObject,
+                    entry.Locations,
+                    hasResolvedLocation,
+                    hasResolvedLocation ? resolvedLocationPrefab : null,
+                    out int specificity))
             {
                 continue;
             }
@@ -294,24 +302,11 @@ internal static partial class SpawnerManager
         return winningEntry != null;
     }
 
-    private static bool TryGetEntryMatchSpecificity(GameObject gameObject, SpawnerConfigurationEntry entry, out int specificity)
-    {
-        bool hasResolvedLocation = TryGetLiveLocationContextForSelector(gameObject, out string locationPrefab, out string sourceLabel);
-        return TryGetEntryMatchSpecificity(gameObject, entry, hasResolvedLocation, hasResolvedLocation ? locationPrefab : null, hasResolvedLocation ? sourceLabel : "", out specificity);
-    }
-
-    private static bool TryGetEntryMatchSpecificity(GameObject gameObject, SpawnerRuntimeEntry entry, out int specificity)
-    {
-        bool hasResolvedLocation = TryGetLiveLocationContextForSelector(gameObject, out string locationPrefab, out string sourceLabel);
-        return TryGetEntryMatchSpecificity(gameObject, entry, hasResolvedLocation, hasResolvedLocation ? locationPrefab : null, hasResolvedLocation ? sourceLabel : "", out specificity);
-    }
-
-    private static bool TryGetEntryMatchSpecificity(
+    private static bool TryGetLocationMatchSpecificity(
         GameObject gameObject,
-        SpawnerConfigurationEntry entry,
+        List<string>? locations,
         bool hasResolvedLocation,
         string? resolvedLocationPrefab,
-        string sourceLabel,
         out int specificity)
     {
         specificity = 0;
@@ -320,7 +315,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        bool hasLocationSelector = HasLocationSelector(entry);
+        bool hasLocationSelector = HasLocationSelector(locations);
         if (!hasLocationSelector)
         {
             return true;
@@ -331,7 +326,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        if (!MatchesLocationSelector(entry.Locations, resolvedLocationPrefab))
+        if (!MatchesLocationSelector(locations, resolvedLocationPrefab))
         {
             return false;
         }
@@ -340,44 +335,9 @@ internal static partial class SpawnerManager
         return true;
     }
 
-    private static bool TryGetEntryMatchSpecificity(
-        GameObject gameObject,
-        SpawnerRuntimeEntry entry,
-        bool hasResolvedLocation,
-        string? resolvedLocationPrefab,
-        string sourceLabel,
-        out int specificity)
-    {
-        specificity = 0;
-        if (gameObject == null)
-        {
-            return false;
-        }
-
-        bool hasLocationSelector = HasLocationSelector(entry);
-        if (!hasLocationSelector)
-        {
-            return true;
-        }
-
-        if (!hasResolvedLocation)
-        {
-            return false;
-        }
-
-        if (!MatchesLocationSelector(entry.Locations, resolvedLocationPrefab))
-        {
-            return false;
-        }
-
-        specificity = 1;
-        return true;
-    }
-
-    private static bool TryGetLiveLocationContextForSelector(GameObject gameObject, out string locationPrefab, out string sourceLabel)
+    private static bool TryGetLiveLocationContextForSelector(GameObject gameObject, out string locationPrefab)
     {
         locationPrefab = "";
-        sourceLabel = "";
         if (gameObject == null)
         {
             return false;
@@ -385,61 +345,51 @@ internal static partial class SpawnerManager
 
         if (TryGetRecordedLocationContext(gameObject, out locationPrefab, out _))
         {
-            sourceLabel = "Provenance";
             return locationPrefab.Length > 0;
         }
 
         if (TryGetActiveLocationSpawnContextPrefab(out locationPrefab))
         {
-            sourceLabel = "SpawnLocationContext";
             return locationPrefab.Length > 0;
         }
 
         if (TryGetLiveLocationProxyPrefab(gameObject, out locationPrefab))
         {
-            sourceLabel = "LocationProxy";
             return locationPrefab.Length > 0;
         }
 
         if (TryGetClonedZoneLocationContext(gameObject, out locationPrefab))
         {
-            sourceLabel = "LocationZone";
             return true;
         }
 
         if (TryGetPersistedSpawnerLocationContext(gameObject, out locationPrefab, out _))
         {
-            sourceLabel = "PersistedProvenance";
             return true;
         }
 
         if (TryGetDungeonGeneratorLocationContext(gameObject, out locationPrefab))
         {
-            sourceLabel = "DungeonGenerator";
             return true;
         }
 
         if (TryGetDirectLocationContext(gameObject, out locationPrefab, out _))
         {
-            sourceLabel = "LocationComponent";
             return locationPrefab.Length > 0;
         }
 
         if (TryGetStaticLocationContext(gameObject, out locationPrefab, out _))
         {
-            sourceLabel = "LocationStatic";
             return locationPrefab.Length > 0;
         }
 
         if (TryGetZoneLocationContext(gameObject, out locationPrefab))
         {
-            sourceLabel = "LocationZone";
             return locationPrefab.Length > 0;
         }
 
         if (TryPromoteSpatialContextToRecordedProvenance(gameObject, out locationPrefab, out _))
         {
-            sourceLabel = "LocationRadius";
             return locationPrefab.Length > 0;
         }
 

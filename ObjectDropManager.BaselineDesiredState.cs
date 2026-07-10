@@ -90,7 +90,7 @@ internal static partial class ObjectDropManager
             GameDataSignature = gameDataSignature,
             ApplyPlan = applyPlan,
             CurrentEntrySignatures = currentEntrySignatures,
-            RuntimeConfigurationState = _runtimeDropConfigurationState,
+            RuntimeConfigurationState = DropRuntimeState.Configuration,
             DomainEnabled = domainEnabled,
             QueueLiveReconcile = queueLiveReconcile,
             DirtyPrefabs = dirtyPrefabs,

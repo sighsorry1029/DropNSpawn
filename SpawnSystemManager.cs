@@ -46,8 +46,7 @@ internal static partial class SpawnSystemManager
             GetPendingReconcileWorkCount = GetPendingReconcileWorkCount,
             ProcessPendingReconcileStep = ProcessQueuedReconcileStep,
             BeforeClientManifestChanged = MarkSyncedPayloadPending,
-            OnClientAuthorityCutover = EnterPendingSyncedPayloadState,
-            Hooks = SpawnSystemTransportHooks.Instance
+            OnClientAuthorityCutover = EnterPendingSyncedPayloadState
     });
     internal static DomainDescriptor<CanonicalSpawnSystemEntry> Descriptor => Module.DescriptorTyped;
     internal static DomainTransportMetadata<CanonicalSpawnSystemEntry> TransportMetadata => Module.TransportMetadataTyped;
@@ -234,34 +233,10 @@ internal static partial class SpawnSystemManager
     private static readonly DeferredExpandWorldDataBiomeState DeferredBiomeState = new();
     private static readonly SpawnSystemBuildPipelineState BuildPipelineState = new();
 
-    private static List<CanonicalSpawnSystemEntry> _configuration
-    {
-        get => RuntimeState.Configuration;
-        set => RuntimeState.Configuration = value;
-    }
-
-    private static string _configurationSignature
-    {
-        get => RuntimeState.ConfigurationSignature;
-        set => RuntimeState.ConfigurationSignature = value;
-    }
-
-    private static bool _configurationReady
-    {
-        get => RuntimeState.ConfigurationReady;
-        set => RuntimeState.ConfigurationReady = value;
-    }
-
     private static string _lastFailedConfigurationPayload = "";
     private static DomainLoadState LoadState => ConfigurationRuntime.LoadState;
     private static bool _initialized;
     private static int? _lastCompletedGameDataSignature;
-    private static int? _pendingGameDataSignature
-    {
-        get => BuildPipelineState.PendingGameDataSignature;
-        set => BuildPipelineState.PendingGameDataSignature = value;
-    }
-
     private static string _lastAppliedConfigurationSignature = "";
     private static string _lastAppliedPreparedEntriesSignature = "";
     private static int? _lastAppliedGameDataSignature;
@@ -272,44 +247,7 @@ internal static partial class SpawnSystemManager
     private static int? _lastRuntimeTimeOfDayPhaseMarker;
     private static int _lastRuntimeTimeOfDayRefreshFrame = -1;
     private static SpawnSystemSnapshot? _templateSnapshot;
-    private static List<PreparedSpawnSystemEntry>? _preparedEntriesCache;
     private static bool _hasRuntimeTimeOfDayOverrides;
-    private static int _preparedEntriesBuildVersion
-    {
-        get => BuildPipelineState.PreparedEntriesBuildVersion;
-        set => BuildPipelineState.PreparedEntriesBuildVersion = value;
-    }
-
-    private static bool _preparedEntriesBuildInFlight
-    {
-        get => BuildPipelineState.PreparedEntriesBuildInFlight;
-        set => BuildPipelineState.PreparedEntriesBuildInFlight = value;
-    }
-
-    private static bool _preparedEntriesBuildWorkerRunning
-    {
-        get => BuildPipelineState.PreparedEntriesBuildWorkerRunning;
-        set => BuildPipelineState.PreparedEntriesBuildWorkerRunning = value;
-    }
-
-    private static PreparedEntriesBuildResult? _completedPreparedEntriesBuildResult
-    {
-        get => BuildPipelineState.CompletedPreparedEntriesBuildResult;
-        set => BuildPipelineState.CompletedPreparedEntriesBuildResult = value;
-    }
-
-    private static PendingPreparedEntriesBuildRequest? _pendingPreparedEntriesBuildRequest
-    {
-        get => BuildPipelineState.PendingPreparedEntriesBuildRequest;
-        set => BuildPipelineState.PendingPreparedEntriesBuildRequest = value;
-    }
-
-    private static PendingCompiledTableBuildState? _pendingCompiledTableBuild
-    {
-        get => BuildPipelineState.PendingCompiledTableBuild;
-        set => BuildPipelineState.PendingCompiledTableBuild = value;
-    }
-
     private static CompiledSpawnSystemTable? _activeCompiledTable;
     private static CompiledSpawnSystemTable? _vanillaCompiledTable;
     private static GameObject? _managedSpawnListHost;
@@ -318,12 +256,6 @@ internal static partial class SpawnSystemManager
     private static bool _liveSystemsBootstrapAttempted;
     private static int? _liveSystemsRegistrySceneInstanceId;
     private static string _lastAppliedBuildTargetSignature = "";
-    private static string _pendingBuildTargetSignature
-    {
-        get => BuildPipelineState.PendingBuildTargetSignature;
-        set => BuildPipelineState.PendingBuildTargetSignature = value;
-    }
-
     private static HashSet<string>? _capturedStrictValidationWarnings;
     private static bool _forceApplyAfterSyncedCommit;
     private static int _cachedGameDataSignatureFrame = -1;
@@ -366,7 +298,7 @@ internal static partial class SpawnSystemManager
                 payloadToken => ConfigurationDomainHost.ShouldSkipSyncedPayload(
                     LoadState,
                     payloadToken,
-                    _configurationReady),
+                    RuntimeState.ConfigurationReady),
                 BuildSyncedConfigurationState,
                 CommitConfigurationState,
                 state => state.Configuration.Count,
@@ -396,7 +328,7 @@ internal static partial class SpawnSystemManager
                 {
                     ClearQueuedReconcileState();
                     ResetPreparedEntriesBuildPipelineLocked(clearPendingTargetSignature: true);
-                    _configurationReady = false;
+                    RuntimeState.ConfigurationReady = false;
                     _forceApplyAfterSyncedCommit = false;
                 });
         }
@@ -411,7 +343,7 @@ internal static partial class SpawnSystemManager
                 beforeResetLoadState: ResetLoadedConfigurationState,
                 afterResetLoadState: () =>
                 {
-                    _configurationSignature = "";
+                    RuntimeState.ConfigurationSignature = "";
                     _lastFailedConfigurationPayload = "";
                     _lastCommittedAuthorityEpoch = null;
                     _lastAppliedConfigurationSignature = "";
@@ -429,7 +361,7 @@ internal static partial class SpawnSystemManager
     {
         return ShouldApplyLocally() &&
                !DropNSpawnPlugin.IsSourceOfTruth &&
-               !_configurationReady &&
+               !RuntimeState.ConfigurationReady &&
                gameDataSignature != 0 &&
                _activeCompiledTable != null &&
                _activeCompiledTable.Lists.Count > 0 &&
@@ -453,7 +385,7 @@ internal static partial class SpawnSystemManager
         CompiledSpawnSystemTable? baselineTable = GetSelectedCompiledTableForCurrentState();
         QueueLiveSystemAttachForTable(
             baselineTable,
-            _preparedEntriesBuildVersion,
+            BuildPipelineState.PreparedEntriesBuildVersion,
             true,
             liveSystems);
         RetireCompiledTableAfterMigrationLocked(previousSelectedTable, baselineTable, liveSystems);
@@ -477,7 +409,6 @@ internal static partial class SpawnSystemManager
     {
         lock (Sync)
         {
-            InvalidatePreparedEntriesCache();
             LoadConfiguration();
             ApplyIfReady(queueEspRefreshForLiveSystems: true, queueLiveSystemAttach: true);
         }
@@ -493,7 +424,7 @@ internal static partial class SpawnSystemManager
             }
 
             string previousLoadedPayload = LoadState.LastLoadedPayload;
-            string previousSignature = _configurationSignature;
+            string previousSignature = RuntimeState.ConfigurationSignature;
             bool hadPendingValidation = LoadState.PendingStrictPayload.Length > 0;
             bool hadDeferredWork = DeferredBiomeState.HasWork;
 
@@ -503,7 +434,7 @@ internal static partial class SpawnSystemManager
             return hadPendingValidation ||
                    hadDeferredWork ||
                    !string.Equals(previousLoadedPayload, LoadState.LastLoadedPayload, StringComparison.Ordinal) ||
-                   !string.Equals(previousSignature, _configurationSignature, StringComparison.Ordinal);
+                   !string.Equals(previousSignature, RuntimeState.ConfigurationSignature, StringComparison.Ordinal);
         }
     }
 
@@ -531,16 +462,14 @@ internal static partial class SpawnSystemManager
             EnsureLiveSystemRegistrySessionLocked();
             int gameDataSignature = ComputeGameDataSignature();
             if (_lastCompletedGameDataSignature == gameDataSignature ||
-                _pendingGameDataSignature == gameDataSignature)
+                BuildPipelineState.PendingGameDataSignature == gameDataSignature)
             {
                 return;
             }
 
-            _pendingGameDataSignature = gameDataSignature;
+            BuildPipelineState.PendingGameDataSignature = gameDataSignature;
             ClearQueuedReconcileState();
             RefreshSnapshots();
-            InvalidatePreparedEntriesCache();
-
             if (DropNSpawnPlugin.IsSourceOfTruth)
             {
                 HandleSourceOfTruthGameDataReady();
@@ -617,8 +546,8 @@ internal static partial class SpawnSystemManager
 
     private static bool HasPendingReconcileWorkLocked()
     {
-        return _completedPreparedEntriesBuildResult != null ||
-               _pendingCompiledTableBuild != null ||
+        return BuildPipelineState.CompletedPreparedEntriesBuildResult != null ||
+               BuildPipelineState.PendingCompiledTableBuild != null ||
                DeferredBiomeState.HasWork ||
                PendingLiveSystemAttaches.Count > 0 ||
                EspSpawnSystemCompatibility.HasPendingRefreshes();
@@ -627,7 +556,7 @@ internal static partial class SpawnSystemManager
     private static int GetPendingReconcileWorkCountLocked()
     {
         int count = 0;
-        if (_completedPreparedEntriesBuildResult != null)
+        if (BuildPipelineState.CompletedPreparedEntriesBuildResult != null)
         {
             count++;
         }
@@ -637,9 +566,9 @@ internal static partial class SpawnSystemManager
             count++;
         }
 
-        if (_pendingCompiledTableBuild != null)
+        if (BuildPipelineState.PendingCompiledTableBuild != null)
         {
-            count += CountPendingCompiledTableBuildWork(_pendingCompiledTableBuild);
+            count += CountPendingCompiledTableBuildWork(BuildPipelineState.PendingCompiledTableBuild);
         }
 
         count += PendingLiveSystemAttaches.Count;
@@ -771,7 +700,6 @@ internal static partial class SpawnSystemManager
         InvalidEntryWarnings.Clear();
         RuntimeState.Reset();
         DeferredBiomeState.Clear();
-        InvalidatePreparedEntriesCache();
     }
 
     private static List<SpawnSystemConfigurationEntry> CloneAndNormalizeConfigurationEntries(
@@ -934,9 +862,9 @@ internal static partial class SpawnSystemManager
     private static void CommitConfigurationState(SyncedSpawnSystemConfigurationState state, string payloadToken)
     {
         ResetLoadedConfigurationState();
-        _configuration = state.Configuration;
-        _configurationReady = state.ConfigurationReady;
-        _configurationSignature = state.ConfigurationSignature;
+        RuntimeState.Configuration = state.Configuration;
+        RuntimeState.ConfigurationReady = state.ConfigurationReady;
+        RuntimeState.ConfigurationSignature = state.ConfigurationSignature;
         _lastCommittedAuthorityEpoch = DropNSpawnPlugin.IsSourceOfTruth
             ? null
             : NetworkPayloadSyncSupport.CurrentAuthorityEpoch;
@@ -956,8 +884,8 @@ internal static partial class SpawnSystemManager
     private static void OnSourceOfTruthPayloadUnchanged()
     {
         RefreshResolvedBiomeMasksForSourceOfTruthConfigurationLocked();
-        _configurationSignature = NetworkPayloadSyncSupport.ComputeSpawnSystemConfigurationSignature(_configuration);
-        if (!NetworkPayloadSyncSupport.IsPayloadCurrent(Descriptor, _configurationSignature) ||
+        RuntimeState.ConfigurationSignature = NetworkPayloadSyncSupport.ComputeSpawnSystemConfigurationSignature(RuntimeState.Configuration);
+        if (!NetworkPayloadSyncSupport.IsPayloadCurrent(Descriptor, RuntimeState.ConfigurationSignature) ||
             DeferredBiomeState.HasWork)
         {
             PublishSyncedConfigurationOrDeferLocked();
@@ -1184,8 +1112,8 @@ internal static partial class SpawnSystemManager
             return;
         }
 
-        if (string.Equals(_pendingBuildTargetSignature, applyTargetSignature, StringComparison.Ordinal) &&
-            (_preparedEntriesBuildInFlight || _completedPreparedEntriesBuildResult != null || _pendingCompiledTableBuild != null))
+        if (string.Equals(BuildPipelineState.PendingBuildTargetSignature, applyTargetSignature, StringComparison.Ordinal) &&
+            (BuildPipelineState.PreparedEntriesBuildInFlight || BuildPipelineState.CompletedPreparedEntriesBuildResult != null || BuildPipelineState.PendingCompiledTableBuild != null))
         {
             return;
         }
@@ -1211,7 +1139,7 @@ internal static partial class SpawnSystemManager
             return;
         }
 
-        if (!_configurationReady)
+        if (!RuntimeState.ConfigurationReady)
         {
             if (CanRetainCurrentCompiledTableWhilePending(gameDataSignature))
             {
@@ -1263,7 +1191,7 @@ internal static partial class SpawnSystemManager
         {
             QueueLiveSystemAttachForTable(
                 _activeCompiledTable,
-                _preparedEntriesBuildVersion,
+                BuildPipelineState.PreparedEntriesBuildVersion,
                 queueEspRefreshForLiveSystems,
                 liveSystems);
         }
@@ -1376,14 +1304,14 @@ internal static partial class SpawnSystemManager
     {
         _lastAppliedGameDataSignature = gameDataSignature;
         _lastAppliedDomainEnabled = domainEnabled;
-        _lastAppliedConfigurationSignature = _configurationSignature;
+        _lastAppliedConfigurationSignature = RuntimeState.ConfigurationSignature;
         _lastAppliedPreparedEntriesSignature = preparedEntriesSignature;
         _lastAppliedBuildTargetSignature = applyTargetSignature;
         _forceApplyAfterSyncedCommit = false;
         _lastCompletedGameDataSignature = gameDataSignature;
-        if (_pendingGameDataSignature == gameDataSignature)
+        if (BuildPipelineState.PendingGameDataSignature == gameDataSignature)
         {
-            _pendingGameDataSignature = null;
+            BuildPipelineState.PendingGameDataSignature = null;
         }
     }
 
@@ -1394,9 +1322,9 @@ internal static partial class SpawnSystemManager
             "|",
             domainEnabled ? "enabled" : "disabled",
             "|",
-            _configurationReady ? "config_ready" : "config_pending",
+            RuntimeState.ConfigurationReady ? "config_ready" : "config_pending",
             "|",
-            _configurationSignature,
+            RuntimeState.ConfigurationSignature,
             "|",
             PluginSettingsFacade.ShouldDisableLowTierBiomeGlobalKeySpawnSystemEntries() ? "low_tier_global_key_filter_on" : "low_tier_global_key_filter_off");
     }
@@ -1412,7 +1340,7 @@ internal static partial class SpawnSystemManager
         EnsureVanillaCompiledTableCurrentLocked(gameDataSignature);
         _activeCompiledTable = null;
         CompiledSpawnSystemTable? selectedTable = GetSelectedCompiledTableForCurrentState();
-        QueueLiveSystemAttachForTable(selectedTable, _preparedEntriesBuildVersion, queueEspRefreshForLiveSystems, liveSystems);
+        QueueLiveSystemAttachForTable(selectedTable, BuildPipelineState.PreparedEntriesBuildVersion, queueEspRefreshForLiveSystems, liveSystems);
         RetireCompiledTableAfterMigrationLocked(previousSelectedTable, selectedTable, liveSystems);
         RecordAppliedState(gameDataSignature, domainEnabled, "", applyTargetSignature);
     }
@@ -1434,12 +1362,12 @@ internal static partial class SpawnSystemManager
         bool queueEspRefreshForLiveSystems)
     {
         ClearQueuedReconcileState();
-        _preparedEntriesBuildVersion++;
-        int buildVersion = _preparedEntriesBuildVersion;
-        _preparedEntriesBuildInFlight = true;
-        _completedPreparedEntriesBuildResult = null;
-        _pendingCompiledTableBuild = null;
-        _pendingBuildTargetSignature = applyTargetSignature;
+        BuildPipelineState.PreparedEntriesBuildVersion++;
+        int buildVersion = BuildPipelineState.PreparedEntriesBuildVersion;
+        BuildPipelineState.PreparedEntriesBuildInFlight = true;
+        BuildPipelineState.CompletedPreparedEntriesBuildResult = null;
+        BuildPipelineState.PendingCompiledTableBuild = null;
+        BuildPipelineState.PendingBuildTargetSignature = applyTargetSignature;
         PendingPreparedEntriesBuildRequest request = new()
         {
             BuildVersion = buildVersion,
@@ -1448,19 +1376,19 @@ internal static partial class SpawnSystemManager
             ApplyTargetSignature = applyTargetSignature,
             QueueEspRefreshForLiveSystems = queueEspRefreshForLiveSystems
         };
-        request.ConfigurationSnapshot.AddRange(_configuration);
-        _pendingPreparedEntriesBuildRequest = request;
+        request.ConfigurationSnapshot.AddRange(RuntimeState.Configuration);
+        BuildPipelineState.PendingPreparedEntriesBuildRequest = request;
         EnsurePreparedEntriesBuildWorkerLocked();
     }
 
     private static void EnsurePreparedEntriesBuildWorkerLocked()
     {
-        if (_preparedEntriesBuildWorkerRunning)
+        if (BuildPipelineState.PreparedEntriesBuildWorkerRunning)
         {
             return;
         }
 
-        _preparedEntriesBuildWorkerRunning = true;
+        BuildPipelineState.PreparedEntriesBuildWorkerRunning = true;
         ThreadPool.QueueUserWorkItem(_ => ProcessPreparedEntriesBuildWorker());
     }
 
@@ -1471,14 +1399,14 @@ internal static partial class SpawnSystemManager
             PendingPreparedEntriesBuildRequest? request;
             lock (Sync)
             {
-                request = _pendingPreparedEntriesBuildRequest;
-                _pendingPreparedEntriesBuildRequest = null;
+                request = BuildPipelineState.PendingPreparedEntriesBuildRequest;
+                BuildPipelineState.PendingPreparedEntriesBuildRequest = null;
                 if (request == null)
                 {
-                    _preparedEntriesBuildWorkerRunning = false;
-                    if (_completedPreparedEntriesBuildResult == null)
+                    BuildPipelineState.PreparedEntriesBuildWorkerRunning = false;
+                    if (BuildPipelineState.CompletedPreparedEntriesBuildResult == null)
                     {
-                        _preparedEntriesBuildInFlight = false;
+                        BuildPipelineState.PreparedEntriesBuildInFlight = false;
                     }
 
                     return;
@@ -1503,8 +1431,8 @@ internal static partial class SpawnSystemManager
                     PruneFinalizedPreparedEntryCacheLocked(
                         result.GameDataSignature,
                         result.Models.Select(model => model.EntrySignature));
-                    _completedPreparedEntriesBuildResult = result;
-                    _preparedEntriesBuildInFlight = _pendingPreparedEntriesBuildRequest != null;
+                    BuildPipelineState.CompletedPreparedEntriesBuildResult = result;
+                    BuildPipelineState.PreparedEntriesBuildInFlight = BuildPipelineState.PendingPreparedEntriesBuildRequest != null;
                 }
             }
             catch (Exception ex)
@@ -1514,12 +1442,12 @@ internal static partial class SpawnSystemManager
                     if (request != null &&
                         IsPreparedEntriesBuildCurrentLocked(request.BuildVersion, request.ApplyTargetSignature))
                     {
-                        _preparedEntriesBuildInFlight = _pendingPreparedEntriesBuildRequest != null;
-                        _completedPreparedEntriesBuildResult = null;
-                        if (_pendingPreparedEntriesBuildRequest == null)
+                        BuildPipelineState.PreparedEntriesBuildInFlight = BuildPipelineState.PendingPreparedEntriesBuildRequest != null;
+                        BuildPipelineState.CompletedPreparedEntriesBuildResult = null;
+                        if (BuildPipelineState.PendingPreparedEntriesBuildRequest == null)
                         {
-                            _pendingBuildTargetSignature = "";
-                            _pendingGameDataSignature = null;
+                            BuildPipelineState.PendingBuildTargetSignature = "";
+                            BuildPipelineState.PendingGameDataSignature = null;
                         }
                     }
                 }
@@ -1531,8 +1459,8 @@ internal static partial class SpawnSystemManager
 
     private static bool IsPreparedEntriesBuildCurrentLocked(int buildVersion, string applyTargetSignature)
     {
-        return buildVersion == _preparedEntriesBuildVersion &&
-               string.Equals(_pendingBuildTargetSignature, applyTargetSignature, StringComparison.Ordinal);
+        return buildVersion == BuildPipelineState.PreparedEntriesBuildVersion &&
+               string.Equals(BuildPipelineState.PendingBuildTargetSignature, applyTargetSignature, StringComparison.Ordinal);
     }
 
     private static bool IsPreparedEntriesBuildCurrent(int buildVersion, string applyTargetSignature)
@@ -1632,7 +1560,7 @@ internal static partial class SpawnSystemManager
             return;
         }
 
-        RefreshResolvedBiomeMasksForConfiguration(_configuration);
+        RefreshResolvedBiomeMasksForConfiguration(RuntimeState.Configuration);
     }
 
     private static void RefreshResolvedBiomeMasksForConfiguration(IEnumerable<CanonicalSpawnSystemEntry> configuration)
@@ -1669,13 +1597,13 @@ internal static partial class SpawnSystemManager
         ConfigurationDomainHost.PublishSyncedPayload(
             DropNSpawnPlugin.IsSourceOfTruth,
             Descriptor,
-            _configuration,
-            _configurationSignature);
+            RuntimeState.Configuration,
+            RuntimeState.ConfigurationSignature);
     }
 
     private static bool ShouldDeferForExpandWorldDataBiomeReadyLocked()
     {
-        return ShouldDeferForExpandWorldDataBiomeReady(_configuration);
+        return ShouldDeferForExpandWorldDataBiomeReady(RuntimeState.Configuration);
     }
 
     private static bool ShouldDeferForExpandWorldDataBiomeReady(IEnumerable<CanonicalSpawnSystemEntry> configuration)
@@ -1731,14 +1659,14 @@ internal static partial class SpawnSystemManager
             out bool publishSyncedConfiguration);
 
         RefreshResolvedBiomeMasksForSourceOfTruthConfigurationLocked();
-        _configurationSignature = NetworkPayloadSyncSupport.ComputeSpawnSystemConfigurationSignature(_configuration);
+        RuntimeState.ConfigurationSignature = NetworkPayloadSyncSupport.ComputeSpawnSystemConfigurationSignature(RuntimeState.Configuration);
         if (publishSyncedConfiguration)
         {
             ConfigurationDomainHost.PublishSyncedPayload(
                 DropNSpawnPlugin.IsSourceOfTruth,
                 Descriptor,
-                _configuration,
-                _configurationSignature);
+                RuntimeState.Configuration,
+                RuntimeState.ConfigurationSignature);
         }
 
         ApplyIfReady(queueEspRefreshForLiveSystems, queueLiveSystemAttach);
@@ -1747,15 +1675,15 @@ internal static partial class SpawnSystemManager
 
     private static bool TryActivateCompletedPreparedEntriesBuildLocked()
     {
-        if (_completedPreparedEntriesBuildResult == null)
+        if (BuildPipelineState.CompletedPreparedEntriesBuildResult == null)
         {
             return false;
         }
 
-        PreparedEntriesBuildResult completedResult = _completedPreparedEntriesBuildResult;
-        _completedPreparedEntriesBuildResult = null;
-        if (completedResult.BuildVersion != _preparedEntriesBuildVersion ||
-            !string.Equals(_pendingBuildTargetSignature, completedResult.ApplyTargetSignature, StringComparison.Ordinal))
+        PreparedEntriesBuildResult completedResult = BuildPipelineState.CompletedPreparedEntriesBuildResult;
+        BuildPipelineState.CompletedPreparedEntriesBuildResult = null;
+        if (completedResult.BuildVersion != BuildPipelineState.PreparedEntriesBuildVersion ||
+            !string.Equals(BuildPipelineState.PendingBuildTargetSignature, completedResult.ApplyTargetSignature, StringComparison.Ordinal))
         {
             return true;
         }
@@ -1772,22 +1700,22 @@ internal static partial class SpawnSystemManager
             PreviousVanillaTable = _vanillaCompiledTable
         };
         buildState.Models.AddRange(completedResult.Models);
-        _pendingCompiledTableBuild = buildState;
+        BuildPipelineState.PendingCompiledTableBuild = buildState;
         return true;
     }
 
     private static bool TryProcessPendingCompiledTableBuild(float deadline)
     {
-        if (_pendingCompiledTableBuild == null)
+        if (BuildPipelineState.PendingCompiledTableBuild == null)
         {
             return false;
         }
 
-        PendingCompiledTableBuildState buildState = _pendingCompiledTableBuild;
-        if (buildState.BuildVersion != _preparedEntriesBuildVersion ||
-            !string.Equals(_pendingBuildTargetSignature, buildState.ApplyTargetSignature, StringComparison.Ordinal))
+        PendingCompiledTableBuildState buildState = BuildPipelineState.PendingCompiledTableBuild;
+        if (buildState.BuildVersion != BuildPipelineState.PreparedEntriesBuildVersion ||
+            !string.Equals(BuildPipelineState.PendingBuildTargetSignature, buildState.ApplyTargetSignature, StringComparison.Ordinal))
         {
-            _pendingCompiledTableBuild = null;
+            BuildPipelineState.PendingCompiledTableBuild = null;
             return true;
         }
 
@@ -1870,8 +1798,8 @@ internal static partial class SpawnSystemManager
             buildState.DomainEnabled,
             buildState.PreparedEntriesSignature,
             buildState.ApplyTargetSignature);
-        _pendingBuildTargetSignature = "";
-        _pendingCompiledTableBuild = null;
+        BuildPipelineState.PendingBuildTargetSignature = "";
+        BuildPipelineState.PendingCompiledTableBuild = null;
         return true;
     }
 
@@ -1969,26 +1897,6 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    private static void AddCompiledRuntimeState(CompiledSpawnSystemTable? table)
-    {
-        if (table == null)
-        {
-            return;
-        }
-
-        foreach ((SpawnSystem.SpawnData spawnData, TimeOfDayDefinition timeOfDay) in table.RuntimeTimeOfDayBySpawnData)
-        {
-            TimeOfDayBySpawnData[spawnData] = timeOfDay;
-        }
-
-        foreach ((SpawnSystem.SpawnData spawnData, SpawnSystemCustomDataSupport.PreparedPayload? payload) in table.CustomPayloadsBySpawnData)
-        {
-            SpawnSystemCustomDataSupport.ApplyPreparedPayload(spawnData, payload);
-        }
-
-        _hasRuntimeTimeOfDayOverrides = TimeOfDayBySpawnData.Count > 0;
-    }
-
     private static void RemoveCompiledRuntimeState(CompiledSpawnSystemTable? table)
     {
         if (table == null)
@@ -2009,14 +1917,6 @@ internal static partial class SpawnSystemManager
         }
 
         _hasRuntimeTimeOfDayOverrides = TimeOfDayBySpawnData.Count > 0;
-    }
-
-    private static void ClearRuntimeCompiledState()
-    {
-        InvalidateRuntimeTimeOfDayPhaseMarker();
-        TimeOfDayBySpawnData.Clear();
-        _hasRuntimeTimeOfDayOverrides = false;
-        SpawnSystemCustomDataSupport.ClearAll();
     }
 
     private static void RetireCompiledTableAfterMigrationLocked(
@@ -2118,119 +2018,6 @@ internal static partial class SpawnSystemManager
         }
 
         DestroyReplacedCompiledTable(table);
-    }
-
-    private static void QueueLiveSystemAttachForTable(
-        CompiledSpawnSystemTable? table,
-        int buildVersion,
-        bool queueEspRefresh,
-        IEnumerable<SpawnSystem>? systems = null)
-    {
-        QueueLiveSystemAttachForTableCore(table, buildVersion, queueEspRefresh, systems);
-    }
-
-    private static void QueueLiveSystemAttach(
-        SpawnSystem? system,
-        CompiledSpawnSystemTable targetTable,
-        int buildVersion,
-        bool queueEspRefresh)
-    {
-        QueueLiveSystemAttachCore(system, targetTable, buildVersion, queueEspRefresh);
-    }
-
-    private static void AttachTableToSystem(SpawnSystem? system, CompiledSpawnSystemTable? table)
-    {
-        AttachTableToSystemCore(system, table);
-    }
-
-    private static bool IsSystemAttachedToCompiledTable(SpawnSystem? system, CompiledSpawnSystemTable? table)
-    {
-        return IsSystemAttachedToCompiledTableCore(system, table);
-    }
-
-    private static List<SpawnSystemList> CloneAttachedSpawnLists(CompiledSpawnSystemTable table)
-    {
-        return CloneAttachedSpawnListsCore(table);
-    }
-
-    private static CompiledSpawnSystemTable? GetSelectedCompiledTableForCurrentState()
-    {
-        return GetSelectedCompiledTableForCurrentStateCore();
-    }
-
-    private static CompiledSpawnSystemTable? BuildVanillaCompiledTable(int gameDataSignature)
-    {
-        return BuildVanillaCompiledTableCore(gameDataSignature);
-    }
-
-    private static CompiledSpawnSystemTable BuildActiveCompiledTable(int gameDataSignature, List<PreparedSpawnSystemEntry> entries, string preparedEntriesSignature)
-    {
-        return BuildActiveCompiledTableCore(gameDataSignature, entries, preparedEntriesSignature);
-    }
-
-    private static List<SpawnSystemList> GetVanillaSourceSpawnLists()
-    {
-        return GetVanillaSourceSpawnListsCore();
-    }
-
-    private static List<SpawnSystemList> GetVanillaSourceSpawnLists(out bool referenceSourceTrusted)
-    {
-        return GetVanillaSourceSpawnListsCore(out referenceSourceTrusted);
-    }
-
-    private static SpawnSystem? GetZoneCtrlPrefabSpawnSystem()
-    {
-        return GetZoneCtrlPrefabSpawnSystemCore();
-    }
-
-    private static SpawnSystemList CreateManagedSpawnList(List<SpawnSystem.SpawnData> spawners)
-    {
-        return CreateManagedSpawnListCore(spawners);
-    }
-
-    private static SpawnSystemList CreateAttachedSpawnList(List<SpawnSystem.SpawnData> spawners)
-    {
-        return CreateAttachedSpawnListCore(spawners);
-    }
-
-    private static GameObject GetManagedSpawnListHost()
-    {
-        return GetManagedSpawnListHostCore();
-    }
-
-    private static GameObject GetAttachedSpawnListHost()
-    {
-        return GetAttachedSpawnListHostCore();
-    }
-
-    private static void ClearAttachedRuntimeState(SpawnSystem? system)
-    {
-        ClearAttachedRuntimeStateCore(system);
-    }
-
-    private static void DestroyAttachedSpawnLists(IEnumerable<SpawnSystemList>? spawnLists)
-    {
-        DestroyAttachedSpawnListsCore(spawnLists);
-    }
-
-    private static void DestroyReplacedCompiledTable(CompiledSpawnSystemTable? table)
-    {
-        DestroyReplacedCompiledTableCore(table);
-    }
-
-    private static List<PreparedSpawnSystemEntry> BuildPreparedEntries()
-    {
-        return BuildPreparedEntriesCore();
-    }
-
-    private static void InvalidatePreparedEntriesCache()
-    {
-        InvalidatePreparedEntriesCacheCore();
-    }
-
-    private static string ComputePreparedEntriesSignature(List<PreparedSpawnSystemEntry> entries)
-    {
-        return ComputePreparedEntriesSignatureCore(entries);
     }
 
     internal static bool ApplyEntry(SpawnSystem.SpawnData data, CanonicalSpawnSystemEntry entry, string context, bool applyCustomData = true)
@@ -2416,11 +2203,6 @@ internal static partial class SpawnSystemManager
         _hasRuntimeTimeOfDayOverrides = TimeOfDayBySpawnData.Count > 0;
     }
 
-    private static bool IsPreparedEntriesCacheValid()
-    {
-        return _preparedEntriesCache != null;
-    }
-
     private static int ComputeGameDataSignature()
     {
         int frame = Time.frameCount;
@@ -2508,7 +2290,7 @@ internal static partial class SpawnSystemManager
 
         int sceneStamp = ComputeConfiguredSpawnSystemResolutionKeysSceneStamp();
         if (_cachedConfiguredSpawnSystemResolutionKeysSceneStamp == sceneStamp &&
-            string.Equals(_cachedConfiguredSpawnSystemResolutionKeysSignature, _configurationSignature, StringComparison.Ordinal))
+            string.Equals(_cachedConfiguredSpawnSystemResolutionKeysSignature, RuntimeState.ConfigurationSignature, StringComparison.Ordinal))
         {
             return;
         }
@@ -2516,7 +2298,7 @@ internal static partial class SpawnSystemManager
         _cachedConfiguredSpawnSystemResolutionKeys.Clear();
         _cachedConfiguredSpawnSystemResolutionKeys.AddRange(BuildConfiguredSpawnSystemResolutionKeys());
         _cachedConfiguredSpawnSystemResolutionKeys.Sort(StringComparer.OrdinalIgnoreCase);
-        _cachedConfiguredSpawnSystemResolutionKeysSignature = _configurationSignature;
+        _cachedConfiguredSpawnSystemResolutionKeysSignature = RuntimeState.ConfigurationSignature;
         _cachedConfiguredSpawnSystemResolutionKeysSceneStamp = sceneStamp;
     }
 
@@ -2556,7 +2338,7 @@ internal static partial class SpawnSystemManager
     private static IEnumerable<string> BuildConfiguredSpawnSystemResolutionKeys()
     {
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (CanonicalSpawnSystemEntry entry in _configuration)
+        foreach (CanonicalSpawnSystemEntry entry in RuntimeState.Configuration)
         {
             string prefabName = ReferenceRefreshSupport.NormalizeKey(entry.Prefab);
             if (prefabName.Length == 0)

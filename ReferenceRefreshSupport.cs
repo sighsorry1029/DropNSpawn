@@ -158,49 +158,6 @@ internal static class ReferenceRefreshSupport
         }
     }
 
-    internal static bool ShouldSkipAutoUpdateByPrecheck(string stateKey, string referencePath, string precheckSignature, string? logicVersion = null)
-    {
-        if (string.IsNullOrWhiteSpace(stateKey) ||
-            string.IsNullOrWhiteSpace(referencePath) ||
-            string.IsNullOrWhiteSpace(precheckSignature) ||
-            !File.Exists(referencePath))
-        {
-            return false;
-        }
-
-        string statePath = GetAutoUpdateStatePath(stateKey);
-        if (!File.Exists(statePath))
-        {
-            return false;
-        }
-
-        try
-        {
-            string normalizedLogicVersion = (logicVersion ?? "").Trim();
-            string[] lines = File.ReadAllLines(statePath);
-            if (lines.Length < 3)
-            {
-                return false;
-            }
-
-            string storedFileStamp = (lines[1] ?? "").Trim();
-            string storedPrecheckSignature = (lines[2] ?? "").Trim();
-            string storedLogicVersion = lines.Length >= 4 ? (lines[3] ?? "").Trim() : "";
-            if (normalizedLogicVersion.Length > 0 &&
-                !string.Equals(storedLogicVersion, normalizedLogicVersion, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            return string.Equals(storedPrecheckSignature, precheckSignature, StringComparison.Ordinal) &&
-                   string.Equals(storedFileStamp, BuildReferenceFileStamp(referencePath), StringComparison.Ordinal);
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
     internal static void RecordAutoUpdateState(string stateKey, string referencePath, string sourceSignature, string? precheckSignature = null, string? logicVersion = null)
     {
         if (string.IsNullOrWhiteSpace(stateKey) ||

@@ -1321,22 +1321,6 @@ internal static class EventManager
                "# Edit DNS_events.yml instead; generated files may be overwritten.\n\n";
     }
 
-    private static string BuildEventDefinitionsYaml(List<EventDefinition> definitions, bool includeEventDefaults, bool includeEmptySpawnList)
-    {
-        if (definitions.Count == 0)
-        {
-            return "[]\n";
-        }
-
-        StringBuilder builder = new();
-        foreach (EventDefinition definition in definitions)
-        {
-            AppendEventDefinition(builder, definition, includeEventDefaults, includeEmptySpawnList);
-        }
-
-        return builder.ToString();
-    }
-
     private static void AppendEventDefinition(StringBuilder builder, EventDefinition definition, bool includeEventDefaults, bool includeEmptySpawnList)
     {
         AppendYamlListEntryLine(builder, 0, "event", definition.Event);

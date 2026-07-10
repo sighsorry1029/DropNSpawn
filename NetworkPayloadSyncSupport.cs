@@ -21,6 +21,10 @@ internal static partial class NetworkPayloadSyncSupport
     private const int MaxConcurrentLargeClientRequests = 1;
     private const int MaxPayloadProcessingWorkers = 3;
     private const int MaxArtifactPrewarmWorkers = 1;
+    private const int Sha256HexLength = 64;
+    private const int MaxCompressedPayloadBytes = 64 * 1024 * 1024;
+    private const int MaxUncompressedPayloadBytes = 256 * 1024 * 1024;
+    private const int DecompressionBufferSizeBytes = 81920;
     private const float DefaultMaxDeltaChangedEntryRatio = 0.5f;
     private const float DefaultMaxDeltaCompressedSizeRatio = 0.85f;
     private const float RequestRetrySeconds = 5f;
@@ -157,12 +161,21 @@ internal static partial class NetworkPayloadSyncSupport
                 return false;
             }
 
+            if (!IsValidPayloadHash(parts[1]) ||
+                compressedSize <= 0 ||
+                compressedSize > MaxCompressedPayloadBytes ||
+                chunkCount <= 0 ||
+                parsedEntryCount < 0)
+            {
+                return false;
+            }
+
             manifest = new PayloadManifest
             {
-                Hash = parts[1] ?? "",
-                CompressedSize = Math.Max(0, compressedSize),
-                ChunkCount = Math.Max(0, chunkCount),
-                EntryCount = Math.Max(0, parsedEntryCount)
+                Hash = parts[1],
+                CompressedSize = compressedSize,
+                ChunkCount = chunkCount,
+                EntryCount = parsedEntryCount
             };
 
             return true;
@@ -629,7 +642,6 @@ internal static partial class NetworkPayloadSyncSupport
         transport.PublishInFlight = false;
         transport.PendingPublishedSignature = "";
         ResetClientState(transport);
-        transport.Metadata.Hooks.OnTransportStateReset();
     }
 
     private static void ResetClientState<TEntry>(DomainTransport<TEntry> transport)
@@ -678,6 +690,7 @@ internal static partial class NetworkPayloadSyncSupport
     {
         List<TEntry> liveEntries = entries ?? new List<TEntry>();
         byte[] payloadBytes = transport.Serializer(liveEntries);
+        EnsurePayloadSizeWithinLimit(payloadBytes.Length, transport.DisplayName);
         string payloadHash = ComputeSha256(payloadBytes);
         string payloadSignature = !string.IsNullOrWhiteSpace(knownSignature)
             ? knownSignature!
@@ -1057,7 +1070,7 @@ PublishExit:
         {
             EnsureRpcRegisteredLocked();
 
-            if (!PayloadManifest.TryParse(manifestRaw, out PayloadManifest manifest))
+            if (!TryParsePayloadManifest(transport, manifestRaw, out PayloadManifest manifest))
             {
                 bool hasLastKnownGood = TryPreserveLastKnownGoodOnInvalidManifestLocked(
                     transport,
@@ -1127,7 +1140,8 @@ PublishExit:
 
     private static string NormalizeBaseHash(string? baseHash)
     {
-        return string.IsNullOrWhiteSpace(baseHash) ? "" : (baseHash ?? "").Trim();
+        string normalized = string.IsNullOrWhiteSpace(baseHash) ? "" : (baseHash ?? "").Trim();
+        return IsValidPayloadHash(normalized) ? normalized : "";
     }
 
     private static string BuildTransferArtifactCacheKey(string targetHash, string? baseHash)
@@ -1154,20 +1168,6 @@ PublishExit:
         _outboundBytesSentThisFrame = 0;
     }
 
-    private static void NotifyTransportPayloadReadyIfNeeded<TEntry>(
-        DomainTransport<TEntry> transport,
-        string hash,
-        int? entryCount,
-        string successLogMessage)
-    {
-        transport.Metadata.Hooks.OnPayloadReady(
-            hash,
-            entryCount,
-            successLogMessage,
-            transport.DesiredPayloadManifest.Hash,
-            transport.DesiredPayloadManifest.EntryCount);
-    }
-
     private static bool TryReadCachedPayloadBytes(
         string cacheDirectoryName,
         string displayName,
@@ -1180,6 +1180,15 @@ PublishExit:
         compressedBytes = Array.Empty<byte>();
         if (!File.Exists(cachePath))
         {
+            return false;
+        }
+
+        long cachedLength = new FileInfo(cachePath).Length;
+        if (cachedLength <= 0 || cachedLength > MaxCompressedPayloadBytes)
+        {
+            DropNSpawnPlugin.DropNSpawnLogger.LogWarning(
+                $"Discarding cached {displayName} payload '{hash}' because its compressed size {cachedLength.ToString(CultureInfo.InvariantCulture)} is outside the supported range.");
+            File.Delete(cachePath);
             return false;
         }
 
@@ -1201,6 +1210,11 @@ PublishExit:
 
     private static string GetCachePath(string cacheDirectoryName, string hash)
     {
+        if (!IsValidPayloadHash(hash))
+        {
+            throw new InvalidDataException("Payload cache hash must be a lowercase SHA-256 value.");
+        }
+
         string cacheDirectory = Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, "cache");
         return Path.Combine(cacheDirectory, $"{hash}.{cacheDirectoryName}.bin");
     }
@@ -1220,11 +1234,14 @@ PublishExit:
         }
 
         int lengthToWrite = Math.Max(0, Math.Min(compressedLength, compressedBytes?.Length ?? 0));
-        using FileStream stream = File.Create(cachePath);
-        if (lengthToWrite > 0)
+        if (lengthToWrite <= 0 || lengthToWrite > MaxCompressedPayloadBytes)
         {
-            stream.Write(compressedBytes, 0, lengthToWrite);
+            throw new InvalidDataException(
+                $"Compressed payload size {lengthToWrite.ToString(CultureInfo.InvariantCulture)} is outside the supported range.");
         }
+
+        using FileStream stream = File.Create(cachePath);
+        stream.Write(compressedBytes, 0, lengthToWrite);
     }
 
     private static void DeleteCacheFileIfPresent(string cacheDirectoryName, string hash)
@@ -1260,15 +1277,72 @@ PublishExit:
         return builder.ToString();
     }
 
+    private static bool IsValidPayloadHash(string? hash)
+    {
+        if (hash == null || hash.Length != Sha256HexLength)
+        {
+            return false;
+        }
+
+        foreach (char character in hash)
+        {
+            if (!(character is >= '0' and <= '9') &&
+                !(character is >= 'a' and <= 'f'))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool TryParsePayloadManifest<TEntry>(
+        DomainTransport<TEntry> transport,
+        string? manifestRaw,
+        out PayloadManifest manifest)
+    {
+        if (!PayloadManifest.TryParse(manifestRaw, out manifest))
+        {
+            return false;
+        }
+
+        if (manifest.IsEmpty)
+        {
+            return string.IsNullOrWhiteSpace(manifestRaw);
+        }
+
+        int expectedChunkCount = Math.Max(
+            1,
+            (int)Math.Ceiling(manifest.CompressedSize / (double)transport.ChunkSizeBytes));
+        return manifest.ChunkCount == expectedChunkCount;
+    }
+
+    private static void EnsurePayloadSizeWithinLimit(int payloadSize, string displayName)
+    {
+        if (payloadSize < 0 || payloadSize > MaxUncompressedPayloadBytes)
+        {
+            throw new InvalidDataException(
+                $"Synchronized {displayName} payload size {payloadSize.ToString(CultureInfo.InvariantCulture)} exceeds the supported limit {MaxUncompressedPayloadBytes.ToString(CultureInfo.InvariantCulture)}.");
+        }
+    }
+
     private static byte[] CompressBytes(byte[] input)
     {
+        EnsurePayloadSizeWithinLimit(input.Length, "payload");
         using MemoryStream output = new();
         using (GZipStream gzipStream = new(output, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
         {
             gzipStream.Write(input, 0, input.Length);
         }
 
-        return output.ToArray();
+        byte[] compressedBytes = output.ToArray();
+        if (compressedBytes.Length > MaxCompressedPayloadBytes)
+        {
+            throw new InvalidDataException(
+                $"Compressed payload size {compressedBytes.Length.ToString(CultureInfo.InvariantCulture)} exceeds the supported limit {MaxCompressedPayloadBytes.ToString(CultureInfo.InvariantCulture)}.");
+        }
+
+        return compressedBytes;
     }
 
     private static byte[] DecompressBytes(byte[] input)
@@ -1284,10 +1358,34 @@ PublishExit:
         }
 
         int boundedInputLength = Math.Max(0, Math.Min(inputLength, input.Length));
+        if (boundedInputLength > MaxCompressedPayloadBytes)
+        {
+            throw new InvalidDataException(
+                $"Compressed payload size {boundedInputLength.ToString(CultureInfo.InvariantCulture)} exceeds the supported limit {MaxCompressedPayloadBytes.ToString(CultureInfo.InvariantCulture)}.");
+        }
+
+        if (initialCapacityHint > MaxUncompressedPayloadBytes)
+        {
+            throw new InvalidDataException(
+                $"Payload capacity hint {initialCapacityHint.ToString(CultureInfo.InvariantCulture)} exceeds the supported limit {MaxUncompressedPayloadBytes.ToString(CultureInfo.InvariantCulture)}.");
+        }
+
         using MemoryStream source = new(input, 0, boundedInputLength, writable: false, publiclyVisible: true);
         using GZipStream gzipStream = new(source, CompressionMode.Decompress);
         using MemoryStream output = initialCapacityHint > 0 ? new MemoryStream(initialCapacityHint) : new MemoryStream();
-        gzipStream.CopyTo(output);
+        byte[] buffer = new byte[DecompressionBufferSizeBytes];
+        int read;
+        while ((read = gzipStream.Read(buffer, 0, buffer.Length)) > 0)
+        {
+            if (output.Length + read > MaxUncompressedPayloadBytes)
+            {
+                throw new InvalidDataException(
+                    $"Decompressed payload exceeds the supported limit {MaxUncompressedPayloadBytes.ToString(CultureInfo.InvariantCulture)}.");
+            }
+
+            output.Write(buffer, 0, read);
+        }
+
         return output.ToArray();
     }
 

@@ -52,13 +52,13 @@ internal static partial class ObjectDropManager
 
     private static void OnSourceOfTruthPayloadUnchanged()
     {
-        if (!NetworkPayloadSyncSupport.IsPayloadCurrent(Descriptor, _configurationSignature))
+        if (!NetworkPayloadSyncSupport.IsPayloadCurrent(Descriptor, RuntimeState.ConfigurationSignature))
         {
             ConfigurationDomainHost.PublishSyncedPayload(
                 DropNSpawnPlugin.IsSourceOfTruth,
                 Descriptor,
-                _configuration,
-                _configurationSignature);
+                RuntimeState.Configuration,
+                RuntimeState.ConfigurationSignature);
         }
     }
 

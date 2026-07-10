@@ -10,8 +10,7 @@ internal abstract class DomainTransportMetadata
         DomainTransportProfile transportProfile,
         string displayName,
         string cacheDirectoryName,
-        int clientRequestPriority,
-        DomainTransportHooks? hooks)
+        int clientRequestPriority)
     {
         DomainKey = domainKey ?? "";
         DtoVersion = Math.Max(0, dtoVersion);
@@ -19,7 +18,6 @@ internal abstract class DomainTransportMetadata
         DisplayName = displayName ?? "";
         CacheDirectoryName = cacheDirectoryName ?? "";
         ClientRequestPriority = clientRequestPriority;
-        Hooks = hooks ?? DomainTransportHooks.NoOp;
     }
 
     internal string DomainKey { get; }
@@ -28,7 +26,6 @@ internal abstract class DomainTransportMetadata
     internal string DisplayName { get; }
     internal string CacheDirectoryName { get; }
     internal int ClientRequestPriority { get; }
-    internal DomainTransportHooks Hooks { get; }
 }
 
 internal sealed class DomainTransportMetadata<TEntry> : DomainTransportMetadata
@@ -41,16 +38,14 @@ internal sealed class DomainTransportMetadata<TEntry> : DomainTransportMetadata
         string cacheDirectoryName,
         int clientRequestPriority,
         Func<TEntry, string> keySelector,
-        Action applyPayloadAction,
-        DomainTransportHooks? hooks = null)
+        Action applyPayloadAction)
         : base(
             domain?.DomainKey ?? "",
             dtoVersion,
             transportProfile,
             displayName,
             cacheDirectoryName,
-            clientRequestPriority,
-            hooks)
+            clientRequestPriority)
     {
         Domain = domain ?? throw new ArgumentNullException(nameof(domain));
         KeySelector = keySelector ?? throw new ArgumentNullException(nameof(keySelector));

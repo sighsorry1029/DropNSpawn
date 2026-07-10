@@ -70,11 +70,6 @@ internal static class CharacterDropRuntime
         return Snapshots.Count > 0;
     }
 
-    internal static int SnapshotCount()
-    {
-        return Snapshots.Count;
-    }
-
     internal static IReadOnlyList<CharacterDropSnapshot> GetSnapshots()
     {
         return Snapshots;

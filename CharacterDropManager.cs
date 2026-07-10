@@ -94,26 +94,10 @@ internal static partial class CharacterDropManager
         .Build();
 
     private static readonly CharacterConfigurationRuntimeState RuntimeState = new();
-    private static Dictionary<string, List<CharacterDropPrefabEntry>> ActiveEntriesByPrefab => RuntimeState.ActiveEntriesByPrefab;
-    private static Dictionary<string, string> CurrentEntrySignaturesByPrefab => RuntimeState.CurrentEntrySignaturesByPrefab;
-    private static HashSet<string> ConfiguredCharacterDropPrefabs => RuntimeState.ConfiguredCharacterDropPrefabs;
-    private static HashSet<string> PrefabsWithCharacterDropOverrides => RuntimeState.PrefabsWithCharacterDropOverrides;
     private static readonly InvalidEntryDiagnostics InvalidEntryWarnings = new();
     private static readonly System.Reflection.FieldInfo? DropsEnabledField = AccessTools.Field(typeof(CharacterDrop), "m_dropsEnabled");
     [ThreadStatic] private static CharacterDrop? OnePerPlayerScopeCharacterDrop;
     [ThreadStatic] private static int OnePerPlayerScopeDepth;
-
-    private static List<CharacterDropPrefabEntry> _configuration
-    {
-        get => RuntimeState.Configuration;
-        set => RuntimeState.Configuration = value;
-    }
-
-    private static string _configurationSignature
-    {
-        get => RuntimeState.ConfigurationSignature;
-        set => RuntimeState.ConfigurationSignature = value;
-    }
 
     private static DomainLoadState LoadState => ConfigurationRuntime.LoadState;
     private static bool _initialized;
@@ -153,8 +137,8 @@ internal static partial class CharacterDropManager
                 () => ConfigurationDomainHost.PublishSyncedPayload(
                     DropNSpawnPlugin.IsSourceOfTruth,
                     Descriptor,
-                    _configuration,
-                    _configurationSignature)),
+                    RuntimeState.Configuration,
+                    RuntimeState.ConfigurationSignature)),
             new DomainSyncHooks<CharacterDropPrefabEntry, SyncedCharacterConfigurationState>(
                 (out List<CharacterDropPrefabEntry> configuration, out string payloadToken) =>
                     ConfigurationDomainHost.TryGetSyncedEntries(Descriptor, out configuration, out payloadToken),
@@ -225,7 +209,7 @@ internal static partial class CharacterDropManager
                 beforeResetLoadState: ResetLoadedConfigurationState,
                 afterResetLoadState: () =>
                 {
-                    _configurationSignature = "";
+                    RuntimeState.ConfigurationSignature = "";
                     _lastAppliedSynchronizedPayloadReady = false;
                     RestoreSnapshots(previouslyAppliedPrefabs);
                     RestoreTrackedCharacterDrops(previouslyAppliedPrefabs);
@@ -266,18 +250,18 @@ internal static partial class CharacterDropManager
                 return false;
             }
 
-            string refreshedSignature = NetworkPayloadSyncSupport.ComputeCharacterConfigurationSignature(_configuration);
-            if (string.Equals(refreshedSignature, _configurationSignature, StringComparison.Ordinal))
+            string refreshedSignature = NetworkPayloadSyncSupport.ComputeCharacterConfigurationSignature(RuntimeState.Configuration);
+            if (string.Equals(refreshedSignature, RuntimeState.ConfigurationSignature, StringComparison.Ordinal))
             {
                 return false;
             }
 
-            _configurationSignature = refreshedSignature;
+            RuntimeState.ConfigurationSignature = refreshedSignature;
             ConfigurationDomainHost.PublishSyncedPayload(
                 DropNSpawnPlugin.IsSourceOfTruth,
                 Descriptor,
-                _configuration,
-                _configurationSignature);
+                RuntimeState.Configuration,
+                RuntimeState.ConfigurationSignature);
             ApplyIfReady();
             return true;
         }
@@ -571,22 +555,22 @@ internal static partial class CharacterDropManager
     private static void CommitSyncedConfigurationState(SyncedCharacterConfigurationState state, string payloadToken)
     {
         ResetLoadedConfigurationState();
-        _configuration = state.Configuration;
+        RuntimeState.Configuration = state.Configuration;
         foreach ((string prefabName, List<CharacterDropPrefabEntry> entries) in state.ActiveEntriesByPrefab)
         {
-            ActiveEntriesByPrefab[prefabName] = entries;
+            RuntimeState.ActiveEntriesByPrefab[prefabName] = entries;
         }
 
-        ReplaceEntrySignatures(CurrentEntrySignaturesByPrefab, state.EntrySignaturesByPrefab);
+        ReplaceEntrySignatures(RuntimeState.CurrentEntrySignaturesByPrefab, state.EntrySignaturesByPrefab);
         foreach (string prefabName in state.ConfiguredCharacterDropPrefabs)
         {
-            ConfiguredCharacterDropPrefabs.Add(prefabName);
+            RuntimeState.ConfiguredCharacterDropPrefabs.Add(prefabName);
         }
         foreach (string prefabName in state.PrefabsWithCharacterDropOverrides)
         {
-            PrefabsWithCharacterDropOverrides.Add(prefabName);
+            RuntimeState.PrefabsWithCharacterDropOverrides.Add(prefabName);
         }
-        _configurationSignature = state.ConfigurationSignature;
+        RuntimeState.ConfigurationSignature = state.ConfigurationSignature;
         LoadState.LastLoadedPayload = payloadToken;
         LoadState.LastRejectedPayload = "";
         LoadState.PendingStrictPayload = "";
@@ -796,20 +780,6 @@ internal static partial class CharacterDropManager
         }
 
         entry.RuleId = NormalizeOptionalRuleId(entry.RuleId) ?? BuildRuleId(entry);
-    }
-
-    private static List<string>? NormalizeStringList(List<string>? values)
-    {
-        if (values == null)
-        {
-            return null;
-        }
-
-        return values
-            .Select(value => (value ?? "").Trim())
-            .Where(value => value.Length > 0)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
     }
 
     private static string BuildRuleId(CharacterDropPrefabEntry entry)
@@ -1193,20 +1163,20 @@ internal static partial class CharacterDropManager
 
         int gameDataSignature = ComputeGameDataSignature();
         if (_compiledStateGameDataSignature == gameDataSignature &&
-            string.Equals(_compiledStateConfigurationSignature, _configurationSignature, StringComparison.Ordinal))
+            string.Equals(_compiledStateConfigurationSignature, RuntimeState.ConfigurationSignature, StringComparison.Ordinal))
         {
             return;
         }
 
         _compiledState = BuildCompiledState();
         _compiledStateGameDataSignature = gameDataSignature;
-        _compiledStateConfigurationSignature = _configurationSignature;
+        _compiledStateConfigurationSignature = RuntimeState.ConfigurationSignature;
     }
 
     private static CharacterCompiledState BuildCompiledState()
     {
         CharacterCompiledState state = new();
-        foreach ((string prefabName, List<CharacterDropPrefabEntry> entries) in ActiveEntriesByPrefab)
+        foreach ((string prefabName, List<CharacterDropPrefabEntry> entries) in RuntimeState.ActiveEntriesByPrefab)
         {
             SortedDictionary<string, CompiledCharacterDropDefinition> staticDefinitions = new(StringComparer.Ordinal);
             List<CompiledCharacterDropRule> runtimeRules = new();
@@ -1535,14 +1505,14 @@ internal static partial class CharacterDropManager
                 _lastAppliedDomainEnabled,
                 domainEnabled,
                 _lastAppliedConfigurationSignature,
-                _configurationSignature,
+                RuntimeState.ConfigurationSignature,
                 _lastAppliedSynchronizedPayloadReady,
                 synchronizedPayloadReady))
         {
             return;
         }
 
-        RunApplyCoordinator(gameDataSignature, domainEnabled, currentEntrySignatures, _configurationSignature);
+        RunApplyCoordinator(gameDataSignature, domainEnabled, currentEntrySignatures, RuntimeState.ConfigurationSignature);
     }
 
     private static readonly Dictionary<string, string> EmptyEntrySignatures = new(StringComparer.OrdinalIgnoreCase);
@@ -1615,7 +1585,7 @@ internal static partial class CharacterDropManager
 
     private static void ValidateConfiguredPrefabs()
     {
-        foreach ((string prefabName, List<CharacterDropPrefabEntry> entries) in ActiveEntriesByPrefab)
+        foreach ((string prefabName, List<CharacterDropPrefabEntry> entries) in RuntimeState.ActiveEntriesByPrefab)
         {
             if (!CharacterDropRuntime.HasSnapshot(prefabName))
             {
@@ -1638,7 +1608,7 @@ internal static partial class CharacterDropManager
         }
 
         string prefabName = GetPrefabName(characterDrop.gameObject);
-        if (!PrefabsWithCharacterDropOverrides.Contains(prefabName))
+        if (!RuntimeState.PrefabsWithCharacterDropOverrides.Contains(prefabName))
         {
             return;
         }
@@ -1652,7 +1622,7 @@ internal static partial class CharacterDropManager
                 _lastAppliedDomainEnabled,
                 domainEnabled,
                 _lastAppliedConfigurationSignature,
-                _configurationSignature,
+                RuntimeState.ConfigurationSignature,
                 _lastAppliedSynchronizedPayloadReady,
                 synchronizedPayloadReady))
         {
@@ -1689,14 +1659,14 @@ internal static partial class CharacterDropManager
         }
 
         string prefabName = GetPrefabName(characterDrop.gameObject);
-        if (!PrefabsWithCharacterDropOverrides.Contains(prefabName))
+        if (!RuntimeState.PrefabsWithCharacterDropOverrides.Contains(prefabName))
         {
             return;
         }
 
         lock (Sync)
         {
-            if (!PrefabsWithCharacterDropOverrides.Contains(prefabName))
+            if (!RuntimeState.PrefabsWithCharacterDropOverrides.Contains(prefabName))
             {
                 return;
             }
@@ -1721,7 +1691,7 @@ internal static partial class CharacterDropManager
 
     private static void BootstrapRegisteredCharacterDropsIfNeeded(HashSet<string>? additionalPrefabs = null, bool forceRescan = false)
     {
-        if (PrefabsWithCharacterDropOverrides.Count == 0 &&
+        if (RuntimeState.PrefabsWithCharacterDropOverrides.Count == 0 &&
             (additionalPrefabs == null || additionalPrefabs.Count == 0))
         {
             return;
@@ -1744,7 +1714,7 @@ internal static partial class CharacterDropManager
 
     private static Dictionary<string, string> CloneCurrentEntrySignaturesByPrefab()
     {
-        return new Dictionary<string, string>(CurrentEntrySignaturesByPrefab, StringComparer.OrdinalIgnoreCase);
+        return new Dictionary<string, string>(RuntimeState.CurrentEntrySignaturesByPrefab, StringComparer.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, string> BuildActiveEntrySignaturesByPrefab(
@@ -2166,7 +2136,7 @@ internal static partial class CharacterDropManager
 
     private static bool ShouldRegisterBootstrappedCharacterDropPrefab(string prefabName)
     {
-        return prefabName.Length > 0 && PrefabsWithCharacterDropOverrides.Contains(prefabName);
+        return prefabName.Length > 0 && RuntimeState.PrefabsWithCharacterDropOverrides.Contains(prefabName);
     }
 
     private static List<CharacterDropPrefabEntry> GetOrCreateActiveEntries(
@@ -2788,13 +2758,13 @@ internal static partial class CharacterDropManager
 
     private static void OnSourceOfTruthPayloadUnchanged()
     {
-        if (!NetworkPayloadSyncSupport.IsPayloadCurrent(Descriptor, _configurationSignature))
+        if (!NetworkPayloadSyncSupport.IsPayloadCurrent(Descriptor, RuntimeState.ConfigurationSignature))
         {
             ConfigurationDomainHost.PublishSyncedPayload(
                 DropNSpawnPlugin.IsSourceOfTruth,
                 Descriptor,
-                _configuration,
-                _configurationSignature);
+                RuntimeState.Configuration,
+                RuntimeState.ConfigurationSignature);
         }
     }
 

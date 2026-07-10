@@ -5,46 +5,6 @@ namespace DropNSpawn;
 
 internal static partial class NetworkPayloadSyncSupport
 {
-    private static byte[] SerializeObjectEntries(List<PrefabConfigurationEntry> entries)
-    {
-        return ObjectCodec.Schema.SerializeEntries(entries);
-    }
-
-    private static List<PrefabConfigurationEntry> DeserializeObjectEntries(byte[] payloadBytes)
-    {
-        return ObjectCodec.Schema.DeserializeEntries(payloadBytes);
-    }
-
-    private static byte[] SerializeCharacterEntries(List<CharacterDropPrefabEntry> entries)
-    {
-        return CharacterCodec.Schema.SerializeEntries(entries);
-    }
-
-    private static List<CharacterDropPrefabEntry> DeserializeCharacterEntries(byte[] payloadBytes)
-    {
-        return CharacterCodec.Schema.DeserializeEntries(payloadBytes);
-    }
-
-    private static byte[] SerializeSpawnerEntries(List<SpawnerConfigurationEntry> entries)
-    {
-        return SpawnerCodec.Schema.SerializeEntries(entries);
-    }
-
-    private static List<SpawnerConfigurationEntry> DeserializeSpawnerEntries(byte[] payloadBytes)
-    {
-        return SpawnerCodec.Schema.DeserializeEntries(payloadBytes);
-    }
-
-    private static byte[] SerializeSpawnSystemEntries(List<CanonicalSpawnSystemEntry> entries)
-    {
-        return SpawnSystemCodec.Schema.SerializeEntries(entries);
-    }
-
-    private static List<CanonicalSpawnSystemEntry> DeserializeSpawnSystemEntries(byte[] payloadBytes)
-    {
-        return SpawnSystemCodec.Schema.DeserializeEntries(payloadBytes);
-    }
-
     private static void WriteSpawnSystemSpawnDefinition(ZPackage package, SpawnSystemSpawnDefinition definition)
     {
         WriteNullableString(package, definition.Name);

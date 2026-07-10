@@ -177,9 +177,6 @@ internal static partial class SpawnerManager
         public Vector3 Position { get; set; }
         public bool HasRecordedLocationProvenanceEpoch { get; set; }
         public int RecordedLocationProvenanceEpoch { get; set; }
-        public string ResolvedSelectorLocationPrefab { get; set; } = "";
-        public string SelectorSourceLabel { get; set; } = "";
-        public string SelectorLocationKey { get; set; } = "";
         public string ConditionLocationName { get; set; } = "";
         public Heightmap.Biome Biome { get; set; }
         public bool InDungeon { get; set; }

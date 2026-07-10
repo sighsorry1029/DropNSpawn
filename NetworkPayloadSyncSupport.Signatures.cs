@@ -16,11 +16,6 @@ internal static partial class NetworkPayloadSyncSupport
         return ComputeObjectPayloadSignature((entries ?? Enumerable.Empty<PrefabConfigurationEntry>()).ToList());
     }
 
-    internal static string ComputeObjectEntrySignature(PrefabConfigurationEntry entry)
-    {
-        return ObjectCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: true);
-    }
-
     internal static string ComputeObjectEntryIdentitySignature(PrefabConfigurationEntry entry)
     {
         return ObjectCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: false);
@@ -43,11 +38,6 @@ internal static partial class NetworkPayloadSyncSupport
         return ComputeCharacterPayloadSignature((entries ?? Enumerable.Empty<CharacterDropPrefabEntry>()).ToList());
     }
 
-    internal static string ComputeCharacterEntrySignature(CharacterDropPrefabEntry entry)
-    {
-        return CharacterCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: true);
-    }
-
     internal static string ComputeCharacterEntryIdentitySignature(CharacterDropPrefabEntry entry)
     {
         return CharacterCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: false);
@@ -68,11 +58,6 @@ internal static partial class NetworkPayloadSyncSupport
     internal static string ComputeSpawnerConfigurationSignature(IEnumerable<SpawnerConfigurationEntry>? entries)
     {
         return ComputeSpawnerPayloadSignature((entries ?? Enumerable.Empty<SpawnerConfigurationEntry>()).ToList());
-    }
-
-    internal static string ComputeSpawnerEntrySignature(SpawnerConfigurationEntry entry)
-    {
-        return SpawnerCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: true);
     }
 
     internal static string ComputeSpawnerEntryIdentitySignature(SpawnerConfigurationEntry entry)

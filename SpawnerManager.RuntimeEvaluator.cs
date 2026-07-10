@@ -7,20 +7,10 @@ namespace DropNSpawn;
 
 internal static partial class SpawnerManager
 {
-    internal static void ReconcileSpawnAreaRuntime(SpawnArea spawnArea)
-    {
-        ReconcileSpawnAreaRuntimeCore(spawnArea);
-    }
-
     internal static bool PrepareSpawnAreaForUpdate(SpawnArea spawnArea)
     {
         ReconcileSpawnAreaRuntimeCore(spawnArea);
         return PrepareSpawnAreaTotalSpawnLimit(spawnArea);
-    }
-
-    internal static void ReconcileCreatureSpawnerRuntime(CreatureSpawner creatureSpawner)
-    {
-        ReconcileCreatureSpawnerRuntimeCore(creatureSpawner);
     }
 
     internal static bool PrepareCreatureSpawnerForUpdate(CreatureSpawner creatureSpawner)

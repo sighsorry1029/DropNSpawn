@@ -309,7 +309,7 @@ Does not own:
 Reads from:
 - `DomainRegistry`
 - Generated transport schemas and codecs
-- Domain transport hooks
+- Per-domain transport profiles and metadata
 
 Writes to:
 - Transport runtime state

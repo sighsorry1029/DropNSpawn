@@ -21,7 +21,7 @@ internal static partial class CharacterDropManager
     {
         lock (Sync)
         {
-            return ActiveEntriesByPrefab.TryGetValue(prefabName ?? "", out List<CharacterDropPrefabEntry>? entries) &&
+            return RuntimeState.ActiveEntriesByPrefab.TryGetValue(prefabName ?? "", out List<CharacterDropPrefabEntry>? entries) &&
                    entries.Any(HasVneiRelevantDrops);
         }
     }
@@ -37,7 +37,7 @@ internal static partial class CharacterDropManager
             }
 
             string prefabName = characterDrop.gameObject?.name ?? "";
-            List<CharacterDropPrefabEntry>? vneiEntries = ActiveEntriesByPrefab.TryGetValue(prefabName, out List<CharacterDropPrefabEntry>? entries)
+            List<CharacterDropPrefabEntry>? vneiEntries = RuntimeState.ActiveEntriesByPrefab.TryGetValue(prefabName, out List<CharacterDropPrefabEntry>? entries)
                 ? entries.Where(HasVneiRelevantDrops).ToList()
                 : null;
             bool hasEntries = vneiEntries?.Count > 0;

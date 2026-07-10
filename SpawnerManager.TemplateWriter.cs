@@ -1,4 +1,5 @@
 using System.Text;
+using static DropNSpawn.CommentedYamlTemplateSupport;
 
 namespace DropNSpawn;
 
@@ -89,23 +90,5 @@ internal static partial class SpawnerManager
         AppendTemplateBlankLine(builder);
 
         return builder.ToString();
-    }
-
-    private static void AppendTemplateComment(StringBuilder builder, string text)
-    {
-        builder.Append("# ");
-        builder.AppendLine(text);
-    }
-
-    private static void AppendTemplateLine(StringBuilder builder, int indent, string text)
-    {
-        builder.Append("# ");
-        builder.Append(' ', indent * 2);
-        builder.AppendLine(text);
-    }
-
-    private static void AppendTemplateBlankLine(StringBuilder builder)
-    {
-        builder.AppendLine("#");
     }
 }

@@ -253,14 +253,6 @@ internal static partial class ObjectDropManager
         public string OverrideName { get; set; } = "";
     }
 
-    private sealed class CompiledPickableItemRandomEntry
-    {
-        public ItemDrop ItemPrefab { get; set; } = null!;
-        public int StackMin { get; set; }
-        public int StackMax { get; set; }
-        public float Weight { get; set; }
-    }
-
     private sealed class CompiledPickableItemDefinition
     {
         public bool HasRandomOverride { get; set; }
@@ -365,11 +357,7 @@ internal static partial class ObjectDropManager
         .Build();
 
     private static readonly ObjectSnapshotRuntimeState SnapshotState = new();
-    private static List<PrefabSnapshot> Snapshots => SnapshotState.Snapshots;
-    private static Dictionary<string, PrefabSnapshot> SnapshotsByPrefab => SnapshotState.SnapshotsByPrefab;
     private static readonly ObjectConfigurationRuntimeState RuntimeState = new();
-    private static Dictionary<string, List<PrefabConfigurationEntry>> ActiveEntriesByPrefab => RuntimeState.ActiveEntriesByPrefab;
-    private static Dictionary<string, List<PrefabConfigurationEntry>> VneiEntriesByPrefab => RuntimeState.VneiEntriesByPrefab;
     private static readonly HashSet<string> MissingComponentWarnings = new(StringComparer.OrdinalIgnoreCase);
     private static readonly InvalidEntryDiagnostics InvalidEntryWarnings = new();
     private static readonly int DestructibleLazyScalarSignatureKey = $"{DropNSpawnPlugin.ModName}.destructible_scalar_signature".GetStableHashCode();
@@ -383,41 +371,11 @@ internal static partial class ObjectDropManager
     private static readonly MethodInfo? MineRock5UpdateMeshMethod = AccessTools.Method(typeof(MineRock5), "UpdateMesh");
     private static readonly FieldInfo? MineRock5HitAreaHealthField = AccessTools.Field(typeof(MineRock5).GetNestedType("HitArea", BindingFlags.NonPublic), "m_health");
 
-    private static List<PrefabConfigurationEntry> _configuration
-    {
-        get => RuntimeState.Configuration;
-        set => RuntimeState.Configuration = value;
-    }
-
-    private static string _configurationSignature
-    {
-        get => RuntimeState.ConfigurationSignature;
-        set => RuntimeState.ConfigurationSignature = value;
-    }
-
     private static DomainLoadState LoadState => ConfigurationRuntime.LoadState;
     private static bool _initialized;
     private static int? _lastProcessedSnapshotSignature;
     private static int? _lastProcessedGameDataSignature;
     private static readonly ObjectRuntimeDropState DropRuntimeState = new();
-
-    private static ObjectRuntimeDropConfigurationState _runtimeDropConfigurationState
-    {
-        get => DropRuntimeState.Configuration;
-        set => DropRuntimeState.Configuration = value;
-    }
-
-    private static string _runtimeDropConfigurationSignature
-    {
-        get => DropRuntimeState.ConfigurationSignature;
-        set => DropRuntimeState.ConfigurationSignature = value;
-    }
-
-    private static int? _runtimeDropConfigurationGameDataSignature
-    {
-        get => DropRuntimeState.GameDataSignature;
-        set => DropRuntimeState.GameDataSignature = value;
-    }
 
     private static int _cachedGameDataSignatureFrame = -1;
     private static int _cachedGameDataSignatureValue;
@@ -457,8 +415,8 @@ internal static partial class ObjectDropManager
                 () => ConfigurationDomainHost.PublishSyncedPayload(
                     DropNSpawnPlugin.IsSourceOfTruth,
                     Descriptor,
-                    _configuration,
-                    _configurationSignature)),
+                    RuntimeState.Configuration,
+                    RuntimeState.ConfigurationSignature)),
             new DomainSyncHooks<PrefabConfigurationEntry, SyncedObjectConfigurationState>(
                 (out List<PrefabConfigurationEntry> configuration, out string payloadToken) =>
                     ConfigurationDomainHost.TryGetSyncedEntries(Descriptor, out configuration, out payloadToken),
@@ -530,7 +488,7 @@ internal static partial class ObjectDropManager
                 beforeResetLoadState: ResetLoadedConfigurationState,
                 afterResetLoadState: () =>
                 {
-                    _configurationSignature = "";
+                    RuntimeState.ConfigurationSignature = "";
                     _lastAppliedSynchronizedPayloadReady = false;
                     RestoreSnapshots(previouslyAppliedPrefabs);
                     RestoreTrackedLiveObjects(previouslyAppliedPrefabs);
@@ -571,18 +529,18 @@ internal static partial class ObjectDropManager
                 return false;
             }
 
-            string refreshedSignature = NetworkPayloadSyncSupport.ComputeObjectConfigurationSignature(_configuration);
-            if (string.Equals(refreshedSignature, _configurationSignature, StringComparison.Ordinal))
+            string refreshedSignature = NetworkPayloadSyncSupport.ComputeObjectConfigurationSignature(RuntimeState.Configuration);
+            if (string.Equals(refreshedSignature, RuntimeState.ConfigurationSignature, StringComparison.Ordinal))
             {
                 return false;
             }
 
-            _configurationSignature = refreshedSignature;
+            RuntimeState.ConfigurationSignature = refreshedSignature;
             ConfigurationDomainHost.PublishSyncedPayload(
                 DropNSpawnPlugin.IsSourceOfTruth,
                 Descriptor,
-                _configuration,
-                _configurationSignature);
+                RuntimeState.Configuration,
+                RuntimeState.ConfigurationSignature);
             ApplyIfReady(queueLiveReconcile: true);
             return true;
         }
@@ -622,7 +580,7 @@ internal static partial class ObjectDropManager
                 return;
             }
 
-            bool snapshotsChanged = _lastProcessedSnapshotSignature != snapshotSignature || Snapshots.Count == 0;
+            bool snapshotsChanged = _lastProcessedSnapshotSignature != snapshotSignature || SnapshotState.Snapshots.Count == 0;
             if (snapshotsChanged)
             {
                 ScheduleSnapshotBuildLocked(source, gameDataSignature, snapshotSignature);
@@ -773,7 +731,7 @@ internal static partial class ObjectDropManager
             return false;
         }
 
-        if (!IsGameDataReady() || Snapshots.Count == 0)
+        if (!IsGameDataReady() || SnapshotState.Snapshots.Count == 0)
         {
             return false;
         }
@@ -996,20 +954,20 @@ internal static partial class ObjectDropManager
     private static void CommitSyncedConfigurationState(SyncedObjectConfigurationState state, string payloadToken)
     {
         ResetLoadedConfigurationState();
-        _configuration = state.Configuration;
+        RuntimeState.Configuration = state.Configuration;
         foreach ((string prefabName, List<PrefabConfigurationEntry> entries) in state.ActiveEntriesByPrefab)
         {
-            ActiveEntriesByPrefab[prefabName] = entries;
+            RuntimeState.ActiveEntriesByPrefab[prefabName] = entries;
         }
 
         PrefabProfileCatalogState.ApplySyncedProfiles(state.ConfiguredComponentKindsByPrefab, state.ReconcileComponentKindsByPrefab);
 
         foreach ((string prefabName, List<PrefabConfigurationEntry> entries) in state.VneiEntriesByPrefab)
         {
-            VneiEntriesByPrefab[prefabName] = entries;
+            RuntimeState.VneiEntriesByPrefab[prefabName] = entries;
         }
 
-        _configurationSignature = state.ConfigurationSignature;
+        RuntimeState.ConfigurationSignature = state.ConfigurationSignature;
         LoadState.LastLoadedPayload = payloadToken;
         LoadState.LastRejectedPayload = "";
         LoadState.PendingStrictPayload = "";
@@ -1044,7 +1002,7 @@ internal static partial class ObjectDropManager
 
     private static bool RemoveEffectiveConfigurationEntry(string prefabName, string ruleId)
     {
-        bool removed = RemoveEffectiveConfigurationEntry(_configuration, ActiveEntriesByPrefab, prefabName, ruleId);
+        bool removed = RemoveEffectiveConfigurationEntry(RuntimeState.Configuration, RuntimeState.ActiveEntriesByPrefab, prefabName, ruleId);
         RefreshConfiguredPrefabProfile(prefabName);
         return removed;
     }
@@ -1250,7 +1208,7 @@ internal static partial class ObjectDropManager
 
     private static List<PrefabConfigurationEntry> GetOrCreateActiveEntries(string prefabName)
     {
-        return GetOrCreateActiveEntries(ActiveEntriesByPrefab, prefabName);
+        return GetOrCreateActiveEntries(RuntimeState.ActiveEntriesByPrefab, prefabName);
     }
 
     private static List<PrefabConfigurationEntry> GetOrCreateActiveEntries(
@@ -1413,13 +1371,6 @@ internal static partial class ObjectDropManager
                  HasDropTableOverride(definition.ExtraDrops));
     }
 
-    private static bool HasClientVisiblePickableOverride(PickableDefinition? definition)
-    {
-        return definition != null &&
-               (HasPickableDropOverride(definition.Drop) ||
-                definition.OverrideName != null);
-    }
-
     private static bool HasClientProjectedPickableOverride(PickableDefinition? definition)
     {
         return definition != null &&
@@ -1518,9 +1469,9 @@ internal static partial class ObjectDropManager
         }
 
         prefabName = GetPrefabName(gameObject);
-        if (!ActiveEntriesByPrefab.TryGetValue(prefabName, out entries) ||
+        if (!RuntimeState.ActiveEntriesByPrefab.TryGetValue(prefabName, out entries) ||
             entries.Count == 0 ||
-            !SnapshotsByPrefab.TryGetValue(prefabName, out snapshot))
+            !SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out snapshot))
         {
             return false;
         }
@@ -1546,7 +1497,7 @@ internal static partial class ObjectDropManager
         }
 
         EnsureRuntimeDropConfigurationState();
-        return _runtimeDropConfigurationState.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) &&
+        return DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) &&
                (compiledRules = prefabPlan.Rules) != null &&
                compiledRules.Count > 0;
     }
@@ -1554,7 +1505,7 @@ internal static partial class ObjectDropManager
     private static bool TryGetCompiledObjectDropRule(PrefabConfigurationEntry entry, out CompiledObjectDropRule? compiledRule)
     {
         EnsureRuntimeDropConfigurationState();
-        return _runtimeDropConfigurationState.RulesByEntry.TryGetValue(entry, out compiledRule);
+        return DropRuntimeState.Configuration.RulesByEntry.TryGetValue(entry, out compiledRule);
     }
 
     private static bool TryGetStaticDropTableTemplate(
@@ -1564,7 +1515,7 @@ internal static partial class ObjectDropManager
     {
         template = null;
         EnsureRuntimeDropConfigurationState();
-        return _runtimeDropConfigurationState.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) &&
+        return DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) &&
                prefabPlan.StaticDropTableTemplates.TryGetValue(componentKind, out template);
     }
 
@@ -1728,7 +1679,7 @@ internal static partial class ObjectDropManager
 
     private static void CaptureSnapshotsIfNeeded()
     {
-        if (Snapshots.Count > 0)
+        if (SnapshotState.Snapshots.Count > 0)
         {
             return;
         }
@@ -1741,10 +1692,10 @@ internal static partial class ObjectDropManager
                 continue;
             }
 
-            Snapshots.Add(snapshot);
-            if (!SnapshotsByPrefab.ContainsKey(snapshot.Prefab.name))
+            SnapshotState.Snapshots.Add(snapshot);
+            if (!SnapshotState.SnapshotsByPrefab.ContainsKey(snapshot.Prefab.name))
             {
-                SnapshotsByPrefab.Add(snapshot.Prefab.name, snapshot);
+                SnapshotState.SnapshotsByPrefab.Add(snapshot.Prefab.name, snapshot);
             }
         }
     }
@@ -2223,7 +2174,7 @@ internal static partial class ObjectDropManager
 
     private static void ApplyIfReady(bool queueLiveReconcile = false)
     {
-        if (!IsGameDataReady() || Snapshots.Count == 0)
+        if (!IsGameDataReady() || SnapshotState.Snapshots.Count == 0)
         {
             return;
         }
@@ -2243,7 +2194,7 @@ internal static partial class ObjectDropManager
                 _lastAppliedDomainEnabled,
                 domainEnabled,
                 _lastAppliedConfigurationSignature,
-                _configurationSignature,
+                RuntimeState.ConfigurationSignature,
                 _lastAppliedSynchronizedPayloadReady,
                 synchronizedPayloadReady))
         {
@@ -2261,21 +2212,21 @@ internal static partial class ObjectDropManager
         }
 
         int gameDataSignature = ComputeGameDataSignature();
-        if (_runtimeDropConfigurationGameDataSignature == gameDataSignature &&
-            string.Equals(_runtimeDropConfigurationSignature, _configurationSignature, StringComparison.Ordinal))
+        if (DropRuntimeState.GameDataSignature == gameDataSignature &&
+            string.Equals(DropRuntimeState.ConfigurationSignature, RuntimeState.ConfigurationSignature, StringComparison.Ordinal))
         {
             return;
         }
 
-        _runtimeDropConfigurationState = BuildRuntimeDropConfigurationState();
-        _runtimeDropConfigurationGameDataSignature = gameDataSignature;
-        _runtimeDropConfigurationSignature = _configurationSignature;
+        DropRuntimeState.Configuration = BuildRuntimeDropConfigurationState();
+        DropRuntimeState.GameDataSignature = gameDataSignature;
+        DropRuntimeState.ConfigurationSignature = RuntimeState.ConfigurationSignature;
     }
 
     private static ObjectRuntimeDropConfigurationState BuildRuntimeDropConfigurationState()
     {
         ObjectRuntimeDropConfigurationState state = new();
-        foreach ((string prefabName, List<PrefabConfigurationEntry> entries) in ActiveEntriesByPrefab)
+        foreach ((string prefabName, List<PrefabConfigurationEntry> entries) in RuntimeState.ActiveEntriesByPrefab)
         {
             CompiledObjectPrefabPlan plan = new();
             plan.ActiveEntries.AddRange(entries);
@@ -2303,7 +2254,7 @@ internal static partial class ObjectDropManager
         string prefabName,
         CompiledObjectPrefabPlan plan)
     {
-        if (!SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
+        if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
         {
             return;
         }
@@ -2672,9 +2623,9 @@ internal static partial class ObjectDropManager
 
     private static void ValidateConfiguredPrefabs()
     {
-        foreach ((string prefabName, List<PrefabConfigurationEntry> entries) in ActiveEntriesByPrefab)
+        foreach ((string prefabName, List<PrefabConfigurationEntry> entries) in RuntimeState.ActiveEntriesByPrefab)
         {
-            if (SnapshotsByPrefab.ContainsKey(prefabName))
+            if (SnapshotState.SnapshotsByPrefab.ContainsKey(prefabName))
             {
                 continue;
             }
@@ -2692,7 +2643,7 @@ internal static partial class ObjectDropManager
     {
         _lastAppliedGameDataSignature = gameDataSignature;
         _lastAppliedDomainEnabled = domainEnabled;
-        _lastAppliedConfigurationSignature = _configurationSignature;
+        _lastAppliedConfigurationSignature = RuntimeState.ConfigurationSignature;
         _lastAppliedSynchronizedPayloadReady = Volatile.Read(ref _synchronizedPayloadReady);
         ReplaceEntrySignatures(_lastAppliedEntrySignaturesByPrefab, currentEntrySignatures);
         if (domainEnabled)
@@ -2711,7 +2662,7 @@ internal static partial class ObjectDropManager
     {
         if (targetPrefabs == null)
         {
-            foreach (PrefabSnapshot snapshot in Snapshots)
+            foreach (PrefabSnapshot snapshot in SnapshotState.Snapshots)
             {
                 RestoreConfiguredComponents(snapshot.Prefab, snapshot, CreateRestoreMask(snapshot), updateRuntimeState: false);
             }
@@ -2721,7 +2672,7 @@ internal static partial class ObjectDropManager
 
         foreach (string prefabName in targetPrefabs)
         {
-            if (!SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
+            if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
             {
                 continue;
             }
@@ -2745,7 +2696,7 @@ internal static partial class ObjectDropManager
             }
 
             string prefabName = GetPrefabName(liveObject);
-            if (!SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
+            if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
             {
                 continue;
             }
@@ -2818,7 +2769,7 @@ internal static partial class ObjectDropManager
     private static Dictionary<string, string> BuildActiveEntrySignaturesByPrefab()
     {
         return DomainEntrySignatureSupport.BuildSignaturesByKey(
-            ActiveEntriesByPrefab,
+            RuntimeState.ActiveEntriesByPrefab,
             NetworkPayloadSyncSupport.ComputeObjectConfigurationSignature);
     }
 
@@ -2842,7 +2793,7 @@ internal static partial class ObjectDropManager
     {
         List<CompiledObjectDropRule>? compiledRules;
         EnsureRuntimeDropConfigurationState();
-        if (!_runtimeDropConfigurationState.PlansByPrefab.TryGetValue(snapshot.Prefab.name, out CompiledObjectPrefabPlan? prefabPlan) ||
+        if (!DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(snapshot.Prefab.name, out CompiledObjectPrefabPlan? prefabPlan) ||
             (compiledRules = prefabPlan.Rules) == null ||
             compiledRules.Count == 0)
         {
@@ -3670,14 +3621,6 @@ internal static partial class ObjectDropManager
         }
 
         return prefab;
-    }
-
-    private static DropTable BuildDropTable(DropTablePayloadDefinition definition, string context)
-    {
-        DropTable dropTable = CreateDefaultDropTable();
-        ApplyDropTableScalarOverrides(dropTable, definition, resetToDefaultsWhenUnset: true);
-        AppendDropTableRows(dropTable.m_drops, definition.Drops, context);
-        return dropTable;
     }
 
     private static DropTable BuildEffectiveDropTable(DropTable? snapshotTable, IEnumerable<DropTablePayloadDefinition> matchingPayloads, string context)

@@ -194,7 +194,7 @@ internal static partial class ObjectDropManager
         }
 
         EnsureRuntimeDropConfigurationState();
-        if (!_runtimeDropConfigurationState.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) ||
+        if (!DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) ||
             (compiledRules = prefabPlan.Rules) == null ||
             compiledRules.Count == 0)
         {
@@ -475,7 +475,7 @@ internal static partial class ObjectDropManager
         }
 
         EnsureRuntimeDropConfigurationState();
-        if (!_runtimeDropConfigurationState.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) ||
+        if (!DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(prefabName, out CompiledObjectPrefabPlan? prefabPlan) ||
             prefabPlan.Rules.Count == 0)
         {
             return false;

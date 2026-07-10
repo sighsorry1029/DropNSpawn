@@ -68,24 +68,6 @@ internal static class CreatureManagerSpawnReferenceSupport
     private static string _snapshotAssemblySignature = "";
     private static ReferenceSnapshot? _snapshotCache;
 
-    internal static void InvalidateProviderCache()
-    {
-        lock (Sync)
-        {
-            _providerAssemblySignature = "";
-            _providerCache = new List<ProviderHandle>();
-            InvalidateSnapshotUnsafe();
-        }
-    }
-
-    internal static void InvalidateSnapshot()
-    {
-        lock (Sync)
-        {
-            InvalidateSnapshotUnsafe();
-        }
-    }
-
     internal static ReferenceSnapshot GetReferenceSnapshot(bool forceRefresh = false)
     {
         lock (Sync)
@@ -119,12 +101,6 @@ internal static class CreatureManagerSpawnReferenceSupport
             _snapshotCache = snapshot;
             return snapshot;
         }
-    }
-
-    private static void InvalidateSnapshotUnsafe()
-    {
-        _snapshotAssemblySignature = "";
-        _snapshotCache = null;
     }
 
     private static List<ProviderHandle> GetProviders(Assembly[] assemblies, string assemblySignature)

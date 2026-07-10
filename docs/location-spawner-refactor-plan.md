@@ -6,7 +6,7 @@ DropNSpawn no longer owns a user-editable location domain. Former location-domai
 
 - Boss altar and altar ItemStand rules live in BossRules.
 - Boss despawn, boss-tamed pressure, same-boss duplicate blocking, Personalized BossStone, and remote Forsaken Power selection live in BossRules.
-- RuneStone global pins and Vegvisir global effects live in VegvisirRunestones.
+- RuneStone global pins and Vegvisir global effects live in UsefulRunestones.
 
 DropNSpawn still keeps location lookup helpers because the `object` and `spawner` domains can use location-scoped selectors and generated location reference files.
 
@@ -69,4 +69,4 @@ The following are intentionally not part of DropNSpawn anymore:
 - RuneStone and Vegvisir gameplay edits
 - boss-specific despawn or pressure rules
 
-Those responsibilities belong to BossRules or VegvisirRunestones.
+Those responsibilities belong to BossRules or UsefulRunestones.

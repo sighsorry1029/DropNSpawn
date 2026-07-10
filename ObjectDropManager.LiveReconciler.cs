@@ -27,14 +27,14 @@ internal static partial class ObjectDropManager
             return;
         }
 
-        bool hasConfiguredEntries = ActiveEntriesByPrefab.TryGetValue(prefabName, out List<PrefabConfigurationEntry>? entries) && entries.Count > 0;
+        bool hasConfiguredEntries = RuntimeState.ActiveEntriesByPrefab.TryGetValue(prefabName, out List<PrefabConfigurationEntry>? entries) && entries.Count > 0;
         if (!IsGameDataReady() ||
             DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Object))
         {
             return;
         }
 
-        if (!SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
+        if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
         {
             return;
         }

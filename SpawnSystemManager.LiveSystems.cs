@@ -35,14 +35,14 @@ internal static partial class SpawnSystemManager
                     return;
                 }
             }
-            else if (!_configurationReady)
+            else if (!RuntimeState.ConfigurationReady)
             {
                 if (!CanRetainCurrentCompiledTableWhilePending(ComputeGameDataSignature()))
                 {
                     return;
                 }
             }
-            else if (_configurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0))
+            else if (RuntimeState.ConfigurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0))
             {
                 ApplyIfReady(
                     queueEspRefreshForLiveSystems: queueEspRefreshForAwake,
@@ -70,8 +70,8 @@ internal static partial class SpawnSystemManager
             }
 
             if (!DropNSpawnPlugin.IsSourceOfTruth &&
-                ((_configurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0)) ||
-                 (!_configurationReady && !CanRetainCurrentCompiledTableWhilePending(ComputeGameDataSignature()))))
+                ((RuntimeState.ConfigurationReady && (_activeCompiledTable == null || _activeCompiledTable.Lists.Count == 0)) ||
+                 (!RuntimeState.ConfigurationReady && !CanRetainCurrentCompiledTableWhilePending(ComputeGameDataSignature()))))
             {
                 return;
             }
@@ -104,7 +104,7 @@ internal static partial class SpawnSystemManager
                 return false;
             }
 
-            if (!_configurationReady)
+            if (!RuntimeState.ConfigurationReady)
             {
                 return true;
             }
@@ -238,7 +238,7 @@ internal static partial class SpawnSystemManager
                 continue;
             }
 
-            if (queuedAttach.BuildVersion != _preparedEntriesBuildVersion ||
+            if (queuedAttach.BuildVersion != BuildPipelineState.PreparedEntriesBuildVersion ||
                 !ReferenceEquals(queuedAttach.TargetTable, GetSelectedCompiledTableForCurrentState()))
             {
                 return true;
@@ -623,19 +623,4 @@ internal static partial class SpawnSystemManager
         return _templateSnapshot;
     }
 
-    private static SpawnSystemSnapshot? GetCachedTemplateSnapshot()
-    {
-        if (_templateSnapshot != null)
-        {
-            return _templateSnapshot;
-        }
-
-        if (SnapshotsBySystemId.Count == 0)
-        {
-            return null;
-        }
-
-        _templateSnapshot = CaptureTemplateSnapshot(SnapshotsBySystemId.Values);
-        return _templateSnapshot;
-    }
 }

@@ -80,34 +80,6 @@ internal static class PrefabProvenanceRegistry
     private static bool _mappingsDirty = true;
     private static bool _allowCacheLoad = true;
 
-    internal static bool TryGetOwnerName(string? prefabName, out string ownerName)
-    {
-        ownerName = "";
-        string normalizedPrefabName = (prefabName ?? "").Trim();
-        if (normalizedPrefabName.Length == 0)
-        {
-            return false;
-        }
-
-        EnsureMappingsLoaded();
-        foreach (string candidate in EnumerateLookupCandidates(normalizedPrefabName))
-        {
-            if (_owners.TryGetValue(candidate, out OwnerMapping ownerMapping) &&
-                !string.IsNullOrWhiteSpace(ownerMapping.OwnerName))
-            {
-                ownerName = ownerMapping.OwnerName;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    internal static string GetOwnerNameOrFallback(string? prefabName)
-    {
-        return PrefabOwnerResolver.GetOwnerName(prefabName);
-    }
-
     internal static void Invalidate()
     {
         lock (Sync)

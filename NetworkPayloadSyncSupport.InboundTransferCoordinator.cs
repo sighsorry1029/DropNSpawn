@@ -51,6 +51,13 @@ internal static partial class NetworkPayloadSyncSupport
             return false;
         }
 
+        if (compressedSize > MaxCompressedPayloadBytes)
+        {
+            failureReason =
+                $"compressed size {compressedSize} exceeds the supported limit {MaxCompressedPayloadBytes}.";
+            return false;
+        }
+
         if (chunkLength < 0 || chunkLength > chunkSizeBytes)
         {
             failureReason = $"chunk length {chunkLength} is outside the valid range 0-{chunkSizeBytes}.";
@@ -700,11 +707,8 @@ internal static partial class NetworkPayloadSyncSupport
         string hash,
         byte[] payloadBytes,
         List<TEntry>? entries,
-        PayloadEntryIndex<TEntry>? payloadIndex,
-        int? entryCount,
-        string successLogMessage)
+        PayloadEntryIndex<TEntry>? payloadIndex)
     {
-        bool committed = false;
         lock (Sync)
         {
             if (!IsProcessingResultCurrentLocked(transport, version, hash) ||
@@ -721,13 +725,7 @@ internal static partial class NetworkPayloadSyncSupport
             ClearPendingInboundTransferLocked(transport);
             transport.ProcessingInFlight = false;
             transport.ProcessingHash = "";
-            committed = true;
             QueueReloadActionLocked(transport);
-        }
-
-        if (committed)
-        {
-            NotifyTransportPayloadReadyIfNeeded(transport, hash, entryCount, successLogMessage);
         }
     }
 
@@ -1188,6 +1186,8 @@ internal static partial class NetworkPayloadSyncSupport
                     payloadBytes = transferBytes;
                 }
 
+                EnsurePayloadSizeWithinLimit(payloadBytes.Length, transport.DisplayName);
+
                 string payloadHash = ComputeSha256(payloadBytes);
                 if (!string.Equals(payloadHash, hash, StringComparison.Ordinal))
                 {
@@ -1209,11 +1209,8 @@ internal static partial class NetworkPayloadSyncSupport
                     requiresCompression: pendingTransfer.TransferKind == DeltaTransferKind,
                     roleEpoch);
 
-                string successLogMessage = pendingTransfer.TransferKind == DeltaTransferKind
-                    ? $"Fetched synchronized {transport.DisplayName} delta payload '{hash}' from the server."
-                    : $"Fetched synchronized {transport.DisplayName} payload '{hash}' from the server.";
                 QueueMainThreadPayloadCommitLocked(() =>
-                    CommitProcessedPayloadLocked(transport, version, hash, payloadBytes, entries, payloadIndex, entries?.Count, successLogMessage),
+                    CommitProcessedPayloadLocked(transport, version, hash, payloadBytes, entries, payloadIndex),
                     roleEpoch);
             }
             catch (Exception ex)

@@ -368,27 +368,10 @@ internal static partial class SpawnSystemManager
 
     private static string FormatYamlNullableBoolOrNull(bool? value) => value.HasValue ? FormatYamlBool(value.Value) : "null";
 
-    private static string FormatYamlRangeOrNull(IntRangeDefinition? value)
-    {
-        return value != null && value.HasValues()
-            ? RangeFormatting.FormatInlineObject(value)
-            : "null";
-    }
-
     private static string FormatYamlFloat(float value)
     {
         return Math.Abs(value % 1f) < 0.0001f
             ? ((int)MathF.Round(value)).ToString(CultureInfo.InvariantCulture)
             : value.ToString("0.###", CultureInfo.InvariantCulture);
-    }
-
-    private static void AppendTemplateComment(StringBuilder builder, string text)
-    {
-        builder.Append("# ").AppendLine(text);
-    }
-
-    private static void AppendTemplateBlankLine(StringBuilder builder)
-    {
-        builder.AppendLine("#");
     }
 }

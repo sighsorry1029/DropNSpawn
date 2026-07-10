@@ -75,7 +75,6 @@ internal sealed class DomainModuleOptions<TEntry>
     internal Func<float, bool>? ProcessPendingReconcileStep { get; set; }
     internal Action? BeforeClientManifestChanged { get; set; }
     internal Action? OnClientAuthorityCutover { get; set; }
-    internal DomainTransportHooks? Hooks { get; set; }
 }
 
 /// <summary>
@@ -111,8 +110,7 @@ internal sealed class DomainModuleDefinition<TEntry> : DomainRegistration<TEntry
             Require(options.KeySelector, nameof(options.KeySelector)),
             Require(options.ApplyPayloadAction, nameof(options.ApplyPayloadAction)),
             options.WorkKinds,
-            Require(options.InitializeRuntime, nameof(options.InitializeRuntime)),
-            options.Hooks)
+            Require(options.InitializeRuntime, nameof(options.InitializeRuntime)))
     {
     }
 
@@ -126,8 +124,7 @@ internal sealed class DomainModuleDefinition<TEntry> : DomainRegistration<TEntry
         Func<TEntry, string> keySelector,
         Action applyPayloadAction,
         DomainWorkKinds workKinds,
-        Action initializeRuntime,
-        DomainTransportHooks? hooks)
+        Action initializeRuntime)
         : base(
             descriptor,
             new DomainTransportMetadata<TEntry>(
@@ -138,8 +135,7 @@ internal sealed class DomainModuleDefinition<TEntry> : DomainRegistration<TEntry
                 cacheDirectoryName,
                 clientRequestPriority,
                 keySelector,
-                applyPayloadAction,
-                hooks),
+                applyPayloadAction),
             workKinds,
             initializeRuntime)
     {

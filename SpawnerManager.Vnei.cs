@@ -21,7 +21,7 @@ internal static partial class SpawnerManager
     {
         lock (Sync)
         {
-            return ActiveEntriesByPrefab.TryGetValue(prefabName ?? "", out List<SpawnerConfigurationEntry>? entries) &&
+            return RuntimeState.ActiveEntriesByPrefab.TryGetValue(prefabName ?? "", out List<SpawnerConfigurationEntry>? entries) &&
                    entries.Any(entry => entry.SpawnArea?.Creatures != null);
         }
     }
@@ -37,7 +37,7 @@ internal static partial class SpawnerManager
             }
 
             string prefabName = GetConfigPrefabName(spawnArea.gameObject, nameof(SpawnArea));
-            ActiveEntriesByPrefab.TryGetValue(prefabName, out List<SpawnerConfigurationEntry>? entries);
+            RuntimeState.ActiveEntriesByPrefab.TryGetValue(prefabName, out List<SpawnerConfigurationEntry>? entries);
 
             SpawnerConfigurationEntry? baseEntry = null;
             foreach (SpawnerConfigurationEntry entry in entries ?? Enumerable.Empty<SpawnerConfigurationEntry>())

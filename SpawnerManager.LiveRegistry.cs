@@ -6,22 +6,6 @@ namespace DropNSpawn;
 
 internal static partial class SpawnerManager
 {
-    internal static void TrackSpawnAreaInstance(SpawnArea? spawnArea)
-    {
-        lock (Sync)
-        {
-            TrackSpawnAreaInstanceInternal(spawnArea);
-        }
-    }
-
-    internal static void TrackCreatureSpawnerInstance(CreatureSpawner? creatureSpawner)
-    {
-        lock (Sync)
-        {
-            TrackCreatureSpawnerInstanceInternal(creatureSpawner);
-        }
-    }
-
     internal static void HandleSpawnAreaInstanceAwake(SpawnArea? spawnArea)
     {
         lock (Sync)
@@ -314,34 +298,6 @@ internal static partial class SpawnerManager
         }
     }
 
-    private static bool TryGetTrackedOrCurrentSpawnAreaPrefabName(SpawnArea? spawnArea, out string configPrefabName)
-    {
-        configPrefabName = "";
-        if (spawnArea == null || spawnArea.gameObject == null)
-        {
-            return false;
-        }
-
-        configPrefabName = LiveRegistryStore.TryGetTrackedPrefabName(spawnArea, out string trackedPrefabName)
-            ? trackedPrefabName
-            : GetConfigPrefabName(spawnArea.gameObject, nameof(SpawnArea));
-        return configPrefabName.Length > 0;
-    }
-
-    private static bool TryGetTrackedOrCurrentCreatureSpawnerPrefabName(CreatureSpawner? creatureSpawner, out string configPrefabName)
-    {
-        configPrefabName = "";
-        if (creatureSpawner == null || creatureSpawner.gameObject == null)
-        {
-            return false;
-        }
-
-        configPrefabName = LiveRegistryStore.TryGetTrackedPrefabName(creatureSpawner, out string trackedPrefabName)
-            ? trackedPrefabName
-            : GetConfigPrefabName(creatureSpawner.gameObject, nameof(CreatureSpawner));
-        return configPrefabName.Length > 0;
-    }
-
     private static bool TryGetTrackedOrCurrentSpawnAreaEligibility(
         SpawnArea? spawnArea,
         SpawnerRuntimeConfigurationSnapshot runtimeConfigurationSnapshot,
@@ -365,7 +321,7 @@ internal static partial class SpawnerManager
                 return false;
             }
 
-            if (trackedState.EligibilityEpoch == _trackedSpawnerEligibilityEpoch)
+            if (trackedState.EligibilityEpoch == LiveRuntimeState.TrackedSpawnerEligibilityEpoch)
             {
                 configuredEligible = trackedState.ConfiguredEligible;
                 runtimeEligible = trackedState.RuntimeEligible;
@@ -378,7 +334,7 @@ internal static partial class SpawnerManager
                 spawnArea,
                 configuredEligible,
                 runtimeEligible,
-                _trackedSpawnerEligibilityEpoch);
+                LiveRuntimeState.TrackedSpawnerEligibilityEpoch);
             return true;
         }
 
@@ -416,7 +372,7 @@ internal static partial class SpawnerManager
                 return false;
             }
 
-            if (trackedState.EligibilityEpoch == _trackedSpawnerEligibilityEpoch)
+            if (trackedState.EligibilityEpoch == LiveRuntimeState.TrackedSpawnerEligibilityEpoch)
             {
                 configuredEligible = trackedState.ConfiguredEligible;
                 runtimeEligible = trackedState.RuntimeEligible;
@@ -429,7 +385,7 @@ internal static partial class SpawnerManager
                 creatureSpawner,
                 configuredEligible,
                 runtimeEligible,
-                _trackedSpawnerEligibilityEpoch);
+                LiveRuntimeState.TrackedSpawnerEligibilityEpoch);
             return true;
         }
 

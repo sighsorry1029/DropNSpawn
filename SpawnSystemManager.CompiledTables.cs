@@ -7,7 +7,7 @@ namespace DropNSpawn;
 
 internal static partial class SpawnSystemManager
 {
-    private static void QueueLiveSystemAttachForTableCore(
+    private static void QueueLiveSystemAttachForTable(
         CompiledSpawnSystemTable? table,
         int buildVersion,
         bool queueEspRefresh,
@@ -25,7 +25,7 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    private static void QueueLiveSystemAttachCore(
+    private static void QueueLiveSystemAttach(
         SpawnSystem? system,
         CompiledSpawnSystemTable targetTable,
         int buildVersion,
@@ -55,7 +55,7 @@ internal static partial class SpawnSystemManager
         PendingLiveSystemAttaches.Enqueue(new PendingLiveSystemAttach(system, systemId, _reconcileQueueEpoch, buildVersion, targetTable));
     }
 
-    private static void AttachTableToSystemCore(SpawnSystem? system, CompiledSpawnSystemTable? table)
+    private static void AttachTableToSystem(SpawnSystem? system, CompiledSpawnSystemTable? table)
     {
         if (system == null || table == null || table.Lists.Count == 0)
         {
@@ -68,7 +68,7 @@ internal static partial class SpawnSystemManager
         system.m_spawnLists = CloneAttachedSpawnLists(table);
     }
 
-    private static bool IsSystemAttachedToCompiledTableCore(SpawnSystem? system, CompiledSpawnSystemTable? table)
+    private static bool IsSystemAttachedToCompiledTable(SpawnSystem? system, CompiledSpawnSystemTable? table)
     {
         if (system == null || table == null || table.Lists.Count == 0)
         {
@@ -89,7 +89,7 @@ internal static partial class SpawnSystemManager
                liveSummary.ContentHash == expectedHash;
     }
 
-    private static List<SpawnSystemList> CloneAttachedSpawnListsCore(CompiledSpawnSystemTable table)
+    private static List<SpawnSystemList> CloneAttachedSpawnLists(CompiledSpawnSystemTable table)
     {
         List<SpawnSystemList> attachedLists = new(table.Lists.Count);
         foreach (SpawnSystemList sourceList in table.Lists)
@@ -119,14 +119,14 @@ internal static partial class SpawnSystemManager
         return attachedLists;
     }
 
-    private static CompiledSpawnSystemTable? GetSelectedCompiledTableForCurrentStateCore()
+    private static CompiledSpawnSystemTable? GetSelectedCompiledTableForCurrentState()
     {
         return PluginSettingsFacade.IsSpawnSystemDomainEnabled()
             ? _activeCompiledTable ?? _vanillaCompiledTable
             : _vanillaCompiledTable;
     }
 
-    private static CompiledSpawnSystemTable? BuildVanillaCompiledTableCore(int gameDataSignature)
+    private static CompiledSpawnSystemTable? BuildVanillaCompiledTable(int gameDataSignature)
     {
         List<SpawnSystemList> sourceLists = GetVanillaSourceSpawnLists(out bool referenceSourceTrusted);
         if (sourceLists.Count == 0)
@@ -154,34 +154,12 @@ internal static partial class SpawnSystemManager
         return table;
     }
 
-    private static CompiledSpawnSystemTable BuildActiveCompiledTableCore(int gameDataSignature, List<PreparedSpawnSystemEntry> entries, string preparedEntriesSignature)
+    private static List<SpawnSystemList> GetVanillaSourceSpawnLists()
     {
-        CompiledSpawnSystemTable table = new()
-        {
-            GameDataSignature = gameDataSignature,
-            Signature = preparedEntriesSignature
-        };
-
-        List<SpawnSystem.SpawnData> liveEntries = new(entries.Count);
-        foreach (PreparedSpawnSystemEntry entry in entries)
-        {
-            SpawnSystem.SpawnData liveEntry = entry.Data.Clone();
-            SpawnSystemCustomDataSupport.ApplyPreparedPayload(liveEntry, entry.CustomDataPayload);
-            ApplyRuntimeMetadata(liveEntry, entry.RuntimeTimeOfDay);
-            liveEntries.Add(liveEntry);
-        }
-
-        table.Lists.Add(CreateManagedSpawnList(liveEntries));
-        FreezeCompiledTableBaseline(table);
-        return table;
+        return GetVanillaSourceSpawnLists(out _);
     }
 
-    private static List<SpawnSystemList> GetVanillaSourceSpawnListsCore()
-    {
-        return GetVanillaSourceSpawnListsCore(out _);
-    }
-
-    private static List<SpawnSystemList> GetVanillaSourceSpawnListsCore(out bool referenceSourceTrusted)
+    private static List<SpawnSystemList> GetVanillaSourceSpawnLists(out bool referenceSourceTrusted)
     {
         referenceSourceTrusted = false;
         SpawnSystem? zoneCtrlSpawnSystem = GetZoneCtrlPrefabSpawnSystem();
@@ -204,7 +182,7 @@ internal static partial class SpawnSystemManager
             .ToList();
     }
 
-    private static SpawnSystem? GetZoneCtrlPrefabSpawnSystemCore()
+    private static SpawnSystem? GetZoneCtrlPrefabSpawnSystem()
     {
         if (ZoneSystem.instance?.m_zoneCtrlPrefab == null)
         {
@@ -214,7 +192,7 @@ internal static partial class SpawnSystemManager
         return ZoneSystem.instance.m_zoneCtrlPrefab.GetComponent<SpawnSystem>();
     }
 
-    private static SpawnSystemList CreateManagedSpawnListCore(List<SpawnSystem.SpawnData> spawners)
+    private static SpawnSystemList CreateManagedSpawnList(List<SpawnSystem.SpawnData> spawners)
     {
         GameObject host = GetManagedSpawnListHost();
         SpawnSystemList spawnList = host.AddComponent<SpawnSystemList>();
@@ -224,7 +202,7 @@ internal static partial class SpawnSystemManager
         return spawnList;
     }
 
-    private static SpawnSystemList CreateAttachedSpawnListCore(List<SpawnSystem.SpawnData> spawners)
+    private static SpawnSystemList CreateAttachedSpawnList(List<SpawnSystem.SpawnData> spawners)
     {
         GameObject host = GetAttachedSpawnListHost();
         SpawnSystemList spawnList = host.AddComponent<SpawnSystemList>();
@@ -234,7 +212,7 @@ internal static partial class SpawnSystemManager
         return spawnList;
     }
 
-    private static GameObject GetManagedSpawnListHostCore()
+    private static GameObject GetManagedSpawnListHost()
     {
         if (_managedSpawnListHost != null)
         {
@@ -254,7 +232,7 @@ internal static partial class SpawnSystemManager
         return _managedSpawnListHost;
     }
 
-    private static GameObject GetAttachedSpawnListHostCore()
+    private static GameObject GetAttachedSpawnListHost()
     {
         if (_attachedSpawnListHost != null)
         {
@@ -274,7 +252,7 @@ internal static partial class SpawnSystemManager
         return _attachedSpawnListHost;
     }
 
-    private static void ClearAttachedRuntimeStateCore(SpawnSystem? system)
+    private static void ClearAttachedRuntimeState(SpawnSystem? system)
     {
         if (system == null)
         {
@@ -286,7 +264,7 @@ internal static partial class SpawnSystemManager
         DestroyAttachedSpawnLists(system.m_spawnLists);
     }
 
-    private static void DestroyAttachedSpawnListsCore(IEnumerable<SpawnSystemList>? spawnLists)
+    private static void DestroyAttachedSpawnLists(IEnumerable<SpawnSystemList>? spawnLists)
     {
         if (spawnLists == null)
         {
@@ -307,7 +285,7 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    private static void DestroyReplacedCompiledTableCore(CompiledSpawnSystemTable? table)
+    private static void DestroyReplacedCompiledTable(CompiledSpawnSystemTable? table)
     {
         if (table == null ||
             ReferenceEquals(table, _activeCompiledTable) ||

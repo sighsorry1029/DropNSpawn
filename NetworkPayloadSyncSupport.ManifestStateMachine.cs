@@ -122,7 +122,7 @@ internal static partial class NetworkPayloadSyncSupport
         {
             EnsureRpcRegisteredLocked();
 
-            if (!PayloadManifest.TryParse(manifestRaw, out PayloadManifest manifest))
+            if (!TryParsePayloadManifest(transport, manifestRaw, out PayloadManifest manifest))
             {
                 bool hasLastKnownGood = TryPreserveLastKnownGoodOnInvalidManifestLocked(
                     transport,
@@ -148,7 +148,6 @@ internal static partial class NetworkPayloadSyncSupport
                 transport.DesiredPayloadManifest = manifest;
                 RefreshBlockedManifestForDesiredHashLocked(transport, manifest.Hash);
                 CancelProcessingIfHashMismatchLocked(transport, manifest.Hash);
-                NotifyTransportManifestSeenLocked(transport, manifest);
 
                 if (manifest.IsEmpty)
                 {
@@ -179,16 +178,6 @@ internal static partial class NetworkPayloadSyncSupport
                 }
             }
         }
-    }
-
-    private static void NotifyTransportManifestSeenLocked<TEntry>(DomainTransport<TEntry> transport, PayloadManifest manifest)
-    {
-        transport.Metadata.Hooks.OnManifestSeen(
-            manifest.IsEmpty,
-            manifest.Hash,
-            manifest.CompressedSize,
-            manifest.ChunkCount,
-            manifest.EntryCount);
     }
 
     private static bool TryScheduleCachedPayloadLoadLocked<TEntry>(DomainTransport<TEntry> transport, PayloadManifest manifest)
@@ -250,9 +239,7 @@ internal static partial class NetworkPayloadSyncSupport
                         manifest.Hash,
                         payloadBytes,
                         null,
-                        null,
-                        null,
-                        $"Loaded synchronized {transport.DisplayName} payload '{manifest.Hash}' from cache."),
+                        null),
                     roleEpoch);
             }
             catch (Exception ex)

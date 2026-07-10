@@ -354,32 +354,12 @@ internal static partial class SpawnerManager
     private static readonly Dictionary<string, List<SpawnAreaComponentSnapshot>> SpawnAreaSnapshotsByName = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, List<CreatureSpawnerComponentSnapshot>> CreatureSpawnerSnapshotsByName = new(StringComparer.OrdinalIgnoreCase);
     private static readonly SpawnerConfigurationRuntimeState RuntimeState = new();
-    private static List<SpawnerConfigurationEntry> ActiveEntries => RuntimeState.ActiveEntries;
-    private static Dictionary<string, List<SpawnerConfigurationEntry>> ActiveEntriesByPrefab => RuntimeState.ActiveEntriesByPrefab;
-    private static HashSet<string> ConfiguredSpawnAreaPrefabs => RuntimeState.ConfiguredSpawnAreaPrefabs;
-    private static HashSet<string> ConfiguredCreatureSpawnerPrefabs => RuntimeState.ConfiguredCreatureSpawnerPrefabs;
-    private static HashSet<string> RuntimeConfiguredSpawnAreaPrefabs => RuntimeState.RuntimeConfiguredSpawnAreaPrefabs;
-    private static HashSet<string> RuntimeConfiguredCreatureSpawnerPrefabs => RuntimeState.RuntimeConfiguredCreatureSpawnerPrefabs;
     private static readonly InvalidEntryDiagnostics InvalidEntryWarnings = new();
     private static readonly SpawnerLiveRuntimeState LiveRuntimeState = new();
-    private static Dictionary<string, SpawnAreaComponentCatalog> SpawnAreaCatalogsByExactKey => LiveRuntimeState.SpawnAreaCatalogsByExactKey;
-    private static Dictionary<string, CreatureSpawnerComponentCatalog> CreatureSpawnerCatalogsByExactKey => LiveRuntimeState.CreatureSpawnerCatalogsByExactKey;
     private static readonly HashSet<string> CapturedRootPrefabNames = new(StringComparer.OrdinalIgnoreCase);
     private static readonly FieldInfo? CreatureSpawnerCheckedLocationField = AccessTools.Field(typeof(CreatureSpawner), "m_checkedLocation");
     private static readonly FieldInfo? CreatureSpawnerLocationField = AccessTools.Field(typeof(CreatureSpawner), "m_location");
     private static readonly FieldInfo? CreatureSpawnerSpawnGroupField = AccessTools.Field(typeof(CreatureSpawner), "m_spawnGroup");
-
-    private static List<SpawnerConfigurationEntry> _configuration
-    {
-        get => RuntimeState.Configuration;
-        set => RuntimeState.Configuration = value;
-    }
-
-    private static string _configurationSignature
-    {
-        get => RuntimeState.ConfigurationSignature;
-        set => RuntimeState.ConfigurationSignature = value;
-    }
 
     private static DomainLoadState LoadState => ConfigurationRuntime.LoadState;
     private static bool _lastAppliedSynchronizedPayloadReady;
@@ -388,13 +368,11 @@ internal static partial class SpawnerManager
     private static int? _lastProcessedGameDataSignature;
     private static SpawnerRuntimeConfigurationSnapshot _runtimeConfigurationSnapshot = SpawnerRuntimeConfigurationSnapshot.Empty;
     private static bool _referenceArtifactsAutoRefreshConsumed;
-    private static Dictionary<string, string> CurrentEntrySignaturesByPrefab => RuntimeState.CurrentEntrySignaturesByPrefab;
     private static readonly Dictionary<string, string> _lastAppliedEntrySignaturesByPrefab = new(StringComparer.OrdinalIgnoreCase);
     private static string _lastAppliedConfigurationSignature = "";
     private static int? _lastAppliedGameDataSignature;
     private static bool? _lastAppliedDomainEnabled;
     private static int _reconcileQueueEpoch;
-    private static int _trackedSpawnerEligibilityEpoch => LiveRuntimeState.TrackedSpawnerEligibilityEpoch;
     private const string MockPrefabPrefix = "JVLmock_";
     // Distinguishes an authoritative empty payload from the pre-sync waiting state on clients.
     private static bool _synchronizedPayloadReady;
@@ -418,8 +396,8 @@ internal static partial class SpawnerManager
                 () => ConfigurationDomainHost.PublishSyncedPayload(
                     DropNSpawnPlugin.IsSourceOfTruth,
                     Descriptor,
-                    _configuration,
-                    _configurationSignature)),
+                    RuntimeState.Configuration,
+                    RuntimeState.ConfigurationSignature)),
             new DomainSyncHooks<SpawnerConfigurationEntry, SyncedSpawnerConfigurationState>(
                 (out List<SpawnerConfigurationEntry> configuration, out string payloadToken) =>
                     ConfigurationDomainHost.TryGetSyncedEntries(Descriptor, out configuration, out payloadToken),
@@ -468,7 +446,7 @@ internal static partial class SpawnerManager
                 beforeResetLoadState: ResetLoadedConfigurationState,
                 afterResetLoadState: () =>
                 {
-                    _configurationSignature = "";
+                    RuntimeState.ConfigurationSignature = "";
                     _lastAppliedSynchronizedPayloadReady = false;
                     ReapplyRegisteredLiveObjects(false, previouslyAppliedPrefabs);
                     RefreshVneiCompatibility(previousEntrySignatures);
@@ -528,18 +506,18 @@ internal static partial class SpawnerManager
                 return false;
             }
 
-            string refreshedSignature = NetworkPayloadSyncSupport.ComputeSpawnerConfigurationSignature(_configuration);
-            if (string.Equals(refreshedSignature, _configurationSignature, StringComparison.Ordinal))
+            string refreshedSignature = NetworkPayloadSyncSupport.ComputeSpawnerConfigurationSignature(RuntimeState.Configuration);
+            if (string.Equals(refreshedSignature, RuntimeState.ConfigurationSignature, StringComparison.Ordinal))
             {
                 return false;
             }
 
-            _configurationSignature = refreshedSignature;
+            RuntimeState.ConfigurationSignature = refreshedSignature;
             ConfigurationDomainHost.PublishSyncedPayload(
                 DropNSpawnPlugin.IsSourceOfTruth,
                 Descriptor,
-                _configuration,
-                _configurationSignature);
+                RuntimeState.Configuration,
+                RuntimeState.ConfigurationSignature);
             ApplyIfReady(queueLiveReconcile: true);
             return true;
         }
@@ -646,7 +624,7 @@ internal static partial class SpawnerManager
     private static IEnumerable<string> BuildConfiguredSpawnerResolutionKeys()
     {
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach ((string _, List<SpawnerConfigurationEntry> entries) in ActiveEntriesByPrefab)
+        foreach ((string _, List<SpawnerConfigurationEntry> entries) in RuntimeState.ActiveEntriesByPrefab)
         {
             foreach (SpawnerConfigurationEntry entry in entries)
             {
@@ -966,35 +944,35 @@ internal static partial class SpawnerManager
     {
         SpawnerRuntimeConfigurationSnapshot runtimeConfigurationSnapshot = BuildRuntimeConfigurationSnapshot(state);
         ResetLoadedConfigurationState();
-        _configuration = state.Configuration;
-        ActiveEntries.AddRange(state.ActiveEntries);
+        RuntimeState.Configuration = state.Configuration;
+        RuntimeState.ActiveEntries.AddRange(state.ActiveEntries);
         foreach ((string prefabName, List<SpawnerConfigurationEntry> entries) in state.ActiveEntriesByPrefab)
         {
-            ActiveEntriesByPrefab[prefabName] = entries;
+            RuntimeState.ActiveEntriesByPrefab[prefabName] = entries;
         }
 
         foreach (string prefabName in state.ConfiguredSpawnAreaPrefabs)
         {
-            ConfiguredSpawnAreaPrefabs.Add(prefabName);
+            RuntimeState.ConfiguredSpawnAreaPrefabs.Add(prefabName);
         }
 
         foreach (string prefabName in state.ConfiguredCreatureSpawnerPrefabs)
         {
-            ConfiguredCreatureSpawnerPrefabs.Add(prefabName);
+            RuntimeState.ConfiguredCreatureSpawnerPrefabs.Add(prefabName);
         }
 
         foreach (string prefabName in state.RuntimeConfiguredSpawnAreaPrefabs)
         {
-            RuntimeConfiguredSpawnAreaPrefabs.Add(prefabName);
+            RuntimeState.RuntimeConfiguredSpawnAreaPrefabs.Add(prefabName);
         }
 
         foreach (string prefabName in state.RuntimeConfiguredCreatureSpawnerPrefabs)
         {
-            RuntimeConfiguredCreatureSpawnerPrefabs.Add(prefabName);
+            RuntimeState.RuntimeConfiguredCreatureSpawnerPrefabs.Add(prefabName);
         }
 
-        ReplaceEntrySignatures(CurrentEntrySignaturesByPrefab, state.EntrySignaturesByPrefab);
-        _configurationSignature = state.ConfigurationSignature;
+        ReplaceEntrySignatures(RuntimeState.CurrentEntrySignaturesByPrefab, state.EntrySignaturesByPrefab);
+        RuntimeState.ConfigurationSignature = state.ConfigurationSignature;
         LoadState.LastLoadedPayload = payloadToken;
         LoadState.LastRejectedPayload = "";
         LoadState.PendingStrictPayload = "";
@@ -1425,48 +1403,6 @@ internal static partial class SpawnerManager
         ConditionDialectSupport.StripUnsupportedCreatureSpawnerEntryFields(conditions, context, WarnInvalidEntry);
     }
 
-    private static bool HasDuplicateSelector(List<SpawnerConfigurationEntry> entries, SpawnerConfigurationEntry candidate)
-    {
-        foreach (SpawnerConfigurationEntry existing in entries)
-        {
-            if (!LocationSelectorsOverlap(existing.Locations, candidate.Locations))
-            {
-                continue;
-            }
-
-            bool overlapsSpawnArea =
-                existing.SpawnArea != null &&
-                candidate.SpawnArea != null &&
-                HasSpawnAreaOverride(existing.SpawnArea) &&
-                HasSpawnAreaOverride(candidate.SpawnArea);
-
-            bool overlapsCreatureSpawner =
-                existing.CreatureSpawner != null &&
-                candidate.CreatureSpawner != null &&
-                HasCreatureSpawnerOverride(existing.CreatureSpawner) &&
-                HasCreatureSpawnerOverride(candidate.CreatureSpawner);
-
-            if (overlapsSpawnArea || overlapsCreatureSpawner)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool LocationSelectorsOverlap(List<string>? left, List<string>? right)
-    {
-        bool leftHasSelector = HasLocationSelector(left);
-        bool rightHasSelector = HasLocationSelector(right);
-        if (!leftHasSelector || !rightHasSelector)
-        {
-            return leftHasSelector == rightHasSelector;
-        }
-
-        return left!.Any(location => right!.Contains(location, StringComparer.OrdinalIgnoreCase));
-    }
-
     private static IEnumerable<string> EnumerateOverrideConfigurationPaths()
     {
         return DomainConfigurationFileSupport.EnumerateOverrideConfigurationPaths(
@@ -1560,32 +1496,6 @@ internal static partial class SpawnerManager
     {
         ResetReferenceSnapshots();
         CaptureSnapshotsIfNeeded();
-    }
-
-    private static void EnsureSnapshotsCapturedForRootPrefab(string? rootPrefabName)
-    {
-        if (_snapshotsCaptured || string.IsNullOrWhiteSpace(rootPrefabName) || ZNetScene.instance == null)
-        {
-            return;
-        }
-
-        string normalizedRootPrefabName = rootPrefabName!;
-
-        if (CapturedRootPrefabNames.Contains(normalizedRootPrefabName))
-        {
-            return;
-        }
-
-        GameObject? rootPrefab = ZNetScene.instance.GetPrefab(normalizedRootPrefabName);
-        if (rootPrefab == null || rootPrefab.name.StartsWith(MockPrefabPrefix, StringComparison.OrdinalIgnoreCase))
-        {
-            CapturedRootPrefabNames.Add(normalizedRootPrefabName);
-            return;
-        }
-
-        CaptureSpawnAreaSnapshots(rootPrefab);
-        CaptureCreatureSpawnerSnapshots(rootPrefab);
-        CapturedRootPrefabNames.Add(normalizedRootPrefabName);
     }
 
     private static IEnumerable<GameObject> EnumerateRootPrefabs()
@@ -1740,7 +1650,7 @@ internal static partial class SpawnerManager
                 _lastAppliedDomainEnabled,
                 domainEnabled,
                 _lastAppliedConfigurationSignature,
-                _configurationSignature,
+                RuntimeState.ConfigurationSignature,
                 _lastAppliedSynchronizedPayloadReady,
                 synchronizedPayloadReady))
         {
@@ -1752,7 +1662,7 @@ internal static partial class SpawnerManager
 
     private static void ValidateConfiguredPrefabs(HashSet<string> availablePrefabs)
     {
-        foreach ((string prefabName, List<SpawnerConfigurationEntry> entries) in ActiveEntriesByPrefab)
+        foreach ((string prefabName, List<SpawnerConfigurationEntry> entries) in RuntimeState.ActiveEntriesByPrefab)
         {
             if (availablePrefabs.Contains(prefabName))
             {
@@ -1772,14 +1682,14 @@ internal static partial class SpawnerManager
     {
         _lastAppliedGameDataSignature = gameDataSignature;
         _lastAppliedDomainEnabled = domainEnabled;
-        _lastAppliedConfigurationSignature = _configurationSignature;
+        _lastAppliedConfigurationSignature = RuntimeState.ConfigurationSignature;
         _lastAppliedSynchronizedPayloadReady = Volatile.Read(ref _synchronizedPayloadReady);
         ReplaceEntrySignatures(_lastAppliedEntrySignaturesByPrefab, currentEntrySignatures);
     }
 
     private static Dictionary<string, string> CloneCurrentEntrySignaturesByPrefab()
     {
-        return new Dictionary<string, string>(CurrentEntrySignaturesByPrefab, StringComparer.OrdinalIgnoreCase);
+        return new Dictionary<string, string>(RuntimeState.CurrentEntrySignaturesByPrefab, StringComparer.OrdinalIgnoreCase);
     }
 
     private static HashSet<string> BuildLastAppliedPrefabs()
@@ -1800,7 +1710,7 @@ internal static partial class SpawnerManager
 
     private static Dictionary<string, string> BuildActiveEntrySignaturesByPrefab()
     {
-        return BuildActiveEntrySignaturesByPrefab(ActiveEntriesByPrefab);
+        return BuildActiveEntrySignaturesByPrefab(RuntimeState.ActiveEntriesByPrefab);
     }
 
     private static Dictionary<string, string> BuildActiveEntrySignaturesByPrefab(
@@ -2571,12 +2481,6 @@ internal static partial class SpawnerManager
                    LiveReconcilerState.HasAppliedSpawnAreaFaction(prefab));
     }
 
-    private static bool RequiresSpawnAreaPostSpawnTracking(SpawnArea.SpawnData? spawnData)
-    {
-        return spawnData != null &&
-               LiveReconcilerState.HasAppliedSpawnAreaFaction(spawnData);
-    }
-
     private static void MaybeRefreshCreatureSpawnerSchedule(CreatureSpawner creatureSpawner, int previousInterval)
     {
         int instanceId = creatureSpawner.GetInstanceID();
@@ -2818,13 +2722,13 @@ internal static partial class SpawnerManager
         if (TryGetExactContext(gameObject, componentType, out string exactKey, out string rootPrefabName))
         {
             if (componentType == nameof(SpawnArea) &&
-                SpawnAreaCatalogsByExactKey.TryGetValue(exactKey, out SpawnAreaComponentCatalog? spawnAreaCatalog))
+                LiveRuntimeState.SpawnAreaCatalogsByExactKey.TryGetValue(exactKey, out SpawnAreaComponentCatalog? spawnAreaCatalog))
             {
                 return spawnAreaCatalog.ConfigPrefabName;
             }
 
             if (componentType == nameof(CreatureSpawner) &&
-                CreatureSpawnerCatalogsByExactKey.TryGetValue(exactKey, out CreatureSpawnerComponentCatalog? creatureSpawnerCatalog))
+                LiveRuntimeState.CreatureSpawnerCatalogsByExactKey.TryGetValue(exactKey, out CreatureSpawnerComponentCatalog? creatureSpawnerCatalog))
             {
                 return creatureSpawnerCatalog.ConfigPrefabName;
             }
@@ -2833,7 +2737,7 @@ internal static partial class SpawnerManager
             string relativePath = GetRelativePath(GetRootTransform(gameObject.transform), gameObject.transform);
             if (componentType == nameof(SpawnArea))
             {
-                SpawnAreaCatalogsByExactKey[exactKey] = new SpawnAreaComponentCatalog
+                LiveRuntimeState.SpawnAreaCatalogsByExactKey[exactKey] = new SpawnAreaComponentCatalog
                 {
                     ConfigPrefabName = configPrefabName,
                     RootPrefabName = rootPrefabName,
@@ -2842,7 +2746,7 @@ internal static partial class SpawnerManager
             }
             else if (componentType == nameof(CreatureSpawner))
             {
-                CreatureSpawnerCatalogsByExactKey[exactKey] = new CreatureSpawnerComponentCatalog
+                LiveRuntimeState.CreatureSpawnerCatalogsByExactKey[exactKey] = new CreatureSpawnerComponentCatalog
                 {
                     ConfigPrefabName = configPrefabName,
                     RootPrefabName = rootPrefabName,
@@ -3018,16 +2922,6 @@ internal static partial class SpawnerManager
         }
     }
 
-    private static string ResolveRuntimeSpawnerComponentName(GameObject gameObject)
-    {
-        if (gameObject != null && gameObject.TryGetComponent(out SpawnArea _))
-        {
-            return nameof(SpawnArea);
-        }
-
-        return nameof(CreatureSpawner);
-    }
-
     private static void WarnInvalidEntry(string message)
     {
         InvalidEntryWarnings.Warn(message);
@@ -3059,13 +2953,13 @@ internal static partial class SpawnerManager
 
     private static void OnSourceOfTruthPayloadUnchanged()
     {
-        if (!NetworkPayloadSyncSupport.IsPayloadCurrent(Descriptor, _configurationSignature))
+        if (!NetworkPayloadSyncSupport.IsPayloadCurrent(Descriptor, RuntimeState.ConfigurationSignature))
         {
             ConfigurationDomainHost.PublishSyncedPayload(
                 DropNSpawnPlugin.IsSourceOfTruth,
                 Descriptor,
-                _configuration,
-                _configurationSignature);
+                RuntimeState.Configuration,
+                RuntimeState.ConfigurationSignature);
         }
     }
 

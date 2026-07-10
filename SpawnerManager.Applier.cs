@@ -164,16 +164,6 @@ internal static partial class SpawnerManager
         ExpandWorldSpawnDataSupport.InitializeSpawn(prefab, spawnPoint, payloadToApply);
     }
 
-    internal static bool IsCreatureSpawnerTimeOfDayAllowed(CreatureSpawner creatureSpawner)
-    {
-        lock (Sync)
-        {
-            return creatureSpawner == null ||
-                   !LiveReconcilerState.TryGetAppliedCreatureSpawnerTimeOfDay(creatureSpawner, out TimeOfDayDefinition timeOfDay) ||
-                   TimeOfDayFormatting.MatchesCurrentTime(timeOfDay);
-        }
-    }
-
     private static void ApplyDesiredStateToLiveObjects(SpawnerDesiredState desiredState)
     {
         if (desiredState.ReloadPrefabs.Count == 0)

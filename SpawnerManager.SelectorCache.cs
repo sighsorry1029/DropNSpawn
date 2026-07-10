@@ -8,40 +8,6 @@ namespace DropNSpawn;
 
 internal static partial class SpawnerManager
 {
-    private static SpawnerConfigurationEntry? GetBestPrefabOnlyEntry(List<SpawnerConfigurationEntry>? entries, bool forSpawnArea)
-    {
-        if (entries == null || entries.Count == 0)
-        {
-            return null;
-        }
-
-        for (int index = entries.Count - 1; index >= 0; index--)
-        {
-            SpawnerConfigurationEntry entry = entries[index];
-            if (HasLocationSelector(entry))
-            {
-                continue;
-            }
-
-            if (forSpawnArea)
-            {
-                if (entry.SpawnArea != null && HasSpawnAreaOverride(entry.SpawnArea))
-                {
-                    return entry;
-                }
-
-                continue;
-            }
-
-            if (entry.CreatureSpawner != null && HasCreatureSpawnerOverride(entry.CreatureSpawner))
-            {
-                return entry;
-            }
-        }
-
-        return null;
-    }
-
     private static bool TryGetActiveSpawnAreaEntryCache(SpawnArea? spawnArea, out MatchingEntryCache? entryCache, out string configPrefabName)
     {
         return TryGetActiveSpawnAreaEntryCache(
@@ -195,8 +161,7 @@ internal static partial class SpawnerManager
 
         bool requiresLocationSelector = entries.Any(HasLocationSelector);
         string resolvedLocationPrefab = "";
-        string sourceLabel = "";
-        bool hasResolvedLocation = !requiresLocationSelector || TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab, out sourceLabel);
+        bool hasResolvedLocation = !requiresLocationSelector || TryGetLiveLocationContextForSelector(gameObject, out resolvedLocationPrefab);
         matches.UsesLocationSelector = requiresLocationSelector;
         matches.ResolvedLocationKey = requiresLocationSelector
             ? NormalizeSelectorLocationCacheKey(hasResolvedLocation ? resolvedLocationPrefab : null)
@@ -220,7 +185,12 @@ internal static partial class SpawnerManager
 
         foreach (SpawnerRuntimeEntry candidate in entries)
         {
-            if (!TryGetEntryMatchSpecificity(gameObject, candidate, hasResolvedLocation, hasResolvedLocation ? resolvedLocationPrefab : null, hasResolvedLocation ? sourceLabel : "", out _))
+            if (!TryGetLocationMatchSpecificity(
+                    gameObject,
+                    candidate.Locations,
+                    hasResolvedLocation,
+                    hasResolvedLocation ? resolvedLocationPrefab : null,
+                    out _))
             {
                 continue;
             }
@@ -317,8 +287,7 @@ internal static partial class SpawnerManager
             usesConditionLocation,
             usesBiome,
             usesInDungeon,
-            hasResolvedLocation,
-            resolvedLocationPrefab);
+            hasResolvedLocation);
 
         StringBuilder builder = new(configPrefabName.Length + 64);
         builder.Append(forSpawnArea ? "spawnarea|" : "creaturespawner|");
@@ -378,7 +347,12 @@ internal static partial class SpawnerManager
 
         foreach (SpawnerRuntimeEntry candidate in entries)
         {
-            if (!TryGetEntryMatchSpecificity(gameObject, candidate, hasResolvedLocation, hasResolvedLocation ? resolvedLocationPrefab : null, "", out _))
+            if (!TryGetLocationMatchSpecificity(
+                    gameObject,
+                    candidate.Locations,
+                    hasResolvedLocation,
+                    hasResolvedLocation ? resolvedLocationPrefab : null,
+                    out _))
             {
                 continue;
             }
@@ -409,8 +383,7 @@ internal static partial class SpawnerManager
         bool usesConditionLocation,
         bool usesBiome,
         bool usesInDungeon,
-        bool hasResolvedLocation,
-        string? resolvedLocationPrefab)
+        bool hasResolvedLocation)
     {
         bool usesLocationFields = usesSelector || usesConditionLocation;
         if (SelectorCacheStore.TryGetReusableStaticSelectorContext(gameObject, usesLocationFields, out StaticSelectorContextSnapshot cachedSnapshot))
@@ -421,25 +394,12 @@ internal static partial class SpawnerManager
         Vector3 position = gameObject.transform.position;
         StaticSelectorContextSnapshot snapshot = new()
         {
-            Position = position,
-            ResolvedSelectorLocationPrefab = hasResolvedLocation ? (resolvedLocationPrefab ?? "").Trim() : "",
-            SelectorLocationKey = hasResolvedLocation
-                ? NormalizeSelectorLocationCacheKey(resolvedLocationPrefab)
-                : UnresolvedSelectorLocationCacheKey
+            Position = position
         };
 
         if (usesSelector && !hasResolvedLocation)
         {
-            if (TryGetLiveLocationContextForSelector(gameObject, out string selectorLocationPrefab, out string selectorSourceLabel))
-            {
-                snapshot.ResolvedSelectorLocationPrefab = selectorLocationPrefab;
-                snapshot.SelectorSourceLabel = selectorSourceLabel;
-                snapshot.SelectorLocationKey = NormalizeSelectorLocationCacheKey(selectorLocationPrefab);
-            }
-        }
-        else if (usesSelector && hasResolvedLocation)
-        {
-            snapshot.SelectorSourceLabel = "Cached";
+            _ = TryGetLiveLocationContextForSelector(gameObject, out _);
         }
 
         if (usesConditionLocation)

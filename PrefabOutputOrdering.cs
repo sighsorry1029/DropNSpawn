@@ -436,16 +436,6 @@ internal static class PrefabOwnerCatalog
         return PrefabOwnerResolver.GetOwnerName(normalizedPrefabName);
     }
 
-    internal static string GetCurrentBundleSignature()
-    {
-        return BuildBundleSignature();
-    }
-
-    internal static string GetCurrentPluginResourcesSignature()
-    {
-        return BuildPluginResourcesSignature();
-    }
-
     internal static MappingSnapshot GetSnapshot()
     {
         EnsureMappingsLoaded();

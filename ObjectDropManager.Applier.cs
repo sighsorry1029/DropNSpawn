@@ -64,7 +64,7 @@ internal static partial class ObjectDropManager
 
             List<PrefabConfigurationEntry> entries = plan.ActiveEntries;
 
-            if (!SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
+            if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
             {
                 foreach (PrefabConfigurationEntry entry in entries)
                 {
@@ -101,7 +101,7 @@ internal static partial class ObjectDropManager
             }
 
             RegisterLiveObject(liveObject, prefabName);
-            if (!SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
+            if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
             {
                 continue;
             }
@@ -131,7 +131,7 @@ internal static partial class ObjectDropManager
             }
 
             RegisterLiveObject(liveObject, prefabName);
-            if (!SnapshotsByPrefab.ContainsKey(prefabName))
+            if (!SnapshotState.SnapshotsByPrefab.ContainsKey(prefabName))
             {
                 continue;
             }

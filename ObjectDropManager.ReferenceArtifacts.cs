@@ -12,7 +12,7 @@ internal static partial class ObjectDropManager
     {
         Dictionary<string, LocationReferenceBucket> locationBuckets = BuildLocationReferenceBuckets();
         List<PrefabOwnerSection<PrefabConfigurationEntry>> sections = PrefabOutputSections.BuildSections(
-            Snapshots.Select(BuildConfigurationEntry),
+            SnapshotState.Snapshots.Select(BuildConfigurationEntry),
             entry => entry.Prefab,
             entry => ResolveObjectOwnerName(entry.Prefab, locationBuckets));
 
@@ -82,7 +82,7 @@ internal static partial class ObjectDropManager
             path = FullScaffoldConfigurationPath;
             error = "";
 
-            if (!IsGameDataReady() && Snapshots.Count == 0)
+            if (!IsGameDataReady() && SnapshotState.Snapshots.Count == 0)
             {
                 error = "Object game data is not ready yet.";
                 return false;

@@ -6,22 +6,6 @@ namespace DropNSpawn;
 
 internal static partial class SpawnerManager
 {
-    internal static void ReconcileSpawnAreaInstance(SpawnArea spawnArea)
-    {
-        lock (Sync)
-        {
-            ReconcileSpawnAreaInstanceCore(spawnArea);
-        }
-    }
-
-    internal static void ReconcileCreatureSpawnerInstance(CreatureSpawner creatureSpawner)
-    {
-        lock (Sync)
-        {
-            ReconcileCreatureSpawnerInstanceCore(creatureSpawner);
-        }
-    }
-
     internal static void ReapplyCreatureSpawnerGlobalDefaults()
     {
         lock (Sync)

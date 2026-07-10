@@ -190,7 +190,7 @@ internal static partial class SpawnerManager
         lines.Add($"Object: {configPrefabName}@{DescribeInstance(spawnArea.gameObject)}");
         AppendResolvedLocationLines(lines, spawnArea.gameObject, spawnArea, null);
 
-        List<SpawnerConfigurationEntry> configuredEntries = ActiveEntriesByPrefab.TryGetValue(configPrefabName, out List<SpawnerConfigurationEntry>? entries)
+        List<SpawnerConfigurationEntry> configuredEntries = RuntimeState.ActiveEntriesByPrefab.TryGetValue(configPrefabName, out List<SpawnerConfigurationEntry>? entries)
             ? entries.Where(entry => entry.SpawnArea != null && HasSpawnAreaOverride(entry.SpawnArea)).ToList()
             : new List<SpawnerConfigurationEntry>();
         lines.Add($"Configured entries: {configuredEntries.Count}");
@@ -219,7 +219,7 @@ internal static partial class SpawnerManager
         lines.Add($"Object: {configPrefabName}@{DescribeInstance(creatureSpawner.gameObject)}");
         AppendResolvedLocationLines(lines, creatureSpawner.gameObject, null, creatureSpawner);
 
-        List<SpawnerConfigurationEntry> configuredEntries = ActiveEntriesByPrefab.TryGetValue(configPrefabName, out List<SpawnerConfigurationEntry>? entries)
+        List<SpawnerConfigurationEntry> configuredEntries = RuntimeState.ActiveEntriesByPrefab.TryGetValue(configPrefabName, out List<SpawnerConfigurationEntry>? entries)
             ? entries.Where(entry => entry.CreatureSpawner != null && HasCreatureSpawnerOverride(entry.CreatureSpawner)).ToList()
             : new List<SpawnerConfigurationEntry>();
         lines.Add($"Configured entries: {configuredEntries.Count}");
