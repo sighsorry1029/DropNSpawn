@@ -9,11 +9,7 @@ namespace DropNSpawn;
 
 internal static partial class SpawnSystemManager
 {
-    private static bool HasAnyConditionFields(SpawnSystemConfigurationEntry entry) => HasAnyConditionFields(entry.Conditions);
-
     private static bool HasAnySpawnFields(SpawnSystemConfigurationEntry entry) => HasAnySpawnFields(entry.SpawnSystem);
-
-    private static bool HasAnyModifierFields(SpawnSystemConfigurationEntry entry) => HasAnyModifierFields(entry.Modifiers);
 
     private static List<string>? NormalizeReferenceStringList(IEnumerable<string>? values)
     {
@@ -94,69 +90,13 @@ internal static partial class SpawnSystemManager
 
     internal static void AppendYamlSpawnSystemPayloadBlock(StringBuilder builder, int indent, SpawnSystemConfigurationEntry entry, SpawnSystem.SpawnData defaults, bool includeEmptyPlaceholder)
     {
-        bool hasSpawnFields = HasAnySpawnFields(entry);
-        bool hasConditionFields = HasAnyConditionFields(entry);
-        bool hasModifierFields = HasAnyModifierFields(entry);
-        if (!includeEmptyPlaceholder && !hasSpawnFields && !hasConditionFields && !hasModifierFields)
+        if (!includeEmptyPlaceholder && !HasAnySpawnFields(entry))
         {
             return;
         }
 
-        if (includeEmptyPlaceholder || hasSpawnFields)
-        {
-            AppendYamlLine(builder, indent, "spawnSystem:");
-            AppendYamlSpawnSystemSpawnBlock(builder, indent + 1, entry, defaults, includeEmptyPlaceholder);
-        }
-
-        AppendYamlSpawnSystemConditionsBlock(builder, indent, entry, defaults, includeEmptyPlaceholder);
-        AppendYamlSpawnSystemModifiersBlock(builder, indent, entry, includeEmptyPlaceholder);
-    }
-
-    private static void AppendYamlSpawnSystemConditionsBlock(StringBuilder builder, int indent, SpawnSystemConfigurationEntry entry, SpawnSystem.SpawnData defaults, bool includeEmptyPlaceholder)
-    {
-        SpawnSystemConditionsDefinition? conditions = entry.Conditions;
-        if (!includeEmptyPlaceholder && !HasAnyConditionFields(conditions))
-        {
-            return;
-        }
-
-        AppendYamlLine(builder, indent, "conditions:");
-        TimeOfDayDefinition? defaultTimeOfDay = TimeOfDayFormatting.FromSpawnFlags(defaults.m_spawnAtDay, defaults.m_spawnAtNight);
-        if (includeEmptyPlaceholder)
-        {
-            AppendYamlLine(builder, indent + 1, $"noSpawnRadius: {FormatYamlFloat(conditions?.NoSpawnRadius ?? defaults.m_spawnDistance)}");
-            AppendYamlLine(builder, indent + 1, $"maxSpawned: {conditions?.MaxSpawned ?? defaults.m_maxSpawned}");
-            AppendYamlLine(builder, indent + 1, $"tilt: {RangeFormatting.FormatInlineObject(GetTiltRange(entry) ?? RangeFormatting.From(defaults.m_minTilt, defaults.m_maxTilt))}");
-            AppendYamlLine(builder, indent + 1, $"altitude: {RangeFormatting.FormatInlineObject(GetAltitudeRange(entry) ?? RangeFormatting.From(defaults.m_minAltitude, defaults.m_maxAltitude))}");
-            AppendYamlLine(builder, indent + 1, $"oceanDepth: {RangeFormatting.FormatInlineObject(GetOceanDepthRange(entry) ?? RangeFormatting.From(defaults.m_minOceanDepth, defaults.m_maxOceanDepth))}");
-            AppendYamlLine(builder, indent + 1, $"distanceFromCenter: {RangeFormatting.FormatInlineObject(GetDistanceFromCenterRange(entry) ?? RangeFormatting.From(defaults.m_minDistanceFromCenter, defaults.m_maxDistanceFromCenter))}");
-            AppendYamlConditionalInlineListLine(builder, indent + 1, "biomes", conditions?.Biomes, includeEmptyPlaceholder);
-            AppendYamlConditionalInlineListLine(builder, indent + 1, "biomeAreas", conditions?.BiomeAreas, includeEmptyPlaceholder);
-            AppendYamlLine(builder, indent + 1, $"timeOfDay: {TimeOfDayFormatting.FormatInlineList(conditions?.TimeOfDay, defaultTimeOfDay)}");
-            AppendYamlConditionalInlineListLine(builder, indent + 1, "requiredEnvironments", conditions?.RequiredEnvironments, includeEmptyPlaceholder);
-            AppendYamlStringLine(builder, indent + 1, "requiredGlobalKey", conditions?.RequiredGlobalKey ?? defaults.m_requiredGlobalKey);
-            AppendYamlLine(builder, indent + 1, $"inLava: {FormatYamlNullableBoolOrNull(conditions?.InLava)}");
-            AppendYamlLine(builder, indent + 1, $"inForest: {FormatYamlNullableBoolOrNull(conditions?.InForest)}");
-            AppendYamlLine(builder, indent + 1, $"insidePlayerBase: {FormatYamlBool(conditions?.InsidePlayerBase ?? defaults.m_insidePlayerBase)}");
-            AppendYamlLine(builder, indent + 1, $"canSpawnCloseToPlayer: {FormatYamlBool(conditions?.CanSpawnCloseToPlayer ?? defaults.m_canSpawnCloseToPlayer)}");
-            return;
-        }
-
-        AppendYamlOptionalFloatLine(builder, indent + 1, "noSpawnRadius", conditions?.NoSpawnRadius);
-        AppendYamlOptionalIntLine(builder, indent + 1, "maxSpawned", conditions?.MaxSpawned);
-        AppendYamlOptionalRangeLine(builder, indent + 1, "tilt", GetTiltRange(entry));
-        AppendYamlOptionalRangeLine(builder, indent + 1, "altitude", GetAltitudeRange(entry));
-        AppendYamlOptionalRangeLine(builder, indent + 1, "oceanDepth", GetOceanDepthRange(entry));
-        AppendYamlOptionalRangeLine(builder, indent + 1, "distanceFromCenter", GetDistanceFromCenterRange(entry));
-        AppendYamlOptionalInlineListLine(builder, indent + 1, "biomes", conditions?.Biomes);
-        AppendYamlOptionalInlineListLine(builder, indent + 1, "biomeAreas", conditions?.BiomeAreas);
-        AppendYamlOptionalTimeOfDayLine(builder, indent + 1, "timeOfDay", conditions?.TimeOfDay);
-        AppendYamlOptionalInlineListLine(builder, indent + 1, "requiredEnvironments", conditions?.RequiredEnvironments);
-        AppendYamlOptionalStringLine(builder, indent + 1, "requiredGlobalKey", conditions?.RequiredGlobalKey);
-        AppendYamlOptionalBoolLine(builder, indent + 1, "inLava", conditions?.InLava);
-        AppendYamlOptionalBoolLine(builder, indent + 1, "inForest", conditions?.InForest);
-        AppendYamlOptionalBoolLine(builder, indent + 1, "insidePlayerBase", conditions?.InsidePlayerBase);
-        AppendYamlOptionalBoolLine(builder, indent + 1, "canSpawnCloseToPlayer", conditions?.CanSpawnCloseToPlayer);
+        AppendYamlLine(builder, indent, "spawnSystem:");
+        AppendYamlSpawnSystemSpawnBlock(builder, indent + 1, entry, defaults, includeEmptyPlaceholder);
     }
 
     private static void AppendYamlSpawnSystemSpawnBlock(StringBuilder builder, int indent, SpawnSystemConfigurationEntry entry, SpawnSystem.SpawnData defaults, bool includeEmptyPlaceholder)
@@ -166,6 +106,8 @@ internal static partial class SpawnSystemManager
         {
             return;
         }
+
+        TimeOfDayDefinition? defaultTimeOfDay = TimeOfDayFormatting.FromSpawnFlags(defaults.m_spawnAtDay, defaults.m_spawnAtNight);
         if (includeEmptyPlaceholder)
         {
             AppendYamlStringLine(builder, indent, "name", spawn?.Name);
@@ -177,9 +119,35 @@ internal static partial class SpawnSystemManager
             AppendYamlLine(builder, indent, $"groundOffsetRandom: {FormatYamlFloat(spawn?.GroundOffsetRandom ?? defaults.m_groundOffsetRandom)}");
             AppendYamlLine(builder, indent, $"spawnInterval: {FormatYamlFloat(spawn?.SpawnInterval ?? defaults.m_spawnInterval)}");
             AppendYamlLine(builder, indent, $"spawnChance: {FormatYamlFloat(spawn?.SpawnChance ?? defaults.m_spawnChance)}");
-            AppendYamlLine(builder, indent, $"spawnRadius: {RangeFormatting.FormatInlineObject(GetSpawnRadiusRange(entry) ?? RangeFormatting.From(defaults.m_spawnRadiusMin, defaults.m_spawnRadiusMax))}");
+            // SpawnSystem replaces non-positive stored endpoints with its 40-80m global defaults.
+            FloatRangeDefinition? spawnRadius = GetSpawnRadiusRange(entry) ?? RangeFormatting.From(defaults.m_spawnRadiusMin, defaults.m_spawnRadiusMax);
+            float spawnRadiusMin = spawnRadius?.Min ?? 0f;
+            float spawnRadiusMax = spawnRadius?.Max ?? 0f;
+            spawnRadius = RangeFormatting.From(
+                spawnRadiusMin > 0f ? spawnRadiusMin : 40f,
+                spawnRadiusMax > 0f ? spawnRadiusMax : 80f);
+            AppendYamlLine(builder, indent, $"spawnRadius: {RangeFormatting.FormatInlineObject(spawnRadius)}");
             AppendYamlLine(builder, indent, $"groupSize: {RangeFormatting.FormatInlineObject(GetGroupSizeRange(entry) ?? RangeFormatting.From(defaults.m_groupSizeMin, defaults.m_groupSizeMax))}");
             AppendYamlLine(builder, indent, $"groupRadius: {FormatYamlFloat(spawn?.GroupRadius ?? defaults.m_groupRadius)}");
+            AppendYamlLine(builder, indent, $"noSpawnRadius: {FormatYamlFloat(spawn?.NoSpawnRadius ?? defaults.m_spawnDistance)}");
+            AppendYamlLine(builder, indent, $"maxSpawned: {spawn?.MaxSpawned ?? defaults.m_maxSpawned}");
+            AppendYamlLine(builder, indent, $"tilt: {RangeFormatting.FormatInlineObject(GetTiltRange(entry) ?? RangeFormatting.From(defaults.m_minTilt, defaults.m_maxTilt))}");
+            AppendYamlLine(builder, indent, $"altitude: {RangeFormatting.FormatInlineObject(GetAltitudeRange(entry) ?? RangeFormatting.From(defaults.m_minAltitude, defaults.m_maxAltitude))}");
+            AppendYamlLine(builder, indent, $"oceanDepth: {RangeFormatting.FormatInlineObject(GetOceanDepthRange(entry) ?? RangeFormatting.From(defaults.m_minOceanDepth, defaults.m_maxOceanDepth))}");
+            AppendYamlLine(builder, indent, $"distanceFromCenter: {RangeFormatting.FormatInlineObject(GetDistanceFromCenterRange(entry) ?? RangeFormatting.From(defaults.m_minDistanceFromCenter, defaults.m_maxDistanceFromCenter))}");
+            AppendYamlConditionalInlineListLine(builder, indent, "biomes", spawn?.Biomes, includeEmptyPlaceholder);
+            AppendYamlConditionalInlineListLine(builder, indent, "biomeAreas", spawn?.BiomeAreas, includeEmptyPlaceholder);
+            AppendYamlLine(builder, indent, $"timeOfDay: {TimeOfDayFormatting.FormatInlineList(spawn?.TimeOfDay, defaultTimeOfDay)}");
+            AppendYamlConditionalInlineListLine(builder, indent, "requiredEnvironments", spawn?.RequiredEnvironments, includeEmptyPlaceholder);
+            AppendYamlStringLine(builder, indent, "requiredGlobalKey", spawn?.RequiredGlobalKey ?? defaults.m_requiredGlobalKey);
+            AppendYamlLine(builder, indent, $"inLava: {FormatYamlNullableBoolOrNull(spawn?.InLava)}");
+            AppendYamlLine(builder, indent, $"inForest: {FormatYamlNullableBoolOrNull(spawn?.InForest)}");
+            AppendYamlLine(builder, indent, $"insidePlayerBase: {FormatYamlBool(spawn?.InsidePlayerBase ?? defaults.m_insidePlayerBase)}");
+            AppendYamlLine(builder, indent, $"canSpawnCloseToPlayer: {FormatYamlBool(spawn?.CanSpawnCloseToPlayer ?? defaults.m_canSpawnCloseToPlayer)}");
+            AppendYamlDictionaryLine(builder, indent, "fields", spawn?.Fields);
+            AppendYamlInlineListLine(builder, indent, "objects", spawn?.Objects);
+            AppendYamlStringLine(builder, indent, "data", spawn?.Data);
+            AppendYamlStringLine(builder, indent, "faction", spawn?.Faction);
             return;
         }
 
@@ -195,30 +163,25 @@ internal static partial class SpawnSystemManager
         AppendYamlOptionalRangeLine(builder, indent, "spawnRadius", GetSpawnRadiusRange(entry));
         AppendYamlOptionalRangeLine(builder, indent, "groupSize", GetGroupSizeRange(entry));
         AppendYamlOptionalFloatLine(builder, indent, "groupRadius", spawn?.GroupRadius);
-    }
-
-    private static void AppendYamlSpawnSystemModifiersBlock(StringBuilder builder, int indent, SpawnSystemConfigurationEntry entry, bool includeEmptyPlaceholder)
-    {
-        SpawnSystemModifiersDefinition? modifiers = entry.Modifiers;
-        if (!includeEmptyPlaceholder && !HasAnyModifierFields(modifiers))
-        {
-            return;
-        }
-
-        AppendYamlLine(builder, indent, "modifiers:");
-        if (includeEmptyPlaceholder)
-        {
-            AppendYamlDictionaryLine(builder, indent + 1, "fields", modifiers?.Fields);
-            AppendYamlInlineListLine(builder, indent + 1, "objects", modifiers?.Objects);
-            AppendYamlStringLine(builder, indent + 1, "data", modifiers?.Data);
-            AppendYamlStringLine(builder, indent + 1, "faction", modifiers?.Faction);
-            return;
-        }
-
-        AppendYamlOptionalDictionaryLine(builder, indent + 1, "fields", modifiers?.Fields);
-        AppendYamlOptionalInlineListLine(builder, indent + 1, "objects", modifiers?.Objects);
-        AppendYamlOptionalStringLine(builder, indent + 1, "data", modifiers?.Data);
-        AppendYamlOptionalStringLine(builder, indent + 1, "faction", modifiers?.Faction);
+        AppendYamlOptionalFloatLine(builder, indent, "noSpawnRadius", spawn?.NoSpawnRadius);
+        AppendYamlOptionalIntLine(builder, indent, "maxSpawned", spawn?.MaxSpawned);
+        AppendYamlOptionalRangeLine(builder, indent, "tilt", GetTiltRange(entry));
+        AppendYamlOptionalRangeLine(builder, indent, "altitude", GetAltitudeRange(entry));
+        AppendYamlOptionalRangeLine(builder, indent, "oceanDepth", GetOceanDepthRange(entry));
+        AppendYamlOptionalRangeLine(builder, indent, "distanceFromCenter", GetDistanceFromCenterRange(entry));
+        AppendYamlOptionalInlineListLine(builder, indent, "biomes", spawn?.Biomes);
+        AppendYamlOptionalInlineListLine(builder, indent, "biomeAreas", spawn?.BiomeAreas);
+        AppendYamlOptionalTimeOfDayLine(builder, indent, "timeOfDay", spawn?.TimeOfDay);
+        AppendYamlOptionalInlineListLine(builder, indent, "requiredEnvironments", spawn?.RequiredEnvironments);
+        AppendYamlOptionalStringLine(builder, indent, "requiredGlobalKey", spawn?.RequiredGlobalKey);
+        AppendYamlOptionalBoolLine(builder, indent, "inLava", spawn?.InLava);
+        AppendYamlOptionalBoolLine(builder, indent, "inForest", spawn?.InForest);
+        AppendYamlOptionalBoolLine(builder, indent, "insidePlayerBase", spawn?.InsidePlayerBase);
+        AppendYamlOptionalBoolLine(builder, indent, "canSpawnCloseToPlayer", spawn?.CanSpawnCloseToPlayer);
+        AppendYamlOptionalDictionaryLine(builder, indent, "fields", spawn?.Fields);
+        AppendYamlOptionalInlineListLine(builder, indent, "objects", spawn?.Objects);
+        AppendYamlOptionalStringLine(builder, indent, "data", spawn?.Data);
+        AppendYamlOptionalStringLine(builder, indent, "faction", spawn?.Faction);
     }
 
     private static void AppendYamlLine(StringBuilder builder, int indent, string text)

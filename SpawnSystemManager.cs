@@ -34,7 +34,7 @@ internal static partial class SpawnSystemManager
             InitializeRuntime = Initialize,
             OnGameDataReady = OnGameDataReady,
             HandleExpandWorldDataReady = HandleExpandWorldDataReady,
-            DtoVersion = 2,
+            DtoVersion = 3,
             TransportProfile = DomainTransportProfile.LargeWithArtifacts,
             DisplayName = "spawnsystem",
             CacheDirectoryName = "spawnsystem",
@@ -1061,8 +1061,6 @@ internal static partial class SpawnSystemManager
         entry.Prefab = NormalizeOptionalString(entry.Prefab);
         string context = entry.SpawnSystem?.Name ?? entry.Prefab ?? "(unnamed)";
         NormalizeSpawnSystemSpawn(entry.SpawnSystem, context);
-        NormalizeSpawnSystemConditions(entry.Conditions, context);
-        NormalizeSpawnSystemModifiers(entry.Modifiers);
     }
 
     private static string BuildRuleId(SpawnSystemConfigurationEntry entry)
@@ -1073,12 +1071,6 @@ internal static partial class SpawnSystemManager
             Enabled = true,
             SpawnSystem = entry.SpawnSystem != null
                 ? ConfigurationEntryCloneSupport.CloneSpawnSystemSpawnDefinition(entry.SpawnSystem)
-                : null,
-            Conditions = entry.Conditions != null
-                ? ConfigurationEntryCloneSupport.CloneSpawnSystemConditionsDefinition(entry.Conditions)
-                : null,
-            Modifiers = entry.Modifiers != null
-                ? ConfigurationEntryCloneSupport.CloneSpawnSystemModifiersDefinition(entry.Modifiers)
                 : null
         };
 
@@ -1567,13 +1559,13 @@ internal static partial class SpawnSystemManager
     {
         foreach (CanonicalSpawnSystemEntry entry in configuration ?? Enumerable.Empty<CanonicalSpawnSystemEntry>())
         {
-            SpawnSystemConditionsDefinition? conditions = entry.Conditions;
-            if (conditions == null)
+            SpawnSystemSpawnDefinition? spawn = entry.SpawnSystem;
+            if (spawn == null)
             {
                 continue;
             }
 
-            conditions.ResolvedBiomeMask = BiomeResolutionSupport.ResolveBiomeMaskOrNull(conditions.Biomes);
+            spawn.ResolvedBiomeMask = BiomeResolutionSupport.ResolveBiomeMaskOrNull(spawn.Biomes);
         }
     }
 
@@ -1616,15 +1608,15 @@ internal static partial class SpawnSystemManager
 
         foreach (CanonicalSpawnSystemEntry entry in configuration ?? Enumerable.Empty<CanonicalSpawnSystemEntry>())
         {
-            SpawnSystemConditionsDefinition? conditions = entry.Conditions;
-            if (conditions == null)
+            SpawnSystemSpawnDefinition? spawn = entry.SpawnSystem;
+            if (spawn == null)
             {
                 continue;
             }
 
             if (BiomeResolutionSupport.ShouldWaitForExpandWorldDataBiomeResolution(
-                    conditions.Biomes,
-                    conditions.ResolvedBiomeMask))
+                    spawn.Biomes,
+                    spawn.ResolvedBiomeMask))
             {
                 return true;
             }
@@ -2025,9 +2017,7 @@ internal static partial class SpawnSystemManager
         bool valid = true;
         bool resolvedPrefab = false;
         string? resolvedPrefabName = null;
-        SpawnSystemSpawnDefinition? spawn = entry.Spawn;
-        SpawnSystemConditionsDefinition? conditions = entry.Conditions;
-        SpawnSystemModifiersDefinition? modifiers = entry.Modifiers;
+        SpawnSystemSpawnDefinition? spawn = entry.SpawnSystem;
 
         if (spawn?.Name != null)
         {
@@ -2063,13 +2053,13 @@ internal static partial class SpawnSystemManager
             data.m_name = resolvedPrefabName;
         }
 
-        if (conditions?.ResolvedBiomeMask.HasValue == true)
+        if (spawn?.ResolvedBiomeMask.HasValue == true)
         {
-            data.m_biome = conditions.ResolvedBiomeMask.Value;
+            data.m_biome = spawn.ResolvedBiomeMask.Value;
         }
-        else if (conditions?.Biomes != null)
+        else if (spawn?.Biomes != null)
         {
-            if (!TryParseBiomes(conditions.Biomes, context, out Heightmap.Biome biomes))
+            if (!TryParseBiomes(spawn.Biomes, context, out Heightmap.Biome biomes))
             {
                 valid = false;
             }
@@ -2079,9 +2069,9 @@ internal static partial class SpawnSystemManager
             }
         }
 
-        if (conditions?.BiomeAreas != null)
+        if (spawn?.BiomeAreas != null)
         {
-            if (!TryParseBiomeAreas(conditions.BiomeAreas, context, out Heightmap.BiomeArea biomeAreas))
+            if (!TryParseBiomeAreas(spawn.BiomeAreas, context, out Heightmap.BiomeArea biomeAreas))
             {
                 valid = false;
             }
@@ -2091,14 +2081,14 @@ internal static partial class SpawnSystemManager
             }
         }
 
-        if (conditions?.RequiredGlobalKey != null)
+        if (spawn?.RequiredGlobalKey != null)
         {
-            data.m_requiredGlobalKey = conditions.RequiredGlobalKey;
+            data.m_requiredGlobalKey = spawn.RequiredGlobalKey;
         }
 
-        if (conditions?.RequiredEnvironments != null)
+        if (spawn?.RequiredEnvironments != null)
         {
-            data.m_requiredEnvironments = conditions.RequiredEnvironments
+            data.m_requiredEnvironments = spawn.RequiredEnvironments
                 .Select(value => (value ?? "").Trim())
                 .Where(value => value.Length > 0)
                 .ToList();
@@ -2122,10 +2112,10 @@ internal static partial class SpawnSystemManager
         }
         if (spawn?.LevelUpMinCenterDistance.HasValue == true) data.m_levelUpMinCenterDistance = spawn.LevelUpMinCenterDistance.Value;
         if (spawn?.OverrideLevelUpChance.HasValue == true) data.m_overrideLevelupChance = spawn.OverrideLevelUpChance.Value;
-        if (conditions?.MaxSpawned.HasValue == true) data.m_maxSpawned = Math.Max(0, conditions.MaxSpawned.Value);
+        if (spawn?.MaxSpawned.HasValue == true) data.m_maxSpawned = Math.Max(0, spawn.MaxSpawned.Value);
         if (spawn?.SpawnInterval.HasValue == true) data.m_spawnInterval = Math.Max(0.01f, spawn.SpawnInterval.Value);
         if (spawn?.SpawnChance.HasValue == true) data.m_spawnChance = spawn.SpawnChance.Value;
-        if (conditions?.NoSpawnRadius.HasValue == true) data.m_spawnDistance = Math.Max(0f, conditions.NoSpawnRadius.Value);
+        if (spawn?.NoSpawnRadius.HasValue == true) data.m_spawnDistance = Math.Max(0f, spawn.NoSpawnRadius.Value);
         if (spawn?.SpawnRadiusMin.HasValue == true) data.m_spawnRadiusMin = Math.Max(0f, spawn.SpawnRadiusMin.Value);
         if (spawn?.SpawnRadiusMax.HasValue == true) data.m_spawnRadiusMax = Math.Max(0f, spawn.SpawnRadiusMax.Value);
         if (spawn?.GroupSizeMin.HasValue == true) data.m_groupSizeMin = Math.Max(1, spawn.GroupSizeMin.Value);
@@ -2138,21 +2128,21 @@ internal static partial class SpawnSystemManager
             data.m_groupSizeMax = Math.Max(data.m_groupSizeMin, data.m_groupSizeMax);
         }
         if (spawn?.GroupRadius.HasValue == true) data.m_groupRadius = Math.Max(0f, spawn.GroupRadius.Value);
-        if (conditions?.MinAltitude.HasValue == true) data.m_minAltitude = conditions.MinAltitude.Value;
-        if (conditions?.MaxAltitude.HasValue == true) data.m_maxAltitude = conditions.MaxAltitude.Value;
-        if (conditions?.MinTilt.HasValue == true) data.m_minTilt = conditions.MinTilt.Value;
-        if (conditions?.MaxTilt.HasValue == true) data.m_maxTilt = conditions.MaxTilt.Value;
-        ApplyExclusiveZoneToggle(conditions?.InForest, ref data.m_inForest, ref data.m_outsideForest);
-        ApplyExclusiveZoneToggle(conditions?.InLava, ref data.m_inLava, ref data.m_outsideLava);
-        if (conditions?.CanSpawnCloseToPlayer.HasValue == true) data.m_canSpawnCloseToPlayer = conditions.CanSpawnCloseToPlayer.Value;
-        if (conditions?.InsidePlayerBase.HasValue == true) data.m_insidePlayerBase = conditions.InsidePlayerBase.Value;
-        if (conditions?.MinOceanDepth.HasValue == true) data.m_minOceanDepth = conditions.MinOceanDepth.Value;
-        if (conditions?.MaxOceanDepth.HasValue == true) data.m_maxOceanDepth = conditions.MaxOceanDepth.Value;
+        if (spawn?.MinAltitude.HasValue == true) data.m_minAltitude = spawn.MinAltitude.Value;
+        if (spawn?.MaxAltitude.HasValue == true) data.m_maxAltitude = spawn.MaxAltitude.Value;
+        if (spawn?.MinTilt.HasValue == true) data.m_minTilt = spawn.MinTilt.Value;
+        if (spawn?.MaxTilt.HasValue == true) data.m_maxTilt = spawn.MaxTilt.Value;
+        ApplyExclusiveZoneToggle(spawn?.InForest, ref data.m_inForest, ref data.m_outsideForest);
+        ApplyExclusiveZoneToggle(spawn?.InLava, ref data.m_inLava, ref data.m_outsideLava);
+        if (spawn?.CanSpawnCloseToPlayer.HasValue == true) data.m_canSpawnCloseToPlayer = spawn.CanSpawnCloseToPlayer.Value;
+        if (spawn?.InsidePlayerBase.HasValue == true) data.m_insidePlayerBase = spawn.InsidePlayerBase.Value;
+        if (spawn?.MinOceanDepth.HasValue == true) data.m_minOceanDepth = spawn.MinOceanDepth.Value;
+        if (spawn?.MaxOceanDepth.HasValue == true) data.m_maxOceanDepth = spawn.MaxOceanDepth.Value;
         if (spawn?.HuntPlayer.HasValue == true) data.m_huntPlayer = spawn.HuntPlayer.Value;
         if (spawn?.GroundOffset.HasValue == true) data.m_groundOffset = spawn.GroundOffset.Value;
         if (spawn?.GroundOffsetRandom.HasValue == true) data.m_groundOffsetRandom = spawn.GroundOffsetRandom.Value;
-        if (conditions?.MinDistanceFromCenter.HasValue == true) data.m_minDistanceFromCenter = conditions.MinDistanceFromCenter.Value;
-        if (conditions?.MaxDistanceFromCenter.HasValue == true) data.m_maxDistanceFromCenter = conditions.MaxDistanceFromCenter.Value;
+        if (spawn?.MinDistanceFromCenter.HasValue == true) data.m_minDistanceFromCenter = spawn.MinDistanceFromCenter.Value;
+        if (spawn?.MaxDistanceFromCenter.HasValue == true) data.m_maxDistanceFromCenter = spawn.MaxDistanceFromCenter.Value;
 
         if (valid && applyCustomData)
         {
@@ -2533,7 +2523,7 @@ internal static partial class SpawnSystemManager
         return value == null ? null : value.Trim();
     }
 
-    private static void NormalizeSpawnSystemConditions(SpawnSystemConditionsDefinition? conditions, string context)
+    private static void NormalizeSpawnSystemConditionFields(SpawnSystemSpawnDefinition? conditions, string context)
     {
         if (conditions == null)
         {
@@ -2632,9 +2622,12 @@ internal static partial class SpawnSystemManager
             spawn.GroupSizeMin = minGroupSize;
             spawn.GroupSizeMax = maxGroupSize;
         }
+
+        NormalizeSpawnSystemConditionFields(spawn, context);
+        NormalizeSpawnSystemCustomDataFields(spawn);
     }
 
-    private static void NormalizeSpawnSystemModifiers(SpawnSystemModifiersDefinition? modifiers)
+    private static void NormalizeSpawnSystemCustomDataFields(SpawnSystemSpawnDefinition? modifiers)
     {
         if (modifiers == null)
         {
@@ -2686,7 +2679,7 @@ internal static partial class SpawnSystemManager
 
     private static TimeOfDayDefinition? GetConfiguredTimeOfDay(SpawnSystemConfigurationEntry? entry)
     {
-        return entry?.Conditions?.TimeOfDay;
+        return entry?.SpawnSystem?.TimeOfDay;
     }
 
     private static void NormalizeSpawnSystemIntRange(ref int? min, ref int? max, string context, string fieldName)
@@ -2863,26 +2856,6 @@ internal static partial class SpawnSystemManager
         return InvalidEntryWarnings.BeginSuppressionForSyncedClientBuild(sourceName);
     }
 
-    private static bool HasAnyConditionFields(SpawnSystemConditionsDefinition? conditions)
-    {
-        return conditions != null &&
-               (conditions.NoSpawnRadius.HasValue ||
-                conditions.MaxSpawned.HasValue ||
-                (conditions.Biomes?.Count ?? 0) > 0 ||
-                (conditions.BiomeAreas?.Count ?? 0) > 0 ||
-                !string.IsNullOrWhiteSpace(conditions.RequiredGlobalKey) ||
-                (conditions.RequiredEnvironments?.Count ?? 0) > 0 ||
-                conditions.TimeOfDay != null ||
-                GetAltitudeRange(conditions)?.HasValues() == true ||
-                GetTiltRange(conditions)?.HasValues() == true ||
-                conditions.InForest.HasValue ||
-                conditions.InLava.HasValue ||
-                conditions.CanSpawnCloseToPlayer.HasValue ||
-                conditions.InsidePlayerBase.HasValue ||
-                GetOceanDepthRange(conditions)?.HasValues() == true ||
-                GetDistanceFromCenterRange(conditions)?.HasValues() == true);
-    }
-
     private static bool HasAnySpawnFields(SpawnSystemSpawnDefinition? spawn)
     {
         return spawn != null &&
@@ -2893,20 +2866,30 @@ internal static partial class SpawnSystemManager
                 spawn.LevelUpMinCenterDistance.HasValue ||
                 spawn.GroundOffset.HasValue ||
                 spawn.GroundOffsetRandom.HasValue ||
-                spawn.SpawnInterval.HasValue ||
-                spawn.SpawnChance.HasValue ||
-                GetSpawnRadiusRange(spawn)?.HasValues() == true ||
-                GetGroupSizeRange(spawn)?.HasValues() == true ||
-                spawn.GroupRadius.HasValue);
-    }
-
-    private static bool HasAnyModifierFields(SpawnSystemModifiersDefinition? modifiers)
-    {
-        return modifiers != null &&
-               (!string.IsNullOrWhiteSpace(modifiers.Data) ||
-                !string.IsNullOrWhiteSpace(modifiers.Faction) ||
-                (modifiers.Fields?.Count ?? 0) > 0 ||
-                (modifiers.Objects?.Count ?? 0) > 0);
+                 spawn.SpawnInterval.HasValue ||
+                 spawn.SpawnChance.HasValue ||
+                 GetSpawnRadiusRange(spawn)?.HasValues() == true ||
+                 GetGroupSizeRange(spawn)?.HasValues() == true ||
+                 spawn.GroupRadius.HasValue ||
+                 spawn.NoSpawnRadius.HasValue ||
+                 spawn.MaxSpawned.HasValue ||
+                 (spawn.Biomes?.Count ?? 0) > 0 ||
+                 (spawn.BiomeAreas?.Count ?? 0) > 0 ||
+                 !string.IsNullOrWhiteSpace(spawn.RequiredGlobalKey) ||
+                 (spawn.RequiredEnvironments?.Count ?? 0) > 0 ||
+                 spawn.TimeOfDay != null ||
+                 GetAltitudeRange(spawn)?.HasValues() == true ||
+                 GetTiltRange(spawn)?.HasValues() == true ||
+                 spawn.InForest.HasValue ||
+                 spawn.InLava.HasValue ||
+                 spawn.CanSpawnCloseToPlayer.HasValue ||
+                 spawn.InsidePlayerBase.HasValue ||
+                 GetOceanDepthRange(spawn)?.HasValues() == true ||
+                 GetDistanceFromCenterRange(spawn)?.HasValues() == true ||
+                 !string.IsNullOrWhiteSpace(spawn.Data) ||
+                 !string.IsNullOrWhiteSpace(spawn.Faction) ||
+                 (spawn.Fields?.Count ?? 0) > 0 ||
+                 (spawn.Objects?.Count ?? 0) > 0);
     }
 
     private static IntRangeDefinition? GetLevelRange(SpawnSystemConfigurationEntry entry)
@@ -2941,40 +2924,40 @@ internal static partial class SpawnSystemManager
 
     private static FloatRangeDefinition? GetAltitudeRange(SpawnSystemConfigurationEntry entry)
     {
-        return GetAltitudeRange(entry.Conditions);
+        return GetAltitudeRange(entry.SpawnSystem);
     }
 
-    private static FloatRangeDefinition? GetAltitudeRange(SpawnSystemConditionsDefinition? conditions)
+    private static FloatRangeDefinition? GetAltitudeRange(SpawnSystemSpawnDefinition? conditions)
     {
         return conditions?.Altitude ?? RangeFormatting.From(conditions?.MinAltitude, conditions?.MaxAltitude);
     }
 
     private static FloatRangeDefinition? GetTiltRange(SpawnSystemConfigurationEntry entry)
     {
-        return GetTiltRange(entry.Conditions);
+        return GetTiltRange(entry.SpawnSystem);
     }
 
-    private static FloatRangeDefinition? GetTiltRange(SpawnSystemConditionsDefinition? conditions)
+    private static FloatRangeDefinition? GetTiltRange(SpawnSystemSpawnDefinition? conditions)
     {
         return conditions?.Tilt ?? RangeFormatting.From(conditions?.MinTilt, conditions?.MaxTilt);
     }
 
     private static FloatRangeDefinition? GetOceanDepthRange(SpawnSystemConfigurationEntry entry)
     {
-        return GetOceanDepthRange(entry.Conditions);
+        return GetOceanDepthRange(entry.SpawnSystem);
     }
 
-    private static FloatRangeDefinition? GetOceanDepthRange(SpawnSystemConditionsDefinition? conditions)
+    private static FloatRangeDefinition? GetOceanDepthRange(SpawnSystemSpawnDefinition? conditions)
     {
         return conditions?.OceanDepth ?? RangeFormatting.From(conditions?.MinOceanDepth, conditions?.MaxOceanDepth);
     }
 
     private static FloatRangeDefinition? GetDistanceFromCenterRange(SpawnSystemConfigurationEntry entry)
     {
-        return GetDistanceFromCenterRange(entry.Conditions);
+        return GetDistanceFromCenterRange(entry.SpawnSystem);
     }
 
-    private static FloatRangeDefinition? GetDistanceFromCenterRange(SpawnSystemConditionsDefinition? conditions)
+    private static FloatRangeDefinition? GetDistanceFromCenterRange(SpawnSystemSpawnDefinition? conditions)
     {
         return conditions?.DistanceFromCenter ?? RangeFormatting.From(conditions?.MinDistanceFromCenter, conditions?.MaxDistanceFromCenter);
     }

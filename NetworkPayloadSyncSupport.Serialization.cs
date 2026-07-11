@@ -19,6 +19,26 @@ internal static partial class NetworkPayloadSyncSupport
         WriteOptional(package, definition.SpawnRadius, WriteFloatRangeDefinition);
         WriteOptional(package, definition.GroupSize, WriteIntRangeDefinition);
         WriteNullableFloat(package, definition.GroupRadius);
+        WriteNullableFloat(package, definition.NoSpawnRadius);
+        WriteNullableInt(package, definition.MaxSpawned);
+        WriteOptional(package, definition.Tilt, WriteFloatRangeDefinition);
+        WriteOptional(package, definition.Altitude, WriteFloatRangeDefinition);
+        WriteOptional(package, definition.OceanDepth, WriteFloatRangeDefinition);
+        WriteOptional(package, definition.DistanceFromCenter, WriteFloatRangeDefinition);
+        WriteStringList(package, definition.Biomes);
+        WriteNullableInt(package, GetResolvedBiomeMaskValue(definition.Biomes, definition.ResolvedBiomeMask));
+        WriteStringList(package, definition.BiomeAreas);
+        WriteOptional(package, definition.TimeOfDay, WriteTimeOfDayDefinition);
+        WriteStringList(package, definition.RequiredEnvironments);
+        WriteNullableString(package, definition.RequiredGlobalKey);
+        WriteNullableBool(package, definition.InLava);
+        WriteNullableBool(package, definition.InForest);
+        WriteNullableBool(package, definition.InsidePlayerBase);
+        WriteNullableBool(package, definition.CanSpawnCloseToPlayer);
+        WriteStringDictionary(package, definition.Fields);
+        WriteStringList(package, definition.Objects);
+        WriteNullableString(package, definition.Data);
+        WriteNullableString(package, definition.Faction);
     }
 
     private static SpawnSystemSpawnDefinition ReadSpawnSystemSpawnDefinition(ZPackage package)
@@ -36,34 +56,7 @@ internal static partial class NetworkPayloadSyncSupport
             SpawnChance = ReadNullableFloat(package),
             SpawnRadius = ReadOptional(package, ReadFloatRangeDefinition),
             GroupSize = ReadOptional(package, ReadIntRangeDefinition),
-            GroupRadius = ReadNullableFloat(package)
-        };
-    }
-
-    private static void WriteSpawnSystemConditionsDefinition(ZPackage package, SpawnSystemConditionsDefinition definition)
-    {
-        WriteNullableFloat(package, definition.NoSpawnRadius);
-        WriteNullableInt(package, definition.MaxSpawned);
-        WriteOptional(package, definition.Tilt, WriteFloatRangeDefinition);
-        WriteOptional(package, definition.Altitude, WriteFloatRangeDefinition);
-        WriteOptional(package, definition.OceanDepth, WriteFloatRangeDefinition);
-        WriteOptional(package, definition.DistanceFromCenter, WriteFloatRangeDefinition);
-        WriteStringList(package, definition.Biomes);
-        WriteNullableInt(package, GetResolvedBiomeMaskValue(definition.Biomes, definition.ResolvedBiomeMask));
-        WriteStringList(package, definition.BiomeAreas);
-        WriteOptional(package, definition.TimeOfDay, WriteTimeOfDayDefinition);
-        WriteStringList(package, definition.RequiredEnvironments);
-        WriteNullableString(package, definition.RequiredGlobalKey);
-        WriteNullableBool(package, definition.InLava);
-        WriteNullableBool(package, definition.InForest);
-        WriteNullableBool(package, definition.InsidePlayerBase);
-        WriteNullableBool(package, definition.CanSpawnCloseToPlayer);
-    }
-
-    private static SpawnSystemConditionsDefinition ReadSpawnSystemConditionsDefinition(ZPackage package)
-    {
-        return new SpawnSystemConditionsDefinition
-        {
+            GroupRadius = ReadNullableFloat(package),
             NoSpawnRadius = ReadNullableFloat(package),
             MaxSpawned = ReadNullableInt(package),
             Tilt = ReadOptional(package, ReadFloatRangeDefinition),
@@ -79,22 +72,7 @@ internal static partial class NetworkPayloadSyncSupport
             InLava = ReadNullableBool(package),
             InForest = ReadNullableBool(package),
             InsidePlayerBase = ReadNullableBool(package),
-            CanSpawnCloseToPlayer = ReadNullableBool(package)
-        };
-    }
-
-    private static void WriteSpawnSystemModifiersDefinition(ZPackage package, SpawnSystemModifiersDefinition definition)
-    {
-        WriteStringDictionary(package, definition.Fields);
-        WriteStringList(package, definition.Objects);
-        WriteNullableString(package, definition.Data);
-        WriteNullableString(package, definition.Faction);
-    }
-
-    private static SpawnSystemModifiersDefinition ReadSpawnSystemModifiersDefinition(ZPackage package)
-    {
-        return new SpawnSystemModifiersDefinition
-        {
+            CanSpawnCloseToPlayer = ReadNullableBool(package),
             Fields = ReadStringDictionary(package),
             Objects = ReadStringList(package),
             Data = ReadNullableString(package),

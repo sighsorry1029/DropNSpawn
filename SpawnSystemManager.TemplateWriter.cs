@@ -12,7 +12,7 @@ internal static partial class SpawnSystemManager
     private static IEnumerable<string> GetSpawnSystemShorthandFieldExampleLines()
     {
         yield return "- prefab: Boar";
-        yield return "  spawnSystem: # SpawnSystem checks this block every spawnInterval seconds # rolls spawnChance # picks a spawn center within spawnRadius around one player # then spawns groupSize creatures within groupRadius around that center";
+        yield return "  spawnSystem: # Flat SpawnSystem row # Controls spawn timing, placement, limits, native conditions, and custom data";
         yield return "    name: null # ex) Boar # Optional row name # Omit to default to the prefab name in this compressed format";
         yield return "    huntPlayer: false # True marks the spawned AI as hunting the player";
         yield return "    level: 1~1 # ex) 1~3 # Range of spawned creature levels";
@@ -22,10 +22,9 @@ internal static partial class SpawnSystemManager
         yield return "    groundOffsetRandom: 0 # Range in meters of random vertical placement offset";
         yield return "    spawnInterval: 4 # ex) 100 # Seconds between spawn checks";
         yield return "    spawnChance: 100 # Percent chance per successful check";
-        yield return "    spawnRadius: 0~0 # ex) 0~5 # Range in meters from one player to the chosen spawn center # 0~0 uses the native global spawn range";
+        yield return "    spawnRadius: 40~80 # ex) 20~60 # Range in meters from one player to the chosen spawn center # Native effective default; 0 on min/max uses the native 40/80 fallback";
         yield return "    groupSize: 1~1 # ex) 1~3 # Range of creatures spawned by one successful attempt";
         yield return "    groupRadius: 3 # Meters from the chosen spawn center to each spawned creature";
-        yield return "  conditions:";
         yield return "    noSpawnRadius: 10 # Meters from the chosen spawn center used to block the attempt if the same prefab is already nearby";
         yield return "    maxSpawned: 1 # Active prefab count cap in the wider area loaded around players";
         yield return "    tilt: 0~35 # Range in degrees of allowed ground tilt";
@@ -41,7 +40,6 @@ internal static partial class SpawnSystemManager
         yield return "    inForest: null # ex) true = forest only # false = outside forest only # null or no field allows both";
         yield return "    insidePlayerBase: false # False = outside player-base influence only";
         yield return "    canSpawnCloseToPlayer: false # True allows close-to-player spawns";
-        yield return "  modifiers:";
         yield return "    fields: {} # ex) { Character.m_name: $enemy_boar, health: 200, damage: 2 } # Expand World Data field overrides";
         yield return "    objects: [] # ex) [Wood,0,0,0,1] # Expand World Data object entries";
         yield return "    data: null # Expand World Data data entry name from your EWD config";

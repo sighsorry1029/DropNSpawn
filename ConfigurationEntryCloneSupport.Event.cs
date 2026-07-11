@@ -38,24 +38,7 @@ internal static partial class ConfigurationEntryCloneSupport
         {
             Prefab = source.Prefab,
             Enabled = source.Enabled,
-            SpawnSystem = CloneSpawnSystemSpawnDefinition(source.SpawnSystem),
-            Conditions = CloneSpawnSystemConditionsDefinition(source.Conditions),
-            Modifiers = CloneEventSpawnModifiersDefinition(source.Modifiers)
-        };
-    }
-
-    internal static EventSpawnModifiersDefinition? CloneEventSpawnModifiersDefinition(EventSpawnModifiersDefinition? source)
-    {
-        if (source == null)
-        {
-            return null;
-        }
-
-        return new EventSpawnModifiersDefinition
-        {
-            Fields = CloneStringDictionary(source.Fields),
-            Data = source.Data,
-            Faction = source.Faction
+            SpawnSystem = CloneSpawnSystemSpawnDefinition(source.SpawnSystem)
         };
     }
 }

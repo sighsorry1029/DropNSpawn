@@ -53,6 +53,7 @@ The vertical lines in the spawner image are world `SpawnSystem` checks.
 - time-of-day spawn rules
 - world-level conditional behavior
 - ExpandWorldData compatible
+- SpawnSystem rows and event spawns use the same flat `spawnSystem` block; nested spawn `conditions` and `modifiers` blocks are not supported.
 - This domain is authoritative and replaces the live `SpawnSystem` table with the rows you define.
   ![](https://i.ibb.co/wZ4BfJF1/spawnsystem.png)
 - Above image explains how Valheim world spawning works.

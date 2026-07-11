@@ -27,7 +27,7 @@ internal static class EventManager
             InitializeRuntime = Initialize,
             OnGameDataReady = NotifyGameDataReady,
             HandleExpandWorldDataReady = HandleExpandWorldDataReady,
-            DtoVersion = 1,
+            DtoVersion = 2,
             TransportProfile = DomainTransportProfile.MediumConfig,
             DisplayName = "events",
             CacheDirectoryName = "events",
@@ -44,7 +44,6 @@ internal static class EventManager
     private static readonly object Sync = new();
     private static readonly IDeserializer Deserializer = new DeserializerBuilder()
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
-        .IgnoreUnmatchedProperties()
         .Build();
 
     private static bool _initialized;
@@ -1173,9 +1172,7 @@ internal static class EventManager
             {
                 Prefab = definition.Prefab,
                 Enabled = definition.Enabled ?? true,
-                SpawnSystem = definition.SpawnSystem,
-                Conditions = definition.Conditions,
-                Modifiers = ConvertEventSpawnModifiers(definition.Modifiers)
+                SpawnSystem = definition.SpawnSystem
             };
 
             SpawnSystemManager.NormalizeEntry(entry);
@@ -1194,21 +1191,6 @@ internal static class EventManager
         }
 
         return spawns;
-    }
-
-    private static SpawnSystemModifiersDefinition? ConvertEventSpawnModifiers(EventSpawnModifiersDefinition? modifiers)
-    {
-        if (modifiers == null)
-        {
-            return null;
-        }
-
-        return new SpawnSystemModifiersDefinition
-        {
-            Fields = modifiers.Fields,
-            Data = modifiers.Data,
-            Faction = modifiers.Faction
-        };
     }
 
     private static void ClearAppliedPayloadsLocked()
@@ -1402,9 +1384,7 @@ internal static class EventManager
         {
             Prefab = spawn.Prefab,
             Enabled = spawn.Enabled ?? true,
-            SpawnSystem = spawn.SpawnSystem,
-            Conditions = spawn.Conditions,
-            Modifiers = ConvertEventSpawnModifiers(spawn.Modifiers)
+            SpawnSystem = spawn.SpawnSystem
         };
     }
 
@@ -1660,8 +1640,7 @@ internal static class EventManager
             {
                 Prefab = referenceEntry.Prefab,
                 Enabled = referenceEntry.Enabled ? null : false,
-                SpawnSystem = referenceEntry.SpawnSystem,
-                Conditions = referenceEntry.Conditions
+                SpawnSystem = referenceEntry.SpawnSystem
             };
         }
 
@@ -1682,10 +1661,7 @@ internal static class EventManager
                 SpawnChance = data.m_spawnChance,
                 SpawnRadius = RangeFormatting.From(data.m_spawnRadiusMin, data.m_spawnRadiusMax),
                 GroupSize = RangeFormatting.From(data.m_groupSizeMin, data.m_groupSizeMax),
-                GroupRadius = data.m_groupRadius
-            },
-            Conditions = new SpawnSystemConditionsDefinition
-            {
+                GroupRadius = data.m_groupRadius,
                 NoSpawnRadius = data.m_spawnDistance,
                 MaxSpawned = data.m_maxSpawned,
                 Tilt = RangeFormatting.From(data.m_minTilt, data.m_maxTilt),
@@ -2205,6 +2181,7 @@ internal static class EventManager
         builder.AppendLine("#   endCommands: ['say Event ended']");
         builder.AppendLine("#");
         builder.AppendLine("# Spawn entry schema. Values before # are SpawnSystem.SpawnData defaults for one entry.");
+        builder.AppendLine("# All per-spawn fields are flat under spawnSystem; nested conditions and modifiers blocks are not supported.");
         builder.AppendLine("# - event: custom_greydwarf_raid");
         builder.AppendLine("#   spawns:");
         builder.AppendLine("#     - prefab: ''                     # Greydwarf # Creature prefab to spawn. Required for a spawn entry.");
@@ -2219,10 +2196,9 @@ internal static class EventManager
         builder.AppendLine("#         groundOffsetRandom: 0        # 1 # Random additional vertical offset.");
         builder.AppendLine("#         spawnInterval: 4             # 10 # Seconds between spawn checks.");
         builder.AppendLine("#         spawnChance: 100             # 50 # Chance percent per interval.");
-        builder.AppendLine("#         spawnRadius: 0               # 10~40 # Min~max spawn radius. 0 uses SpawnSystem global range.");
+        builder.AppendLine("#         spawnRadius: 40~80           # 20~60 # Min~max spawn radius. Native effective default; 0 on min/max uses the native 40/80 fallback.");
         builder.AppendLine("#         groupSize: 1                 # 1~3 # Min~max group size.");
         builder.AppendLine("#         groupRadius: 3               # 6 # Radius around the group center.");
-        builder.AppendLine("#       conditions:");
         builder.AppendLine("#         noSpawnRadius: 10            # 20 # Minimum distance to another instance of this prefab.");
         builder.AppendLine("#         maxSpawned: 1                # 6 # Max active event creatures from this entry.");
         builder.AppendLine("#         tilt: 0~35                   # 0~25 # Terrain tilt range.");
@@ -2238,8 +2214,8 @@ internal static class EventManager
         builder.AppendLine("#         inForest:                    # true # true = only forest, false = outside forest, empty = vanilla both-state default.");
         builder.AppendLine("#         insidePlayerBase: false      # true # Spawn inside player base.");
         builder.AppendLine("#         canSpawnCloseToPlayer: false # true # Allow spawn close to players.");
-        builder.AppendLine("#       modifiers:");
         builder.AppendLine("#         fields: {}                   # { m_character.m_faction: ForestMonsters } # Raw field overrides.");
+        builder.AppendLine("#         objects: []                  # [Wood,0,0,0,1] # ExpandWorldData object entries.");
         builder.AppendLine("#         data: ''                     # my_spawn_data # ExpandWorldData data entry name.");
         builder.AppendLine("#         faction: ''                  # ForestMonsters # ExpandWorldData faction override.");
         return builder.ToString();

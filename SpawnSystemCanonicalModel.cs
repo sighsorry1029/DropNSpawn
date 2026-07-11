@@ -10,21 +10,8 @@ internal sealed class CanonicalSpawnSystemEntry
     [YamlMember(Order = 1)]
     public bool Enabled { get; set; } = true;
 
-    [YamlIgnore]
-    public SpawnSystemSpawnDefinition? Spawn { get; set; }
-
     [YamlMember(Alias = "spawnSystem", Order = 2)]
-    public SpawnSystemSpawnDefinition? SpawnSystem
-    {
-        get => Spawn;
-        set => Spawn = value;
-    }
-
-    [YamlMember(Order = 3)]
-    public SpawnSystemConditionsDefinition? Conditions { get; set; }
-
-    [YamlMember(Order = 4)]
-    public SpawnSystemModifiersDefinition? Modifiers { get; set; }
+    public SpawnSystemSpawnDefinition? SpawnSystem { get; set; }
 
     [YamlIgnore]
     public string RuleId { get; set; } = "";

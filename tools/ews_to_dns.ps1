@@ -527,8 +527,6 @@ function Convert-EwsEntry {
     $dnsEntry["enabled"] = if (Test-MappingHasKey $Node "enabled") { Get-BoolValue $Node "enabled" } else { $true }
 
     $spawnSystem = [ordered]@{}
-    $conditions = [ordered]@{}
-    $modifiers = [ordered]@{}
 
     Add-ValueIfNotNull $spawnSystem "name" (Get-TrimmedScalarValue $Node "name")
     if (Test-MappingHasKey $Node "huntPlayer") { Add-ValueIfNotNull $spawnSystem "huntPlayer" (Get-BoolValue $Node "huntPlayer") }
@@ -590,20 +588,20 @@ function Convert-EwsEntry {
         Add-ValueIfNotNull $spawnSystem "groupSize" $groupSizeText
     }
 
-    if (Test-MappingHasKey $Node "maxSpawned") { Add-ValueIfNotNull $conditions "maxSpawned" (Get-IntValue $Node "maxSpawned") }
-    if (Test-MappingHasKey $Node "spawnDistance") { Add-ValueIfNotNull $conditions "noSpawnRadius" (Get-FloatValue $Node "spawnDistance") }
-    Add-StringArrayIfAny $conditions "biomes" (Get-StringListValue (Get-MappingValueNode $Node "biome") "biome")
-    Add-StringArrayIfAny $conditions "biomeAreas" (Get-StringListValue (Get-MappingValueNode $Node "biomeArea") "biomeArea")
-    Add-StringArrayIfAny $conditions "requiredEnvironments" (Get-StringListValue (Get-MappingValueNode $Node "requiredEnvironments") "requiredEnvironments")
-    Add-ValueIfNotNull $conditions "requiredGlobalKey" (Get-TrimmedScalarValue $Node "requiredGlobalKey")
-    if (Test-MappingHasKey $Node "canSpawnCloseToPlayer") { Add-ValueIfNotNull $conditions "canSpawnCloseToPlayer" (Get-BoolValue $Node "canSpawnCloseToPlayer") }
-    if (Test-MappingHasKey $Node "insidePlayerBase") { Add-ValueIfNotNull $conditions "insidePlayerBase" (Get-BoolValue $Node "insidePlayerBase") }
+    if (Test-MappingHasKey $Node "maxSpawned") { Add-ValueIfNotNull $spawnSystem "maxSpawned" (Get-IntValue $Node "maxSpawned") }
+    if (Test-MappingHasKey $Node "spawnDistance") { Add-ValueIfNotNull $spawnSystem "noSpawnRadius" (Get-FloatValue $Node "spawnDistance") }
+    Add-StringArrayIfAny $spawnSystem "biomes" (Get-StringListValue (Get-MappingValueNode $Node "biome") "biome")
+    Add-StringArrayIfAny $spawnSystem "biomeAreas" (Get-StringListValue (Get-MappingValueNode $Node "biomeArea") "biomeArea")
+    Add-StringArrayIfAny $spawnSystem "requiredEnvironments" (Get-StringListValue (Get-MappingValueNode $Node "requiredEnvironments") "requiredEnvironments")
+    Add-ValueIfNotNull $spawnSystem "requiredGlobalKey" (Get-TrimmedScalarValue $Node "requiredGlobalKey")
+    if (Test-MappingHasKey $Node "canSpawnCloseToPlayer") { Add-ValueIfNotNull $spawnSystem "canSpawnCloseToPlayer" (Get-BoolValue $Node "canSpawnCloseToPlayer") }
+    if (Test-MappingHasKey $Node "insidePlayerBase") { Add-ValueIfNotNull $spawnSystem "insidePlayerBase" (Get-BoolValue $Node "insidePlayerBase") }
 
     $spawnAtDay = if (Test-MappingHasKey $Node "spawnAtDay") { Get-BoolValue $Node "spawnAtDay" } else { $true }
     $spawnAtNight = if (Test-MappingHasKey $Node "spawnAtNight") { Get-BoolValue $Node "spawnAtNight" } else { $true }
     $timeOfDay = Convert-TimeOfDay -SpawnAtDay $spawnAtDay -SpawnAtNight $spawnAtNight
     if ($null -ne $timeOfDay) {
-        $conditions["timeOfDay"] = $timeOfDay
+        $spawnSystem["timeOfDay"] = $timeOfDay
     }
 
     $hasMinAltitude = Test-MappingHasKey $Node "minAltitude"
@@ -621,7 +619,7 @@ function Convert-EwsEntry {
             $altitudeText = Format-RangeString -Min $defaultMinAltitude -Max $maxAltitude
         }
 
-        Add-ValueIfNotNull $conditions "altitude" $altitudeText
+        Add-ValueIfNotNull $spawnSystem "altitude" $altitudeText
     }
 
     $hasMinTilt = Test-MappingHasKey $Node "minTilt"
@@ -637,7 +635,7 @@ function Convert-EwsEntry {
             Format-RangeString -Min 0 -Max (Get-FloatValue $Node "maxTilt")
         }
 
-        Add-ValueIfNotNull $conditions "tilt" $tiltText
+        Add-ValueIfNotNull $spawnSystem "tilt" $tiltText
     }
 
     $hasMinOceanDepth = Test-MappingHasKey $Node "minOceanDepth"
@@ -653,7 +651,7 @@ function Convert-EwsEntry {
             Format-RangeString -Min 0 -Max (Get-FloatValue $Node "maxOceanDepth")
         }
 
-        Add-ValueIfNotNull $conditions "oceanDepth" $oceanDepthText
+        Add-ValueIfNotNull $spawnSystem "oceanDepth" $oceanDepthText
     }
 
     $hasMinDistance = Test-MappingHasKey $Node "minDistance"
@@ -669,44 +667,36 @@ function Convert-EwsEntry {
             Format-RangeString -Min 0 -Max (Get-FloatValue $Node "maxDistance")
         }
 
-        Add-ValueIfNotNull $conditions "distanceFromCenter" $distanceText
+        Add-ValueIfNotNull $spawnSystem "distanceFromCenter" $distanceText
     }
 
     if ((Test-MappingHasKey $Node "inForest") -or (Test-MappingHasKey $Node "outsideForest")) {
         $forestInside = if (Test-MappingHasKey $Node "inForest") { Get-BoolValue $Node "inForest" } else { $true }
         $forestOutside = if (Test-MappingHasKey $Node "outsideForest") { Get-BoolValue $Node "outsideForest" } else { $true }
-        Add-ValueIfNotNull $conditions "inForest" (Convert-ExclusiveToggle -AllowInside $forestInside -AllowOutside $forestOutside -FieldName "forest" -EntryIndex $EntryIndex)
+        Add-ValueIfNotNull $spawnSystem "inForest" (Convert-ExclusiveToggle -AllowInside $forestInside -AllowOutside $forestOutside -FieldName "forest" -EntryIndex $EntryIndex)
     }
 
     if ((Test-MappingHasKey $Node "inLava") -or (Test-MappingHasKey $Node "outsideLava")) {
         $lavaInside = if (Test-MappingHasKey $Node "inLava") { Get-BoolValue $Node "inLava" } else { $false }
         $lavaOutside = if (Test-MappingHasKey $Node "outsideLava") { Get-BoolValue $Node "outsideLava" } else { $true }
-        Add-ValueIfNotNull $conditions "inLava" (Convert-ExclusiveToggle -AllowInside $lavaInside -AllowOutside $lavaOutside -FieldName "lava" -EntryIndex $EntryIndex)
+        Add-ValueIfNotNull $spawnSystem "inLava" (Convert-ExclusiveToggle -AllowInside $lavaInside -AllowOutside $lavaOutside -FieldName "lava" -EntryIndex $EntryIndex)
     }
 
-    Add-ValueIfNotNull $modifiers "data" (Get-TrimmedScalarValue $Node "data")
-    Add-ValueIfNotNull $modifiers "faction" (Get-TrimmedScalarValue $Node "faction")
-    Add-ValueIfNotNull $modifiers "fields" (Get-StringMapValue (Get-MappingValueNode $Node "fields") "fields")
-    Add-StringArrayIfAny $modifiers "objects" (Get-StringListValue (Get-MappingValueNode $Node "objects") "objects")
+    Add-ValueIfNotNull $spawnSystem "data" (Get-TrimmedScalarValue $Node "data")
+    Add-ValueIfNotNull $spawnSystem "faction" (Get-TrimmedScalarValue $Node "faction")
+    Add-ValueIfNotNull $spawnSystem "fields" (Get-StringMapValue (Get-MappingValueNode $Node "fields") "fields")
+    Add-StringArrayIfAny $spawnSystem "objects" (Get-StringListValue (Get-MappingValueNode $Node "objects") "objects")
 
     if (-not (Test-MappingHasKey $Node "inForest") -and -not (Test-MappingHasKey $Node "outsideForest")) {
-        $conditions.Remove("inForest")
+        $spawnSystem.Remove("inForest")
     }
 
     if (-not (Test-MappingHasKey $Node "inLava") -and -not (Test-MappingHasKey $Node "outsideLava")) {
-        $conditions.Remove("inLava")
+        $spawnSystem.Remove("inLava")
     }
 
     if ($spawnSystem.Count -gt 0) {
         $dnsEntry["spawnSystem"] = $spawnSystem
-    }
-
-    if ($conditions.Count -gt 0) {
-        $dnsEntry["conditions"] = $conditions
-    }
-
-    if ($modifiers.Count -gt 0) {
-        $dnsEntry["modifiers"] = $modifiers
     }
 
     return $dnsEntry
@@ -825,14 +815,6 @@ function Format-DnsYaml {
 
         if ($entry.Contains("spawnSystem")) {
             Append-DnsBlock -Builder $builder -Indent 2 -BlockName "spawnSystem" -Block $entry["spawnSystem"]
-        }
-
-        if ($entry.Contains("conditions")) {
-            Append-DnsBlock -Builder $builder -Indent 2 -BlockName "conditions" -Block $entry["conditions"]
-        }
-
-        if ($entry.Contains("modifiers")) {
-            Append-DnsBlock -Builder $builder -Indent 2 -BlockName "modifiers" -Block $entry["modifiers"]
         }
 
         [void]$builder.AppendLine()

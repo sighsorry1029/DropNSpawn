@@ -83,30 +83,12 @@
     {
       "name": "SpawnSystemSpawnValueCodec",
       "typeName": "SpawnSystemSpawnDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteSpawnSystemSpawnDefinition(builder, definition)",
+      "signatureWriterExpression": "(builder, definition, context) => WriteSpawnSystemSpawnDefinition(builder, definition, context.IncludeResolvedBiomeMask)",
       "payloadWriterExpression": "WriteSpawnSystemSpawnDefinition",
       "payloadReaderExpression": "ReadSpawnSystemSpawnDefinition",
       "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemSpawnDefinition(value)!",
-      "signatureCoverageIgnoredProperties": [ "MinLevel", "MaxLevel", "SpawnRadiusMin", "SpawnRadiusMax", "GroupSizeMin", "GroupSizeMax" ],
-      "payloadCoverageIgnoredProperties": [ "MinLevel", "MaxLevel", "SpawnRadiusMin", "SpawnRadiusMax", "GroupSizeMin", "GroupSizeMax" ]
-    },
-    {
-      "name": "SpawnSystemConditionsValueCodec",
-      "typeName": "SpawnSystemConditionsDefinition",
-      "signatureWriterExpression": "(builder, definition, context) => WriteSpawnSystemConditionsDefinition(builder, definition, context.IncludeResolvedBiomeMask)",
-      "payloadWriterExpression": "WriteSpawnSystemConditionsDefinition",
-      "payloadReaderExpression": "ReadSpawnSystemConditionsDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemConditionsDefinition(value)!",
-      "signatureCoverageIgnoredProperties": [ "MinTilt", "MaxTilt", "MinAltitude", "MaxAltitude", "MinOceanDepth", "MaxOceanDepth", "MinDistanceFromCenter", "MaxDistanceFromCenter" ],
-      "payloadCoverageIgnoredProperties": [ "MinTilt", "MaxTilt", "MinAltitude", "MaxAltitude", "MinOceanDepth", "MaxOceanDepth", "MinDistanceFromCenter", "MaxDistanceFromCenter" ]
-    },
-    {
-      "name": "SpawnSystemModifiersValueCodec",
-      "typeName": "SpawnSystemModifiersDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteSpawnSystemModifiersDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteSpawnSystemModifiersDefinition",
-      "payloadReaderExpression": "ReadSpawnSystemModifiersDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneSpawnSystemModifiersDefinition(value)!"
+      "signatureCoverageIgnoredProperties": [ "MinLevel", "MaxLevel", "SpawnRadiusMin", "SpawnRadiusMax", "GroupSizeMin", "GroupSizeMax", "MinTilt", "MaxTilt", "MinAltitude", "MaxAltitude", "MinOceanDepth", "MaxOceanDepth", "MinDistanceFromCenter", "MaxDistanceFromCenter" ],
+      "payloadCoverageIgnoredProperties": [ "MinLevel", "MaxLevel", "SpawnRadiusMin", "SpawnRadiusMax", "GroupSizeMin", "GroupSizeMax", "MinTilt", "MaxTilt", "MinAltitude", "MaxAltitude", "MinOceanDepth", "MaxOceanDepth", "MinDistanceFromCenter", "MaxDistanceFromCenter" ]
     },
     {
       "name": "EventConditionsValueCodec",
@@ -115,14 +97,6 @@
       "payloadWriterExpression": "WriteEventConditionsDefinition",
       "payloadReaderExpression": "ReadEventConditionsDefinition",
       "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneEventConditionsDefinition(value)!"
-    },
-    {
-      "name": "EventSpawnModifiersValueCodec",
-      "typeName": "EventSpawnModifiersDefinition",
-      "signatureWriterExpression": "static (builder, definition, _) => WriteEventSpawnModifiersDefinition(builder, definition)",
-      "payloadWriterExpression": "WriteEventSpawnModifiersDefinition",
-      "payloadReaderExpression": "ReadEventSpawnModifiersDefinition",
-      "cloneExpression": "value => ConfigurationEntryCloneSupport.CloneEventSpawnModifiersDefinition(value)!"
     },
     {
       "name": "EventSpawnValueCodec",
@@ -202,9 +176,7 @@
         { "expression": "StringField<CanonicalSpawnSystemEntry>(entry => entry.RuleId, (entry, value) => entry.RuleId = value, context => context.IncludeRuleId)" },
         { "expression": "StringField<CanonicalSpawnSystemEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
         { "expression": "BoolField<CanonicalSpawnSystemEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
-        { "expression": "OptionalField<CanonicalSpawnSystemEntry, SpawnSystemSpawnDefinition>(entry => entry.Spawn, (entry, value) => entry.Spawn = value, SpawnSystemSpawnValueCodec)" },
-        { "expression": "OptionalField<CanonicalSpawnSystemEntry, SpawnSystemConditionsDefinition>(entry => entry.Conditions, (entry, value) => entry.Conditions = value, SpawnSystemConditionsValueCodec)" },
-        { "expression": "OptionalField<CanonicalSpawnSystemEntry, SpawnSystemModifiersDefinition>(entry => entry.Modifiers, (entry, value) => entry.Modifiers = value, SpawnSystemModifiersValueCodec)" },
+        { "expression": "OptionalField<CanonicalSpawnSystemEntry, SpawnSystemSpawnDefinition>(entry => entry.SpawnSystem, (entry, value) => entry.SpawnSystem = value, SpawnSystemSpawnValueCodec)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourcePath = source.SourcePath)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceLine = source.SourceLine)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceColumn = source.SourceColumn)" },

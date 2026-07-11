@@ -100,7 +100,10 @@ internal static partial class NetworkPayloadSyncSupport
         return SpawnSystemCodec.Schema.ComputeEntrySignature(entry, includeRuleId: false, includeResolvedBiomeMask: false);
     }
 
-    private static void WriteSpawnSystemSpawnDefinition(PayloadSignatureBuilder builder, SpawnSystemSpawnDefinition definition)
+    private static void WriteSpawnSystemSpawnDefinition(
+        PayloadSignatureBuilder builder,
+        SpawnSystemSpawnDefinition definition,
+        bool includeResolvedBiomeMask)
     {
         WriteNullableString(builder, definition.Name);
         WriteNullableBool(builder, definition.HuntPlayer);
@@ -114,10 +117,6 @@ internal static partial class NetworkPayloadSyncSupport
         WriteOptional(builder, definition.SpawnRadius, WriteFloatRangeDefinition);
         WriteOptional(builder, definition.GroupSize, WriteIntRangeDefinition);
         WriteNullableFloat(builder, definition.GroupRadius);
-    }
-
-    private static void WriteSpawnSystemConditionsDefinition(PayloadSignatureBuilder builder, SpawnSystemConditionsDefinition definition, bool includeResolvedBiomeMask)
-    {
         WriteNullableFloat(builder, definition.NoSpawnRadius);
         WriteNullableInt(builder, definition.MaxSpawned);
         WriteOptional(builder, definition.Tilt, WriteFloatRangeDefinition);
@@ -137,10 +136,6 @@ internal static partial class NetworkPayloadSyncSupport
         WriteNullableBool(builder, definition.InForest);
         WriteNullableBool(builder, definition.InsidePlayerBase);
         WriteNullableBool(builder, definition.CanSpawnCloseToPlayer);
-    }
-
-    private static void WriteSpawnSystemModifiersDefinition(PayloadSignatureBuilder builder, SpawnSystemModifiersDefinition definition)
-    {
         WriteStringDictionary(builder, definition.Fields);
         WriteStringList(builder, definition.Objects);
         WriteNullableString(builder, definition.Data);

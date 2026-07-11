@@ -1,3 +1,36 @@
+## 1.3.0
+
+- **Breaking:** SpawnSystem override rows now accept only one flat `spawnSystem` block in `DNS_spawnsystem.yml`, supplemental `DNS_spawnsystem_*.yml/.yaml` files, and event `spawns`. The former nested spawn `conditions` and `modifiers` blocks are no longer supported.
+- Back up edited overrides, then either regenerate the SpawnSystem/Event override YAML from the new templates and reapply your entries, or manually remove each nested `conditions:` and `modifiers:` header and move those fields under `spawnSystem:` as shown below. Event-level `conditions` remains unchanged.
+- Unified SpawnSystem and event-spawn models, clone paths, generated reference/full output, and synchronized payloads. Event spawns now expose the same custom-data fields, including `objects`.
+- SpawnSystem schema and full output now show the native effective `spawnRadius` default as `40~80`; `0` endpoints still use the native `40`/`80` fallback.
+
+Before:
+
+```yaml
+- prefab: Boar
+  spawnSystem:
+    level: 1~3
+    groupRadius: 5
+  conditions:
+    noSpawnRadius: 64
+    biomes: [Meadows]
+  modifiers:
+    faction: Demon
+```
+
+After:
+
+```yaml
+- prefab: Boar
+  spawnSystem:
+    level: 1~3
+    groupRadius: 5
+    noSpawnRadius: 64
+    biomes: [Meadows]
+    faction: Demon
+```
+
 | `Version` | `Update Notes`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 |-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1.2.8 | - Hardened synchronized payload handling with strict SHA-256 manifest validation, bounded compressed/decompressed sizes, chunk-count checks, and safe cache paths. <br> - Simplified spawner selector matching and cache state while preserving exact Expand World Data cloned-location matching. <br> - Removed unused compatibility and transport forwarding layers, runtime aliases, stale helpers, and obsolete design documents. <br> - Co-located small state implementations with the code that owns them to reduce source-file count and navigation without adding new abstractions. |

@@ -85,22 +85,4 @@ internal sealed class EventSpawnDefinition
 
     [YamlMember(Order = 2)]
     public SpawnSystemSpawnDefinition? SpawnSystem { get; set; }
-
-    [YamlMember(Order = 3)]
-    public SpawnSystemConditionsDefinition? Conditions { get; set; }
-
-    [YamlMember(Order = 4)]
-    public EventSpawnModifiersDefinition? Modifiers { get; set; }
-}
-
-internal sealed class EventSpawnModifiersDefinition
-{
-    [YamlMember(Order = 0)]
-    public Dictionary<string, string>? Fields { get; set; }
-
-    [YamlMember(Order = 1)]
-    public string? Data { get; set; }
-
-    [YamlMember(Order = 2)]
-    public string? Faction { get; set; }
 }

@@ -30,19 +30,7 @@ internal static partial class ConfigurationEntryCloneSupport
             GroupSize = CloneIntRange(source.GroupSize),
             GroupSizeMin = source.GroupSizeMin,
             GroupSizeMax = source.GroupSizeMax,
-            GroupRadius = source.GroupRadius
-        };
-    }
-
-    internal static SpawnSystemConditionsDefinition? CloneSpawnSystemConditionsDefinition(SpawnSystemConditionsDefinition? source)
-    {
-        if (source == null)
-        {
-            return null;
-        }
-
-        return new SpawnSystemConditionsDefinition
-        {
+            GroupRadius = source.GroupRadius,
             NoSpawnRadius = source.NoSpawnRadius,
             MaxSpawned = source.MaxSpawned,
             Tilt = CloneFloatRange(source.Tilt),
@@ -66,19 +54,7 @@ internal static partial class ConfigurationEntryCloneSupport
             InLava = source.InLava,
             InForest = source.InForest,
             InsidePlayerBase = source.InsidePlayerBase,
-            CanSpawnCloseToPlayer = source.CanSpawnCloseToPlayer
-        };
-    }
-
-    internal static SpawnSystemModifiersDefinition? CloneSpawnSystemModifiersDefinition(SpawnSystemModifiersDefinition? source)
-    {
-        if (source == null)
-        {
-            return null;
-        }
-
-        return new SpawnSystemModifiersDefinition
-        {
+            CanSpawnCloseToPlayer = source.CanSpawnCloseToPlayer,
             Fields = CloneStringDictionary(source.Fields),
             Objects = CloneStringList(source.Objects),
             Data = source.Data,

@@ -71,7 +71,7 @@ internal static class SpawnSystemCustomDataSupport
         PreparedPayload payload = new()
         {
             CustomData = BuildCustomData(spawnData, entry, context),
-            CustomObjects = BuildCustomObjects(entry.Modifiers?.Objects, context)
+            CustomObjects = BuildCustomObjects(entry.SpawnSystem?.Objects, context)
         };
 
         return payload.HasValues() ? payload : null;
@@ -166,22 +166,22 @@ internal static class SpawnSystemCustomDataSupport
 
     private static EwdData.DataEntry? BuildCustomData(SpawnSystem.SpawnData spawnData, CanonicalSpawnSystemEntry entry, string context)
     {
-        SpawnSystemModifiersDefinition? modifiers = entry.Modifiers;
+        SpawnSystemSpawnDefinition? spawnSystem = entry.SpawnSystem;
         EwdData.DataEntry? dataFromEntry = null;
-        if (modifiers?.Data is string dataName && !string.IsNullOrWhiteSpace(dataName))
+        if (spawnSystem?.Data is string dataName && !string.IsNullOrWhiteSpace(dataName))
         {
             dataFromEntry = EwdData.DataHelper.Get(dataName, $"{DropNSpawnPlugin.ModName}_spawnsystem:{context}");
         }
 
         EwdData.DataEntry? inlineData = null;
-        if (modifiers?.Faction is string factionValue && !string.IsNullOrWhiteSpace(factionValue))
+        if (spawnSystem?.Faction is string factionValue && !string.IsNullOrWhiteSpace(factionValue))
         {
             inlineData ??= new EwdData.DataEntry();
             inlineData.Strings ??= new Dictionary<int, EwdData.IStringValue>();
             inlineData.Strings[HashFaction] = EwdData.DataValue.Simple(factionValue);
         }
 
-        Dictionary<string, string>? configuredFields = modifiers?.Fields;
+        Dictionary<string, string>? configuredFields = spawnSystem?.Fields;
         if (configuredFields != null && configuredFields.Count > 0)
         {
             inlineData ??= new EwdData.DataEntry();

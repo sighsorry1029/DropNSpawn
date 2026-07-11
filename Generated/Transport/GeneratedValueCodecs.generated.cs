@@ -99,28 +99,10 @@ internal static partial class NetworkPayloadSyncSupport
     private static ValueCodec<SpawnSystemSpawnDefinition> SpawnSystemSpawnValueCodec =>
         _spawnSystemSpawnValueCodec ??=
             new(
-                static (builder, definition, _) => WriteSpawnSystemSpawnDefinition(builder, definition),
+                (builder, definition, context) => WriteSpawnSystemSpawnDefinition(builder, definition, context.IncludeResolvedBiomeMask),
                 WriteSpawnSystemSpawnDefinition,
                 ReadSpawnSystemSpawnDefinition,
                 value => ConfigurationEntryCloneSupport.CloneSpawnSystemSpawnDefinition(value)!);
-
-    private static ValueCodec<SpawnSystemConditionsDefinition> _spawnSystemConditionsValueCodec;
-    private static ValueCodec<SpawnSystemConditionsDefinition> SpawnSystemConditionsValueCodec =>
-        _spawnSystemConditionsValueCodec ??=
-            new(
-                (builder, definition, context) => WriteSpawnSystemConditionsDefinition(builder, definition, context.IncludeResolvedBiomeMask),
-                WriteSpawnSystemConditionsDefinition,
-                ReadSpawnSystemConditionsDefinition,
-                value => ConfigurationEntryCloneSupport.CloneSpawnSystemConditionsDefinition(value)!);
-
-    private static ValueCodec<SpawnSystemModifiersDefinition> _spawnSystemModifiersValueCodec;
-    private static ValueCodec<SpawnSystemModifiersDefinition> SpawnSystemModifiersValueCodec =>
-        _spawnSystemModifiersValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteSpawnSystemModifiersDefinition(builder, definition),
-                WriteSpawnSystemModifiersDefinition,
-                ReadSpawnSystemModifiersDefinition,
-                value => ConfigurationEntryCloneSupport.CloneSpawnSystemModifiersDefinition(value)!);
 
     private static ValueCodec<EventConditionsDefinition> _eventConditionsValueCodec;
     private static ValueCodec<EventConditionsDefinition> EventConditionsValueCodec =>
@@ -130,15 +112,6 @@ internal static partial class NetworkPayloadSyncSupport
                 WriteEventConditionsDefinition,
                 ReadEventConditionsDefinition,
                 value => ConfigurationEntryCloneSupport.CloneEventConditionsDefinition(value)!);
-
-    private static ValueCodec<EventSpawnModifiersDefinition> _eventSpawnModifiersValueCodec;
-    private static ValueCodec<EventSpawnModifiersDefinition> EventSpawnModifiersValueCodec =>
-        _eventSpawnModifiersValueCodec ??=
-            new(
-                static (builder, definition, _) => WriteEventSpawnModifiersDefinition(builder, definition),
-                WriteEventSpawnModifiersDefinition,
-                ReadEventSpawnModifiersDefinition,
-                value => ConfigurationEntryCloneSupport.CloneEventSpawnModifiersDefinition(value)!);
 
     private static ValueCodec<EventSpawnDefinition> _eventSpawnValueCodec;
     private static ValueCodec<EventSpawnDefinition> EventSpawnValueCodec =>

@@ -374,64 +374,60 @@ internal static class CreatureManagerSpawnReferenceSupport
         };
 
         SpawnSystemSpawnDefinition spawn = new();
-        SpawnSystemConditionsDefinition conditions = new();
-        SpawnSystemModifiersDefinition modifiers = new();
-        bool hasSpawn = false;
-        bool hasConditions = false;
-        bool hasModifiers = false;
+        bool hasValues = false;
 
         if (TryGetFloatEffective(creature, creatureConfig, spawnMode, "CheckSpawnInterval", out float spawnInterval))
         {
             spawn.SpawnInterval = spawnInterval;
-            hasSpawn = true;
+            hasValues = true;
         }
 
         if (TryGetFloatEffective(creature, creatureConfig, spawnMode, "SpawnChance", out float spawnChance))
         {
             spawn.SpawnChance = spawnChance;
-            hasSpawn = true;
+            hasValues = true;
         }
 
         if (TryGetFloatRangeEffective(creature, creatureConfig, spawnMode, "GroupSize", out float groupSizeMin, out float groupSizeMax))
         {
             spawn.GroupSize = RangeFormatting.From((int)Math.Round(groupSizeMin), (int)Math.Round(groupSizeMax));
-            hasSpawn = true;
+            hasValues = true;
         }
 
         if (TryGetFloatEffective(creature, creatureConfig, spawnMode, "SpawnAltitude", out float groundOffset))
         {
             spawn.GroundOffset = groundOffset;
-            hasSpawn = true;
+            hasValues = true;
         }
 
         if (GetBoolEffective(creature, creatureConfig, spawnMode, "AttackImmediately", fallbackValue: false))
         {
             spawn.HuntPlayer = true;
-            hasSpawn = true;
+            hasValues = true;
         }
 
         if (!GetBoolEffective(creature, creatureConfig, spawnMode, "CanHaveStars", fallbackValue: true))
         {
             spawn.Level = RangeFormatting.From(1, 1);
-            hasSpawn = true;
+            hasValues = true;
         }
 
         if (TryGetFloatEffective(creature, creatureConfig, spawnMode, "Maximum", out float maximum))
         {
-            conditions.MaxSpawned = (int)Math.Round(maximum);
-            hasConditions = true;
+            spawn.MaxSpawned = (int)Math.Round(maximum);
+            hasValues = true;
         }
 
         if (TryGetFloatRangeEffective(creature, creatureConfig, spawnMode, "RequiredAltitude", out float minAltitude, out float maxAltitude))
         {
-            conditions.Altitude = RangeFormatting.From(minAltitude, maxAltitude);
-            hasConditions = true;
+            spawn.Altitude = RangeFormatting.From(minAltitude, maxAltitude);
+            hasValues = true;
         }
 
         if (TryGetFloatRangeEffective(creature, creatureConfig, spawnMode, "RequiredOceanDepth", out float minOceanDepth, out float maxOceanDepth))
         {
-            conditions.OceanDepth = RangeFormatting.From(minOceanDepth, maxOceanDepth);
-            hasConditions = true;
+            spawn.OceanDepth = RangeFormatting.From(minOceanDepth, maxOceanDepth);
+            hasValues = true;
         }
 
         if (TryGetEffectiveMemberValue(creature, creatureConfig, spawnMode, "SpecificSpawnTime", out object? spawnTimeValue))
@@ -439,8 +435,8 @@ internal static class CreatureManagerSpawnReferenceSupport
             TimeOfDayDefinition? timeOfDay = ConvertTimeOfDayDefinition(spawnTimeValue);
             if (timeOfDay != null)
             {
-                conditions.TimeOfDay = timeOfDay;
-                hasConditions = true;
+                spawn.TimeOfDay = timeOfDay;
+                hasValues = true;
             }
         }
 
@@ -448,8 +444,8 @@ internal static class CreatureManagerSpawnReferenceSupport
             biomeValue is Heightmap.Biome biomes &&
             biomes != Heightmap.Biome.None)
         {
-            conditions.Biomes = ConvertBiomes(biomes);
-            hasConditions = true;
+            spawn.Biomes = ConvertBiomes(biomes);
+            hasValues = true;
         }
 
         if (TryGetEffectiveMemberValue(creature, creatureConfig, spawnMode, "SpecificSpawnArea", out object? spawnAreaValue))
@@ -457,8 +453,8 @@ internal static class CreatureManagerSpawnReferenceSupport
             List<string>? biomeAreas = ConvertBiomeAreas(spawnAreaValue);
             if (biomeAreas != null)
             {
-                conditions.BiomeAreas = biomeAreas;
-                hasConditions = true;
+                spawn.BiomeAreas = biomeAreas;
+                hasValues = true;
             }
         }
 
@@ -467,8 +463,8 @@ internal static class CreatureManagerSpawnReferenceSupport
             List<string>? environments = ConvertRequiredEnvironments(provider, weatherValue);
             if (environments != null && environments.Count > 0)
             {
-                conditions.RequiredEnvironments = environments;
-                hasConditions = true;
+                spawn.RequiredEnvironments = environments;
+                hasValues = true;
             }
         }
 
@@ -477,8 +473,8 @@ internal static class CreatureManagerSpawnReferenceSupport
             string? requiredGlobalKey = ConvertInternalName(provider, globalKeyValue);
             if (!string.IsNullOrWhiteSpace(requiredGlobalKey))
             {
-                conditions.RequiredGlobalKey = requiredGlobalKey;
-                hasConditions = true;
+                spawn.RequiredGlobalKey = requiredGlobalKey;
+                hasValues = true;
             }
         }
 
@@ -487,8 +483,8 @@ internal static class CreatureManagerSpawnReferenceSupport
             bool? inForest = ConvertForestToggle(forestValue);
             if (inForest.HasValue)
             {
-                conditions.InForest = inForest;
-                hasConditions = true;
+                spawn.InForest = inForest;
+                hasValues = true;
             }
         }
 
@@ -497,14 +493,12 @@ internal static class CreatureManagerSpawnReferenceSupport
             string? faction = NormalizeOptionalString(factionValue?.ToString());
             if (!string.IsNullOrWhiteSpace(faction))
             {
-                modifiers.Faction = faction;
-                hasModifiers = true;
+                spawn.Faction = faction;
+                hasValues = true;
             }
         }
 
-        entry.SpawnSystem = hasSpawn ? spawn : null;
-        entry.Conditions = hasConditions ? conditions : null;
-        entry.Modifiers = hasModifiers ? modifiers : null;
+        entry.SpawnSystem = hasValues ? spawn : null;
         return entry;
     }
 

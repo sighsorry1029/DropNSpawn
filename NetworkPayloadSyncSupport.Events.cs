@@ -38,19 +38,10 @@ internal static partial class NetworkPayloadSyncSupport
     {
         WriteNullableString(builder, definition.Prefab);
         WriteNullableBool(builder, definition.Enabled);
-        WriteOptional(builder, definition.SpawnSystem, WriteSpawnSystemSpawnDefinition);
         WriteOptional(
             builder,
-            definition.Conditions,
-            (fieldBuilder, value) => WriteSpawnSystemConditionsDefinition(fieldBuilder, value, includeResolvedBiomeMask));
-        WriteOptional(builder, definition.Modifiers, WriteEventSpawnModifiersDefinition);
-    }
-
-    private static void WriteEventSpawnModifiersDefinition(PayloadSignatureBuilder builder, EventSpawnModifiersDefinition definition)
-    {
-        WriteStringDictionary(builder, definition.Fields);
-        WriteNullableString(builder, definition.Data);
-        WriteNullableString(builder, definition.Faction);
+            definition.SpawnSystem,
+            (fieldBuilder, value) => WriteSpawnSystemSpawnDefinition(fieldBuilder, value, includeResolvedBiomeMask));
     }
 
     private static void WriteEventConditionsDefinition(ZPackage package, EventConditionsDefinition definition)
@@ -91,8 +82,6 @@ internal static partial class NetworkPayloadSyncSupport
         WriteNullableString(package, definition.Prefab);
         WriteNullableBool(package, definition.Enabled);
         WriteOptional(package, definition.SpawnSystem, WriteSpawnSystemSpawnDefinition);
-        WriteOptional(package, definition.Conditions, WriteSpawnSystemConditionsDefinition);
-        WriteOptional(package, definition.Modifiers, WriteEventSpawnModifiersDefinition);
     }
 
     private static EventSpawnDefinition ReadEventSpawnDefinition(ZPackage package)
@@ -101,26 +90,7 @@ internal static partial class NetworkPayloadSyncSupport
         {
             Prefab = ReadNullableString(package),
             Enabled = ReadNullableBool(package),
-            SpawnSystem = ReadOptional(package, ReadSpawnSystemSpawnDefinition),
-            Conditions = ReadOptional(package, ReadSpawnSystemConditionsDefinition),
-            Modifiers = ReadOptional(package, ReadEventSpawnModifiersDefinition)
-        };
-    }
-
-    private static void WriteEventSpawnModifiersDefinition(ZPackage package, EventSpawnModifiersDefinition definition)
-    {
-        WriteStringDictionary(package, definition.Fields);
-        WriteNullableString(package, definition.Data);
-        WriteNullableString(package, definition.Faction);
-    }
-
-    private static EventSpawnModifiersDefinition ReadEventSpawnModifiersDefinition(ZPackage package)
-    {
-        return new EventSpawnModifiersDefinition
-        {
-            Fields = ReadStringDictionary(package),
-            Data = ReadNullableString(package),
-            Faction = ReadNullableString(package)
+            SpawnSystem = ReadOptional(package, ReadSpawnSystemSpawnDefinition)
         };
     }
 }

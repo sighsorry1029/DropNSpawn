@@ -16,7 +16,7 @@ internal static partial class ExampleContentWriter
         EnsureExampleFile(CharacterSampleFileName, CharacterConditionContent);
         EnsureExampleFile(ObjectSampleFileName, ObjectConditionContent);
         EnsureExampleFile(SpawnerSampleFileName, SpawnerConditionContent);
-        EnsureExampleFile(SpawnSystemSampleFileName, SpawnSystemConditionContent);
+        EnsureExampleFile(SpawnSystemSampleFileName, SpawnSystemContent);
     }
 
     private static void EnsureExampleFile(string fileName, string defaultContent)

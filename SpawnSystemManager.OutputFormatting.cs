@@ -63,11 +63,7 @@ internal static partial class SpawnSystemManager
             GroupRadius = GetReferenceFloatOrNull(data.m_groupRadius, defaults.m_groupRadius),
             HuntPlayer = GetReferenceBoolOrNull(data.m_huntPlayer, defaults.m_huntPlayer),
             GroundOffset = GetReferenceFloatOrNull(data.m_groundOffset, defaults.m_groundOffset),
-            GroundOffsetRandom = GetReferenceFloatOrNull(data.m_groundOffsetRandom, defaults.m_groundOffsetRandom)
-        };
-
-        SpawnSystemConditionsDefinition conditions = new()
-        {
+            GroundOffsetRandom = GetReferenceFloatOrNull(data.m_groundOffsetRandom, defaults.m_groundOffsetRandom),
             Biomes = data.m_biome == defaults.m_biome ? null : ConvertBiomes(data.m_biome),
             BiomeAreas = data.m_biomeArea == defaults.m_biomeArea ? null : ConvertBiomeAreas(data.m_biomeArea),
             RequiredGlobalKey = NormalizeNullable(data.m_requiredGlobalKey),
@@ -91,8 +87,7 @@ internal static partial class SpawnSystemManager
         {
             Prefab = normalizedPrefab,
             Enabled = data.m_enabled,
-            SpawnSystem = HasAnySpawnFields(spawn) ? spawn : null,
-            Conditions = HasAnyConditionFields(conditions) ? conditions : null
+            SpawnSystem = HasAnySpawnFields(spawn) ? spawn : null
         };
     }
 
@@ -124,11 +119,7 @@ internal static partial class SpawnSystemManager
             GroupSize = RangeFormatting.From(snapshot.Data.m_groupSizeMin, snapshot.Data.m_groupSizeMax),
             GroupRadius = snapshot.Data.m_groupRadius,
             GroundOffset = snapshot.Data.m_groundOffset,
-            GroundOffsetRandom = snapshot.Data.m_groundOffsetRandom
-        };
-
-        SpawnSystemConditionsDefinition conditions = new()
-        {
+            GroundOffsetRandom = snapshot.Data.m_groundOffsetRandom,
             Biomes = ConvertBiomes(snapshot.Data.m_biome),
             BiomeAreas = ConvertBiomeAreas(snapshot.Data.m_biomeArea),
             RequiredGlobalKey = NormalizeNullable(snapshot.Data.m_requiredGlobalKey),
@@ -150,8 +141,7 @@ internal static partial class SpawnSystemManager
         {
             Enabled = snapshot.Data.m_enabled,
             Prefab = NormalizeReferencePrefabName(snapshot.Data.m_prefab),
-            SpawnSystem = spawn,
-            Conditions = conditions
+            SpawnSystem = spawn
         };
     }
 
@@ -192,7 +182,7 @@ internal static partial class SpawnSystemManager
 
     private static (int GroupRank, string GroupName, int EarliestRank, int BiomeCount) GetBiomeSortKey(SpawnSystemConfigurationEntry entry)
     {
-        return BuildBiomeSortKey(entry.Conditions?.Biomes);
+        return BuildBiomeSortKey(entry.SpawnSystem?.Biomes);
     }
 
     private static int CompareReferenceEntriesForOutput(SpawnSystemConfigurationEntry left, SpawnSystemConfigurationEntry right)
