@@ -875,7 +875,7 @@ internal static partial class CharacterDropManager
             CharacterDrop.Drop drop = originalDrops[index];
             if (drop == null ||
                 !drop.m_levelMultiplier ||
-                !ShouldApplyGlobalCharacterLootLevelMultiplier(drop.m_prefab))
+                !ShouldApplyGlobalCharacterLootLevelMultiplier(drop.m_prefab, drop.m_levelMultiplier))
             {
                 continue;
             }
@@ -919,12 +919,14 @@ internal static partial class CharacterDropManager
         for (int index = 0; index < drops.Count; index++)
         {
             KeyValuePair<GameObject, int> result = drops[index];
-            if (!ShouldApplyGlobalCharacterLootLevelMultiplier(result.Key))
+            CharacterDrop.Drop? sourceDrop = FindNextMatchingSourceDrop(sourceDrops, ref sourceIndex, result.Key);
+            if (!ShouldApplyGlobalCharacterLootLevelMultiplier(
+                    result.Key,
+                    sourceDrop?.m_levelMultiplier == true))
             {
                 continue;
             }
 
-            CharacterDrop.Drop? sourceDrop = FindNextMatchingSourceDrop(sourceDrops, ref sourceIndex, result.Key);
             if (sourceDrop?.m_onePerPlayer == true)
             {
                 continue;
@@ -2299,7 +2301,7 @@ internal static partial class CharacterDropManager
 
             float chance = Mathf.Max(0f, definition.Chance ?? 1f);
             bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab);
-            bool applyGlobalCharacterLootMultiplier = ShouldApplyGlobalCharacterLootLevelMultiplier(dropPrefab);
+            bool applyGlobalCharacterLootMultiplier = ShouldApplyGlobalCharacterLootLevelMultiplier(dropPrefab, levelMultiplier);
             bool applyVanillaLevelMultiplier = levelMultiplier && !applyGlobalCharacterLootMultiplier;
             if (applyVanillaLevelMultiplier)
             {
@@ -2366,7 +2368,9 @@ internal static partial class CharacterDropManager
         foreach (CompiledCharacterDropDefinition definition in definitions)
         {
             float chance = definition.Chance;
-            bool applyGlobalCharacterLootMultiplier = ShouldApplyGlobalCharacterLootLevelMultiplier(definition.Prefab);
+            bool applyGlobalCharacterLootMultiplier = ShouldApplyGlobalCharacterLootLevelMultiplier(
+                definition.Prefab,
+                definition.LevelMultiplier);
             bool applyVanillaLevelMultiplier = definition.LevelMultiplier && !applyGlobalCharacterLootMultiplier;
             if (applyVanillaLevelMultiplier)
             {
@@ -2478,7 +2482,7 @@ internal static partial class CharacterDropManager
         return IsItemDropPrefab(dropPrefab) && levelMultiplier;
     }
 
-    private static bool ShouldApplyGlobalCharacterLootLevelMultiplier(GameObject? itemPrefab)
+    private static bool ShouldApplyGlobalCharacterLootLevelMultiplier(GameObject? itemPrefab, bool levelMultiplier)
     {
         if (!IsItemDropPrefab(itemPrefab))
         {
@@ -2490,7 +2494,7 @@ internal static partial class CharacterDropManager
             return ShouldApplyGlobalTrophyLevelMultiplier(itemPrefab);
         }
 
-        return PluginSettingsFacade.IsCharacterDropCalculateChanceLootSystemEnabled();
+        return levelMultiplier && PluginSettingsFacade.IsCharacterDropCalculateChanceLootSystemEnabled();
     }
 
     private static bool ShouldApplyGlobalTrophyLevelMultiplier(GameObject? itemPrefab)

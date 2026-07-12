@@ -130,7 +130,7 @@ General and character settings include:
 - `global trophy level multiplier`
 - `global trophy level multiplier blacklist`
 
-`character loot system = CalculateChance` keeps each successful character-drop chance intact and scales the final item amount by the configured per-star chance. Trophy drops join that same linear scaling only when `global trophy level multiplier` is on.
+`character loot system = CalculateChance` keeps each successful non-trophy character-drop chance intact and scales its final item amount by the configured per-star chance only when that drop's `levelMultiplier` is `true`. Trophy drops use that linear scaling whenever `global trophy level multiplier` is on, regardless of their `levelMultiplier` value.
 
 `disable DNS character loot scaling when CLLC is loaded` defaults to `On`. It does not rewrite the config values shown for DNS loot scaling; when Creature Level & Loot Control is installed, DNS treats `character loot system`, both per-star loot chance options, and `global trophy level multiplier` as inactive at runtime so CLLC can own loot quantities. YAML overrides, drop-in-stack, instant loot, and OnePerPlayer range still work.
 

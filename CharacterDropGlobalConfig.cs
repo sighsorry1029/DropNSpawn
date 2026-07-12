@@ -58,7 +58,7 @@ internal static class CharacterDropGlobalConfig
             "2 - Character",
             "character loot system",
             CharacterLootSystem.CalculateChance,
-            "Vanilla leaves character-drop level scaling to the game and YAML levelMultiplier values. CalculateChance keeps each drop chance intact, suppresses vanilla exponential level scaling for eligible item drops, and scales successful drop amounts by the configured per-star chance.",
+            "Vanilla leaves character-drop level scaling to the game and YAML levelMultiplier values. CalculateChance replaces vanilla exponential level scaling with configured per-star amount scaling only for non-trophy item drops whose levelMultiplier is true. The global trophy level multiplier setting separately controls trophies and can override their levelMultiplier value.",
             synchronizedSetting: true,
             configManagerOrder: 440);
         _disableCharacterLootScalingWhenCreatureLevelControlLoaded = plugin.BindConfigEntry(

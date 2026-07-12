@@ -1,3 +1,8 @@
+## 1.3.2
+
+- Fixed `character loot system = CalculateChance` so non-trophy drops participate in linear per-star amount scaling only when their native or YAML `levelMultiplier` is `true`.
+- Kept `global trophy level multiplier` as an explicit exception: enabled, non-blacklisted trophy drops use linear per-star amount scaling regardless of `levelMultiplier`; disabled or blacklisted trophies retain their native or YAML behavior.
+
 ## 1.3.1
 
 - Replaced the separate synced `Multiple events` and `Check per player` settings with `Event scheduling mode`: `Vanilla`, `MultipleGlobal`, or `MultiplePerPlayer`. The former config keys are no longer read.
