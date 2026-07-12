@@ -60,14 +60,12 @@ internal static class EventManager
 
     private sealed class ActiveMultipleEvent
     {
-        internal ActiveMultipleEvent(RandomEvent activeEvent, int count)
+        internal ActiveMultipleEvent(RandomEvent activeEvent)
         {
             Event = activeEvent;
-            Count = count;
         }
 
         internal RandomEvent Event { get; }
-        internal int Count { get; }
     }
 
     private sealed class EventRuntimeMetadata
@@ -106,6 +104,20 @@ internal static class EventManager
 
         internal EventDefinition Definition { get; }
         internal string OwnerName { get; }
+    }
+
+    private sealed class KnownVanillaEventVariantGroup
+    {
+        internal KnownVanillaEventVariantGroup(string name, RandomEvent preferred, List<RandomEvent> variants)
+        {
+            Name = name;
+            Preferred = preferred;
+            Variants = variants;
+        }
+
+        internal string Name { get; }
+        internal RandomEvent Preferred { get; }
+        internal List<RandomEvent> Variants { get; }
     }
 
     private sealed class PlayerBaseCondition
@@ -520,7 +532,7 @@ internal static class EventManager
         foreach (EventDefinition definition in definitions)
         {
             definition.Event = NormalizeOptionalString(definition.Event);
-            definition.Settings = NormalizeOptionalStringList(definition.Settings);
+            definition.Settings = NormalizePositionalStringList(definition.Settings);
             NormalizeConditions(definition.Conditions);
             definition.Messages = NormalizeOptionalStringList(definition.Messages);
             definition.ForceEnvironment = NormalizeOptionalStringPreserveEmpty(definition.ForceEnvironment);
@@ -636,17 +648,16 @@ internal static class EventManager
         }
 
         float minimumDistance = PluginSettingsFacade.GetMinimumDistanceBetweenEvents();
-        List<ActiveMultipleEvent> nearbyEvents = MultipleActiveEvents
-            .Where(activeEvent => Utils.DistanceXZ(activeEvent.Event.m_pos, pos) < minimumDistance)
-            .ToList();
-
-        int chainedCount = nearbyEvents.Sum(activeEvent => Math.Max(1, activeEvent.Count)) + 1;
-        StopMultipleEventsLocked(nearbyEvents, callOnStop: true);
+        if (MultipleActiveEvents.Any(activeEvent =>
+                Utils.DistanceXZ(activeEvent.Event.m_pos, pos) < minimumDistance))
+        {
+            return true;
+        }
 
         RandomEvent clonedEvent = ev.Clone();
         clonedEvent.m_pos = pos;
         clonedEvent.OnStart();
-        MultipleActiveEvents.Add(new ActiveMultipleEvent(clonedEvent, chainedCount));
+        MultipleActiveEvents.Add(new ActiveMultipleEvent(clonedEvent));
         eventSystem.m_randomEvent = clonedEvent;
         eventSystem.SendCurrentRandomEvent();
         return true;
@@ -753,12 +764,13 @@ internal static class EventManager
 
     private static void CheckGlobalEventsPerPlayer(RandEventSystem eventSystem, float dt)
     {
-        if (eventSystem.m_eventTimer + dt <= eventSystem.m_eventIntervalMin * 60f * Game.m_eventRate)
+        eventSystem.m_eventTimer += dt;
+        if (eventSystem.m_eventTimer <= eventSystem.m_eventIntervalMin * 60f * Game.m_eventRate)
         {
             return;
         }
 
-        eventSystem.m_eventTimer = 0f - dt;
+        eventSystem.m_eventTimer = 0f;
         foreach (RandEventSystem.PlayerEventData player in RandEventSystem.s_playerEventDatas)
         {
             if (UnityEngine.Random.Range(0f, 100f) > eventSystem.m_eventChance / Game.m_eventRate)
@@ -779,34 +791,46 @@ internal static class EventManager
 
     private static void CheckStandaloneEventsPerPlayer(RandEventSystem eventSystem, float dt)
     {
-        foreach (RandEventSystem.PlayerEventData player in RandEventSystem.s_playerEventDatas)
+        List<RandEventSystem.PlayerEventData>? playerEvents = null;
+        foreach (RandomEvent randomEvent in eventSystem.m_events)
         {
-            List<RandEventSystem.PlayerEventData> playerEvents = new(1) { player };
-            foreach (RandomEvent randomEvent in eventSystem.m_events)
+            if (!randomEvent.m_enabled ||
+                randomEvent.m_standaloneInterval <= 0f ||
+                eventSystem.m_activeEvent == randomEvent)
             {
-                if (!randomEvent.m_enabled ||
-                    randomEvent.m_standaloneChance == 0f ||
-                    eventSystem.m_activeEvent == randomEvent ||
-                    randomEvent.m_time + dt <= randomEvent.m_standaloneInterval * Game.m_eventRate)
-                {
-                    continue;
-                }
-
-                randomEvent.m_time = 0f - dt;
-                if (UnityEngine.Random.Range(0f, 100f) > randomEvent.m_standaloneChance / Game.m_eventRate ||
-                    !eventSystem.HaveGlobalKeys(randomEvent, playerEvents))
-                {
-                    continue;
-                }
-
-                List<Vector3> validPoints = eventSystem.GetValidEventPoints(randomEvent, playerEvents);
-                if (validPoints.Count == 0)
-                {
-                    continue;
-                }
-
-                eventSystem.SetRandomEvent(randomEvent, validPoints[UnityEngine.Random.Range(0, validPoints.Count)]);
+                continue;
             }
+
+            randomEvent.m_time += dt;
+            if (randomEvent.m_time <= randomEvent.m_standaloneInterval * Game.m_eventRate)
+            {
+                continue;
+            }
+
+            if (randomEvent.m_standaloneChance > 0f)
+            {
+                playerEvents ??= new List<RandEventSystem.PlayerEventData>(1);
+                foreach (RandEventSystem.PlayerEventData player in RandEventSystem.s_playerEventDatas)
+                {
+                    playerEvents.Clear();
+                    playerEvents.Add(player);
+                    if (UnityEngine.Random.Range(0f, 100f) > randomEvent.m_standaloneChance / Game.m_eventRate ||
+                        !eventSystem.HaveGlobalKeys(randomEvent, playerEvents))
+                    {
+                        continue;
+                    }
+
+                    List<Vector3> validPoints = eventSystem.GetValidEventPoints(randomEvent, playerEvents);
+                    if (validPoints.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    eventSystem.SetRandomEvent(randomEvent, validPoints[UnityEngine.Random.Range(0, validPoints.Count)]);
+                }
+            }
+
+            randomEvent.m_time = 0f;
         }
     }
 
@@ -903,13 +927,17 @@ internal static class EventManager
         EventMetadata.Clear();
 
         List<RandomEvent> events = CloneEvents(BaselineEvents);
+        HashSet<RandomEvent> explicitDurationEvents = new();
 
         if (PluginSettingsFacade.IsEventDomainEnabled())
         {
-            Dictionary<string, RandomEvent> byName = events
+            List<KnownVanillaEventVariantGroup> knownVanillaVariantGroups =
+                FindKnownVanillaEventVariantGroups(events);
+            HashSet<string> overriddenEventNames = new(StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, List<RandomEvent>> byName = events
                 .Where(ev => !string.IsNullOrWhiteSpace(ev.m_name))
                 .GroupBy(ev => ev.m_name, StringComparer.OrdinalIgnoreCase)
-                .ToDictionary(group => group.Key, group => group.Last(), StringComparer.OrdinalIgnoreCase);
+                .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
 
             for (int index = 0; index < ActiveDefinitions.Count; index++)
             {
@@ -921,19 +949,36 @@ internal static class EventManager
                     continue;
                 }
 
-                RandomEvent? target = byName.TryGetValue(eventName, out RandomEvent existing) ? existing : null;
-                if (target == null)
+                if (!byName.TryGetValue(eventName, out List<RandomEvent> targets))
                 {
-                    target = new RandomEvent();
+                    RandomEvent target = new();
+                    targets = new List<RandomEvent> { target };
+                    byName[eventName] = targets;
                     events.Add(target);
                 }
 
-                target.m_name = eventName;
-                byName[eventName] = target;
-                ApplyDefinition(target, definition, $"{source}:{eventName}");
+                overriddenEventNames.Add(eventName);
+                for (int targetIndex = 0; targetIndex < targets.Count; targetIndex++)
+                {
+                    RandomEvent target = targets[targetIndex];
+                    target.m_name = eventName;
+                    string context = targets.Count == 1
+                        ? $"{source}:{eventName}"
+                        : $"{source}:{eventName}[{(targetIndex + 1).ToString(CultureInfo.InvariantCulture)}]";
+                    if (ApplyDefinition(target, definition, context))
+                    {
+                        explicitDurationEvents.Add(target);
+                    }
+                }
             }
+
+            CollapseEquivalentKnownVanillaEventVariants(
+                events,
+                knownVanillaVariantGroups,
+                overriddenEventNames);
         }
 
+        ApplyEventDurationMultiplier(events, explicitDurationEvents);
         ApplyDefaultPlayerBaseConditions(events);
         RandEventSystem.instance.m_events = events;
         RandEventSystem.SetRandomEventsNeedsRefresh();
@@ -994,11 +1039,41 @@ internal static class EventManager
         };
     }
 
-    private static void ApplyDefinition(RandomEvent target, EventDefinition definition, string context)
+    private static void ApplyEventDurationMultiplier(
+        IEnumerable<RandomEvent> events,
+        ISet<RandomEvent> explicitDurationEvents)
+    {
+        float multiplier = PluginSettingsFacade.GetEventDurationMultiplier();
+        if (multiplier == 1f)
+        {
+            return;
+        }
+
+        foreach (RandomEvent ev in events)
+        {
+            if (ev == null || ev.m_duration <= 0f)
+            {
+                continue;
+            }
+
+            if (multiplier <= 0f)
+            {
+                ev.m_enabled = false;
+                continue;
+            }
+
+            if (!explicitDurationEvents.Contains(ev))
+            {
+                ev.m_duration *= multiplier;
+            }
+        }
+    }
+
+    private static bool ApplyDefinition(RandomEvent target, EventDefinition definition, string context)
     {
         if (definition.SpawnerDelay.HasValue) target.m_spawnerDelay = Math.Max(0f, definition.SpawnerDelay.Value);
 
-        ApplySettings(target, definition.Settings, context);
+        bool durationOverridden = ApplySettings(target, definition.Settings, context);
         ApplyStandalone(target, definition.Standalone);
         EventRuntimeMetadata metadata = BuildMetadata(definition, context);
         ApplyConditions(target, definition.Conditions, metadata, context);
@@ -1013,14 +1088,18 @@ internal static class EventManager
         {
             target.m_spawn = BuildSpawnList(definition.Spawns, context);
         }
+
+        return durationOverridden;
     }
 
-    private static void ApplySettings(RandomEvent target, List<string>? settings, string context)
+    private static bool ApplySettings(RandomEvent target, List<string>? settings, string context)
     {
         if (settings == null || settings.Count == 0)
         {
-            return;
+            return false;
         }
+
+        bool durationOverridden = false;
 
         if (TryParseBool(settings, 0, target.m_enabled, context, "settings[0]", out bool enabled))
         {
@@ -1035,6 +1114,7 @@ internal static class EventManager
         if (TryParseFloat(settings, 2, target.m_duration, context, "settings[2]", out float duration))
         {
             target.m_duration = Math.Max(0f, duration);
+            durationOverridden = true;
         }
 
         if (TryParseFloat(settings, 3, target.m_eventRange, context, "settings[3]", out float eventRange))
@@ -1046,6 +1126,8 @@ internal static class EventManager
         {
             target.m_pauseIfNoPlayerInArea = pauseIfNoPlayerInArea;
         }
+
+        return durationOverridden;
     }
 
     private static void ApplyStandalone(RandomEvent target, List<float>? standalone)
@@ -1203,11 +1285,31 @@ internal static class EventManager
         AppliedSpawnData.Clear();
     }
 
+    private static void RemoveAppliedEventState(RandomEvent ev)
+    {
+        EventMetadata.Remove(ev);
+        foreach (SpawnSystem.SpawnData spawnData in ev.m_spawn ?? new List<SpawnSystem.SpawnData>())
+        {
+            if (!AppliedSpawnData.Remove(spawnData))
+            {
+                continue;
+            }
+
+            SpawnSystemCustomDataSupport.ApplyPreparedPayload(spawnData, null);
+        }
+    }
+
     private static string BuildReferenceYaml(List<RandomEvent> events)
     {
+        List<RandomEvent> sourceEvents = events ?? new List<RandomEvent>();
+        List<KnownVanillaEventVariantGroup> knownVanillaVariantGroups =
+            FindKnownVanillaEventVariantGroups(sourceEvents);
         PrefabOwnerResolver.OwnerSnapshot ownerSnapshot = PrefabOwnerResolver.GetSnapshot();
-        List<EventReferenceOutputEntry> entries = (events ?? new List<RandomEvent>())
+        List<EventReferenceOutputEntry> entries = sourceEvents
             .Where(ev => ev != null)
+            .Where(ev => !knownVanillaVariantGroups.Any(group =>
+                group.Variants.Any(variant => ReferenceEquals(variant, ev)) &&
+                !ReferenceEquals(group.Preferred, ev)))
             .Select(ev =>
             {
                 EventDefinition definition = ConvertToDefinition(ev, includeEventDefaults: true, includeSpawnDefaults: false);
@@ -1216,6 +1318,117 @@ internal static class EventManager
             })
             .ToList();
         return BuildGeneratedYamlHeader("reference") + BuildEventReferenceDefinitionsYaml(entries, includeEventDefaults: true, includeEmptySpawnList: false);
+    }
+
+    private static List<KnownVanillaEventVariantGroup> FindKnownVanillaEventVariantGroups(
+        IEnumerable<RandomEvent> events)
+    {
+        List<KnownVanillaEventVariantGroup> result = new();
+        foreach (IGrouping<string, RandomEvent> group in (events ?? Enumerable.Empty<RandomEvent>())
+                     .Where(ev => ev != null && !string.IsNullOrWhiteSpace(ev.m_name))
+                     .GroupBy(ev => ev.m_name, StringComparer.OrdinalIgnoreCase))
+        {
+            if (!TryGetKnownVanillaEventVariantKeys(group.Key, out string preferredKey, out string legacyKey))
+            {
+                continue;
+            }
+
+            List<RandomEvent> variants = group.ToList();
+            if (variants.Count != 2)
+            {
+                continue;
+            }
+
+            List<RandomEvent> preferred = variants
+                .Where(ev => HasSingleRequiredPlayerKey(ev, preferredKey))
+                .ToList();
+            List<RandomEvent> legacy = variants
+                .Where(ev => HasSingleRequiredPlayerKey(ev, legacyKey))
+                .ToList();
+            if (preferred.Count != 1 || legacy.Count != 1)
+            {
+                continue;
+            }
+
+            result.Add(new KnownVanillaEventVariantGroup(group.Key, preferred[0], variants));
+        }
+
+        return result;
+    }
+
+    private static bool TryGetKnownVanillaEventVariantKeys(
+        string eventName,
+        out string preferredKey,
+        out string legacyKey)
+    {
+        if (string.Equals(eventName, "army_moder", StringComparison.OrdinalIgnoreCase))
+        {
+            preferredKey = "GP_Bonemass";
+            legacyKey = "$se_bonemass_name";
+            return true;
+        }
+
+        if (string.Equals(eventName, "army_theelder", StringComparison.OrdinalIgnoreCase))
+        {
+            preferredKey = "GP_Eikthyr";
+            legacyKey = "GP_TheElder";
+            return true;
+        }
+
+        preferredKey = "";
+        legacyKey = "";
+        return false;
+    }
+
+    private static bool HasSingleRequiredPlayerKey(RandomEvent ev, string expectedKey)
+    {
+        List<string> keys = ev.m_altRequiredPlayerKeysAny ?? new List<string>();
+        return keys.Count == 1 && string.Equals(keys[0], expectedKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void CollapseEquivalentKnownVanillaEventVariants(
+        List<RandomEvent> events,
+        IEnumerable<KnownVanillaEventVariantGroup> groups,
+        ISet<string> overriddenEventNames)
+    {
+        foreach (KnownVanillaEventVariantGroup group in groups)
+        {
+            if (!overriddenEventNames.Contains(group.Name))
+            {
+                continue;
+            }
+
+            string preferredSignature = ComputeComparableEventSignature(group.Preferred);
+            if (group.Variants.Any(variant =>
+                    !string.Equals(
+                        ComputeComparableEventSignature(variant),
+                        preferredSignature,
+                        StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            foreach (RandomEvent variant in group.Variants)
+            {
+                if (ReferenceEquals(variant, group.Preferred))
+                {
+                    continue;
+                }
+
+                RemoveAppliedEventState(variant);
+                int index = events.FindIndex(candidate => ReferenceEquals(candidate, variant));
+                if (index >= 0)
+                {
+                    events.RemoveAt(index);
+                }
+            }
+        }
+    }
+
+    private static string ComputeComparableEventSignature(RandomEvent ev)
+    {
+        EventDefinition definition = ConvertToDefinition(ev, includeEventDefaults: true, includeSpawnDefaults: true);
+        return NetworkPayloadSyncSupport.ComputeEventConfigurationSignature(new[] { definition });
     }
 
     private static string BuildEventReferenceDefinitionsYaml(
@@ -2112,6 +2325,13 @@ internal static class EventManager
         return value?.Trim();
     }
 
+    private static List<string>? NormalizePositionalStringList(List<string>? values)
+    {
+        return values == null || values.Count == 0
+            ? null
+            : values.Select(value => (value ?? "").Trim()).ToList();
+    }
+
     private static List<string>? NormalizeOptionalStringList(List<string>? values)
     {
         if (values == null)
@@ -2151,7 +2371,7 @@ internal static class EventManager
         builder.AppendLine("# The first inline comment value is an example override.");
         builder.AppendLine("#");
         builder.AppendLine("# - event: ''                          # custom_greydwarf_raid # Event id/name. Required.");
-        builder.AppendLine("#   settings: [true, true, 60, 96, true] # [false, true, 120, 128, false] # enabled, random, duration, eventRange, pauseIfNoPlayerInArea.");
+        builder.AppendLine("#   settings: [true, true, 60, 96, true] # [false, true, 120, 128, false] # enabled, random, duration, eventRange, pauseIfNoPlayerInArea; use '' to omit a middle value.");
         builder.AppendLine("#   standalone: [0, 100]               # [600, 20] # standaloneInterval seconds, standaloneChance percent.");
         builder.AppendLine("#   spawnerDelay: 0                    # 10 # Delay before event spawners can start spawning.");
         builder.AppendLine("#   conditions:");

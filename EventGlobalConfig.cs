@@ -5,6 +5,13 @@ namespace DropNSpawn;
 
 internal static class EventGlobalConfig
 {
+    internal enum EventSchedulingMode
+    {
+        Vanilla,
+        MultipleGlobal,
+        MultiplePerPlayer
+    }
+
     internal enum EventPlayerBaseDefault
     {
         Off,
@@ -14,35 +21,27 @@ internal static class EventGlobalConfig
     }
 
     private const float DefaultMinimumDistanceBetweenEvents = 100f;
+    private const float DefaultEventDurationMultiplier = 1f;
     private const float DefaultRandomEventChance = 20f;
     private const float DefaultRandomEventIntervalMinutes = 46f;
 
-    private static ConfigEntry<DropNSpawnPlugin.Toggle>? _multipleEvents;
-    private static ConfigEntry<DropNSpawnPlugin.Toggle>? _checkPerPlayer;
+    private static ConfigEntry<EventSchedulingMode>? _eventSchedulingMode;
     private static ConfigEntry<EventPlayerBaseDefault>? _defaultPlayerBase;
     private static ConfigEntry<float>? _minimumDistanceBetweenEvents;
+    private static ConfigEntry<float>? _eventDurationMultiplier;
     private static ConfigEntry<float>? _randomEventChance;
     private static ConfigEntry<float>? _randomEventIntervalMinutes;
 
     internal static void Bind(DropNSpawnPlugin plugin)
     {
-        _multipleEvents = plugin.BindConfigEntry(
+        _eventSchedulingMode = plugin.BindConfigEntry(
             "3 - Events",
-            "Multiple events",
-            DropNSpawnPlugin.Toggle.Off,
-            "If on, multiple random events can be active at the same time. DropNSpawn replaces RandEventSystem.FixedUpdate, SetRandomEvent, and SendCurrentRandomEvent while this option is on.",
+            "Event scheduling mode",
+            EventSchedulingMode.Vanilla,
+            "Vanilla allows one active random event and performs one server-wide check per interval. MultipleGlobal allows multiple active random events while keeping one server-wide check per interval. MultiplePerPlayer allows multiple active random events and performs one independent check per player per interval. Standalone events use the same global or per-player evaluation mode.",
             synchronizedSetting: true,
             configManagerOrder: 800);
-        _multipleEvents.SettingChanged += HandleRuntimeSettingChanged;
-
-        _checkPerPlayer = plugin.BindConfigEntry(
-            "3 - Events",
-            "Check per player",
-            DropNSpawnPlugin.Toggle.Off,
-            "If on, random event checks are evaluated separately for each player. DropNSpawn replaces RandEventSystem.UpdateRandomEvent while this option is on.",
-            synchronizedSetting: true,
-            configManagerOrder: 700);
-        _checkPerPlayer.SettingChanged += HandleRuntimeSettingChanged;
+        _eventSchedulingMode.SettingChanged += HandleRuntimeSettingChanged;
 
         _defaultPlayerBase = plugin.BindConfigEntry(
             "3 - Events",
@@ -58,11 +57,22 @@ internal static class EventGlobalConfig
             "Minimum distance between events",
             DefaultMinimumDistanceBetweenEvents,
             new ConfigDescription(
-                "Minimum horizontal XZ distance between simultaneously active random events. Starting a new event inside this distance stops nearby active random events first.",
+                "Minimum horizontal XZ distance between simultaneously active random event centers. A new event attempt inside this distance is ignored while the active event continues.",
                 new AcceptableValueRange<float>(0f, 10000f)),
             synchronizedSetting: true,
             configManagerOrder: 600);
         _minimumDistanceBetweenEvents.SettingChanged += HandleRuntimeSettingChanged;
+
+        _eventDurationMultiplier = plugin.BindConfigEntry(
+            "3 - Events",
+            "Event duration multiplier",
+            DefaultEventDurationMultiplier,
+            new ConfigDescription(
+                "Positive values scale event durations that do not explicitly set YAML settings[2]. 0.5 halves durations, 1 keeps them unchanged, and 2 doubles them. 0 is a master switch that disables every event whose effective duration after YAML is greater than 0; duration-0 events remain enabled.",
+                new AcceptableValueRange<float>(0f, 3f)),
+            synchronizedSetting: true,
+            configManagerOrder: 550);
+        _eventDurationMultiplier.SettingChanged += HandleDefinitionSettingChanged;
 
         _randomEventChance = plugin.BindConfigEntry(
             "3 - Events",
@@ -80,7 +90,7 @@ internal static class EventGlobalConfig
             "Random event interval",
             DefaultRandomEventIntervalMinutes,
             new ConfigDescription(
-                "Minutes between random event checks. This maps to RandEventSystem.m_eventIntervalMin.",
+                "Minutes between random event checks. 0 removes the cooldown and attempts a check every server FixedUpdate. This maps to RandEventSystem.m_eventIntervalMin.",
                 new AcceptableValueRange<float>(0f, 10000f)),
             synchronizedSetting: true,
             configManagerOrder: 400);
@@ -89,12 +99,12 @@ internal static class EventGlobalConfig
 
     internal static bool IsMultipleEventsEnabled()
     {
-        return _multipleEvents?.Value == DropNSpawnPlugin.Toggle.On;
+        return (_eventSchedulingMode?.Value ?? EventSchedulingMode.Vanilla) != EventSchedulingMode.Vanilla;
     }
 
     internal static bool IsCheckPerPlayerEnabled()
     {
-        return _checkPerPlayer?.Value == DropNSpawnPlugin.Toggle.On;
+        return (_eventSchedulingMode?.Value ?? EventSchedulingMode.Vanilla) == EventSchedulingMode.MultiplePerPlayer;
     }
 
     internal static EventPlayerBaseDefault GetDefaultPlayerBase()
@@ -105,6 +115,11 @@ internal static class EventGlobalConfig
     internal static float GetMinimumDistanceBetweenEvents()
     {
         return Math.Max(0f, _minimumDistanceBetweenEvents?.Value ?? DefaultMinimumDistanceBetweenEvents);
+    }
+
+    internal static float GetEventDurationMultiplier()
+    {
+        return Clamp(_eventDurationMultiplier?.Value ?? DefaultEventDurationMultiplier, 0f, 3f);
     }
 
     internal static float GetRandomEventChance()

@@ -1,3 +1,12 @@
+## 1.3.1
+
+- Replaced the separate synced `Multiple events` and `Check per player` settings with `Event scheduling mode`: `Vanilla`, `MultipleGlobal`, or `MultiplePerPlayer`. The former config keys are no longer read.
+- Changed multiple-event collision handling so a new attempt inside `Minimum distance between events` is discarded while the existing event continues, instead of stopping and replacing the existing event.
+- Fixed per-player event scheduling so the global timer advances correctly, non-positive standalone intervals remain disabled, and each matured standalone event evaluates every player before its timer resets once.
+- Added synced `Event duration multiplier` with a `0~3` range. Positive values scale durations not explicitly set by YAML `settings[2]`; `0` disables every event whose effective duration is positive while leaving duration-`0` events enabled.
+- Preserved positional `''` placeholders in event `settings`, allowing later fields to be overridden while an earlier field is omitted, and documented the syntax in generated override YAML.
+- Canonicalized the known duplicate vanilla `army_moder` and `army_theelder` variants in event references, applied same-name overrides to every original variant, and collapsed equivalent overridden variants to avoid duplicate selection weight.
+
 ## 1.3.0
 
 - **Breaking:** SpawnSystem override rows now accept only one flat `spawnSystem` block in `DNS_spawnsystem.yml`, supplemental `DNS_spawnsystem_*.yml/.yaml` files, and event `spawns`. The former nested spawn `conditions` and `modifiers` blocks are no longer supported.

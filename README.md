@@ -138,12 +138,16 @@ General and character settings include:
 
 Event settings include:
 
-- `Multiple events`
-- `Check per player`
+- `Event scheduling mode`
 - `Default event player base`
 - `Minimum distance between events`
+- `Event duration multiplier`
 - `Random event chance`
 - `Random event interval`
+
+`Event scheduling mode` supports `Vanilla` (one active event and one server-wide check), `MultipleGlobal` (multiple active events and one server-wide check), and `MultiplePerPlayer` (multiple active events with one independent check per player). Standalone event checks follow the selected global or per-player mode.
+
+`Event duration multiplier` accepts `0~3`. Positive values scale event durations that are not explicitly set by YAML `settings[2]`; `0.5` halves them, `1` keeps them unchanged, and `2` doubles them. `0` disables every event whose effective duration after YAML is positive, while duration-`0` events remain enabled.
 
 `Default event player base` can globally treat events without YAML `conditions.playerBase` as `Off`, `Away`, `Near`, or `AwayAndNear`. YAML event overrides keep priority.
 

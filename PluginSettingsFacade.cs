@@ -37,6 +37,9 @@ internal static class PluginSettingsFacade
     internal static float GetMinimumDistanceBetweenEvents() =>
         EventGlobalConfig.GetMinimumDistanceBetweenEvents();
 
+    internal static float GetEventDurationMultiplier() =>
+        EventGlobalConfig.GetEventDurationMultiplier();
+
     internal static float GetRandomEventChance() =>
         EventGlobalConfig.GetRandomEventChance();
 
