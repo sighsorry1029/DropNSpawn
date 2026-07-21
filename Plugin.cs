@@ -17,6 +17,7 @@ namespace DropNSpawn;
 
 [BepInPlugin(ModGUID, ModName, ModVersion)]
 [BepInDependency("expand_world_data")]
+[BepInDependency("sighsorry.CreatureManager", BepInDependency.DependencyFlags.SoftDependency)]
 /// <summary>
 /// Unity entrypoint and top-level wiring for the runtime platform.
 /// Owns lifecycle delegation only; coordinators and domain runtimes own the actual mutable platform state.
@@ -55,7 +56,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
 
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
-    internal const string ModVersion = "1.3.2";
+    internal const string ModVersion = "1.3.3";
     internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
     internal static readonly string RuntimeBuildStamp = BuildRuntimeBuildStamp();

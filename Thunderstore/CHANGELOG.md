@@ -1,3 +1,8 @@
+## 1.3.3
+
+- Added optional CreatureManager faction integration so registered custom factions can be resolved, applied, listed in validation guidance, and restored from spawned-creature ZDO data.
+- Preserved native and ExpandWorldFactions handling while adding a soft dependency to ensure CreatureManager's faction API is available before DropNSpawn initializes.
+
 ## 1.3.2
 
 - Fixed `character loot system = CalculateChance` so non-trophy drops participate in linear per-star amount scaling only when their native or YAML `levelMultiplier` is `true`.
