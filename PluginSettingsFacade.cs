@@ -76,9 +76,6 @@ internal static class PluginSettingsFacade
     internal static float GetCharacterDropOnePerPlayerNearbyRange() =>
         CharacterDropGlobalConfig.GetOnePerPlayerNearbyRange();
 
-    internal static bool IsCharacterDropOnePerPlayerNearbyRangeLivingPlayersOnly() =>
-        CharacterDropGlobalConfig.IsOnePerPlayerNearbyRangeLivingPlayersOnly();
-
     internal static bool IsCharacterDropInStackBlacklisted(string? prefabName) =>
         CharacterDropGlobalConfig.IsDropInStackBlacklisted(prefabName);
 

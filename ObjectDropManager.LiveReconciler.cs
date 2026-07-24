@@ -6,20 +6,20 @@ namespace DropNSpawn;
 
 internal static partial class ObjectDropManager
 {
-    internal static void ReconcilePieceInstance(Piece piece, bool clearCreatorRestrictedContainerContents)
+    internal static void ReconcilePieceInstance(Piece piece)
     {
-        ReconcileObjectInstance(piece.gameObject, clearCreatorRestrictedContainerContents);
+        ReconcileObjectInstance(piece.gameObject);
     }
 
-    internal static void ReconcileObjectInstance(GameObject gameObject, bool clearCreatorRestrictedContainerContents)
+    internal static void ReconcileObjectInstance(GameObject gameObject)
     {
         lock (Sync)
         {
-            ReconcileObjectInstanceCore(gameObject, clearCreatorRestrictedContainerContents);
+            ReconcileObjectInstanceCore(gameObject);
         }
     }
 
-    private static void ReconcileObjectInstanceCore(GameObject? gameObject, bool clearCreatorRestrictedContainerContents)
+    private static void ReconcileObjectInstanceCore(GameObject? gameObject)
     {
         if (!TryTrackLiveObjectInstanceLocked(gameObject, out string prefabName) ||
             !ShouldReconcileLocally(gameObject!))
@@ -50,22 +50,14 @@ internal static partial class ObjectDropManager
             return;
         }
 
-        ReconcileConfiguredInstance(gameObject!, snapshot, entries!, clearCreatorRestrictedContainerContents);
+        ReconcileConfiguredInstance(gameObject!, snapshot, entries!);
     }
 
-    private static void ReconcileConfiguredInstance(GameObject gameObject, PrefabSnapshot snapshot, IEnumerable<PrefabConfigurationEntry> entries, bool clearCreatorRestrictedContainerContents)
+    private static void ReconcileConfiguredInstance(GameObject gameObject, PrefabSnapshot snapshot, IEnumerable<PrefabConfigurationEntry> entries)
     {
         List<PrefabConfigurationEntry> entryList = entries as List<PrefabConfigurationEntry> ?? entries.ToList();
         if (!ShouldApplyToInstance(gameObject))
         {
-            if (clearCreatorRestrictedContainerContents)
-            {
-                foreach (PrefabConfigurationEntry entry in entryList)
-                {
-                    ClearContainerContentsIfNeeded(gameObject, entry);
-                }
-            }
-
             return;
         }
 

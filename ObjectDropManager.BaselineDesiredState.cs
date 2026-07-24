@@ -23,9 +23,9 @@ internal static partial class ObjectDropManager
         public override void ApplyDesiredStateToLive(ObjectDesiredState desiredState) => ApplyObjectDesiredStateToLive(desiredState);
         public override void Commit(ObjectDesiredState desiredState) => RecordAppliedState(desiredState.GameDataSignature, desiredState.DomainEnabled, desiredState.CurrentEntrySignatures);
 
-        public override void HandleFailure(ObjectDesiredState desiredState, StandardApplyFailureContext failureContext)
+        public override void HandleFailure(ObjectDesiredState desiredState, bool liveStageFailed)
         {
-            if (!failureContext.LiveStageFailed)
+            if (!liveStageFailed)
             {
                 return;
             }
@@ -54,14 +54,10 @@ internal static partial class ObjectDropManager
         bool queueLiveReconcile)
     {
         ObjectDesiredState desiredState = BuildObjectDesiredState(gameDataSignature, domainEnabled, currentEntrySignatures, queueLiveReconcile);
-        StandardApplyOutcome outcome = StandardBaselineDesiredStateCoordinator.Run(
+        StandardBaselineDesiredStateCoordinator.Run(
             desiredState.ApplyPlan,
             desiredState,
             ObjectApplyOperations.Instance);
-        if (!outcome.Success)
-        {
-            return;
-        }
     }
 
     private static ObjectDesiredState BuildObjectDesiredState(

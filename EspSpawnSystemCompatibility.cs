@@ -38,11 +38,6 @@ internal static class EspSpawnSystemCompatibility
         return PendingRefreshes.Count > 0;
     }
 
-    internal static int GetPendingRefreshCount()
-    {
-        return PendingRefreshes.Count;
-    }
-
     internal static void ClearPendingRefreshes()
     {
         PendingRefreshes.Clear();

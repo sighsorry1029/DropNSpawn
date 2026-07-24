@@ -9,30 +9,43 @@ internal static partial class SpawnerManager
 
     private readonly struct TrackedSpawnerPrefabState
     {
-        public TrackedSpawnerPrefabState(string prefabName)
+        public TrackedSpawnerPrefabState(string prefabName, int gameObjectInstanceId)
         {
             PrefabName = prefabName;
+            GameObjectInstanceId = gameObjectInstanceId;
             ConfiguredEligible = false;
             RuntimeEligible = false;
             EligibilityEpoch = int.MinValue;
         }
 
-        private TrackedSpawnerPrefabState(string prefabName, bool configuredEligible, bool runtimeEligible, int eligibilityEpoch)
+        private TrackedSpawnerPrefabState(
+            string prefabName,
+            int gameObjectInstanceId,
+            bool configuredEligible,
+            bool runtimeEligible,
+            int eligibilityEpoch)
         {
             PrefabName = prefabName;
+            GameObjectInstanceId = gameObjectInstanceId;
             ConfiguredEligible = configuredEligible;
             RuntimeEligible = runtimeEligible;
             EligibilityEpoch = eligibilityEpoch;
         }
 
         public string PrefabName { get; }
+        public int GameObjectInstanceId { get; }
         public bool ConfiguredEligible { get; }
         public bool RuntimeEligible { get; }
         public int EligibilityEpoch { get; }
 
         public TrackedSpawnerPrefabState WithEligibility(bool configuredEligible, bool runtimeEligible, int eligibilityEpoch)
         {
-            return new TrackedSpawnerPrefabState(PrefabName, configuredEligible, runtimeEligible, eligibilityEpoch);
+            return new TrackedSpawnerPrefabState(
+                PrefabName,
+                GameObjectInstanceId,
+                configuredEligible,
+                runtimeEligible,
+                eligibilityEpoch);
         }
     }
 
@@ -138,7 +151,7 @@ internal static partial class SpawnerManager
 
         public void RemoveLiveSnapshot(SpawnArea? spawnArea)
         {
-            if (spawnArea != null)
+            if (!ReferenceEquals(spawnArea, null))
             {
                 _liveSpawnAreaSnapshots.Remove(spawnArea);
             }
@@ -146,7 +159,7 @@ internal static partial class SpawnerManager
 
         public void RemoveLiveSnapshot(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner != null)
+            if (!ReferenceEquals(creatureSpawner, null))
             {
                 _liveCreatureSpawnerSnapshots.Remove(creatureSpawner);
             }
@@ -159,7 +172,8 @@ internal static partial class SpawnerManager
                 return;
             }
 
-            _liveSpawnAreaPrefabStates[spawnArea] = new TrackedSpawnerPrefabState(prefabName);
+            _liveSpawnAreaPrefabStates[spawnArea] =
+                new TrackedSpawnerPrefabState(prefabName, spawnArea.gameObject.GetInstanceID());
             if (!_liveSpawnAreasByPrefab.TryGetValue(prefabName, out HashSet<SpawnArea>? prefabs))
             {
                 prefabs = new HashSet<SpawnArea>();
@@ -176,7 +190,8 @@ internal static partial class SpawnerManager
                 return;
             }
 
-            _liveCreatureSpawnerPrefabStates[creatureSpawner] = new TrackedSpawnerPrefabState(prefabName);
+            _liveCreatureSpawnerPrefabStates[creatureSpawner] =
+                new TrackedSpawnerPrefabState(prefabName, creatureSpawner.gameObject.GetInstanceID());
             if (!_liveCreatureSpawnersByPrefab.TryGetValue(prefabName, out HashSet<CreatureSpawner>? prefabs))
             {
                 prefabs = new HashSet<CreatureSpawner>();
@@ -186,15 +201,21 @@ internal static partial class SpawnerManager
             prefabs.Add(creatureSpawner);
         }
 
-        public bool UntrackSpawnAreaPrefab(SpawnArea? spawnArea, out string prefabName)
+        public bool UntrackSpawnAreaPrefab(
+            SpawnArea? spawnArea,
+            out string prefabName,
+            out int gameObjectInstanceId)
         {
             prefabName = "";
-            if (spawnArea == null || !_liveSpawnAreaPrefabStates.Remove(spawnArea, out TrackedSpawnerPrefabState trackedState))
+            gameObjectInstanceId = 0;
+            if (ReferenceEquals(spawnArea, null) ||
+                !_liveSpawnAreaPrefabStates.Remove(spawnArea, out TrackedSpawnerPrefabState trackedState))
             {
                 return false;
             }
 
             prefabName = trackedState.PrefabName;
+            gameObjectInstanceId = trackedState.GameObjectInstanceId;
             if (_liveSpawnAreasByPrefab.TryGetValue(prefabName, out HashSet<SpawnArea>? spawnAreas))
             {
                 spawnAreas.Remove(spawnArea);
@@ -207,15 +228,21 @@ internal static partial class SpawnerManager
             return true;
         }
 
-        public bool UntrackCreatureSpawnerPrefab(CreatureSpawner? creatureSpawner, out string prefabName)
+        public bool UntrackCreatureSpawnerPrefab(
+            CreatureSpawner? creatureSpawner,
+            out string prefabName,
+            out int gameObjectInstanceId)
         {
             prefabName = "";
-            if (creatureSpawner == null || !_liveCreatureSpawnerPrefabStates.Remove(creatureSpawner, out TrackedSpawnerPrefabState trackedState))
+            gameObjectInstanceId = 0;
+            if (ReferenceEquals(creatureSpawner, null) ||
+                !_liveCreatureSpawnerPrefabStates.Remove(creatureSpawner, out TrackedSpawnerPrefabState trackedState))
             {
                 return false;
             }
 
             prefabName = trackedState.PrefabName;
+            gameObjectInstanceId = trackedState.GameObjectInstanceId;
             if (_liveCreatureSpawnersByPrefab.TryGetValue(prefabName, out HashSet<CreatureSpawner>? creatureSpawners))
             {
                 creatureSpawners.Remove(creatureSpawner);
@@ -418,7 +445,8 @@ internal static partial class SpawnerManager
 
         public void RemoveSpawnAreaLocationBucket(SpawnArea? spawnArea)
         {
-            if (spawnArea == null || !_spawnAreaLocationBucketByInstance.Remove(spawnArea, out string? previousBucketKey))
+            if (ReferenceEquals(spawnArea, null) ||
+                !_spawnAreaLocationBucketByInstance.Remove(spawnArea, out string? previousBucketKey))
             {
                 return;
             }
@@ -437,7 +465,8 @@ internal static partial class SpawnerManager
 
         public void RemoveCreatureSpawnerLocationBucket(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner == null || !_creatureSpawnerLocationBucketByInstance.Remove(creatureSpawner, out string? previousBucketKey))
+            if (ReferenceEquals(creatureSpawner, null) ||
+                !_creatureSpawnerLocationBucketByInstance.Remove(creatureSpawner, out string? previousBucketKey))
             {
                 return;
             }
@@ -458,6 +487,11 @@ internal static partial class SpawnerManager
         {
             _liveSpawnAreaSnapshots.Clear();
             _liveCreatureSpawnerSnapshots.Clear();
+            ClearLocationBuckets();
+        }
+
+        public void ClearLocationBuckets()
+        {
             _liveSpawnAreasByPrefabAndLocation.Clear();
             _spawnAreaLocationBucketByInstance.Clear();
             _liveCreatureSpawnersByPrefabAndLocation.Clear();

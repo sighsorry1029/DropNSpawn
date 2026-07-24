@@ -16,7 +16,9 @@ internal static class ConfigurationLoadSupport
 
     internal sealed class ParsedLocalConfiguration<TEntry>
     {
-        internal ParsedLocalConfiguration(List<TEntry> configuration, List<string> warnings)
+        internal ParsedLocalConfiguration(
+            List<TEntry>? configuration = null,
+            List<string>? warnings = null)
         {
             Configuration = configuration ?? new List<TEntry>();
             Warnings = warnings ?? new List<string>();

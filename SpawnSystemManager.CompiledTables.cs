@@ -154,11 +154,6 @@ internal static partial class SpawnSystemManager
         return table;
     }
 
-    private static List<SpawnSystemList> GetVanillaSourceSpawnLists()
-    {
-        return GetVanillaSourceSpawnLists(out _);
-    }
-
     private static List<SpawnSystemList> GetVanillaSourceSpawnLists(out bool referenceSourceTrusted)
     {
         referenceSourceTrusted = false;

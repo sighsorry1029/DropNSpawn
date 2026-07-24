@@ -11,8 +11,7 @@ internal enum StandardApplyStage
     ApplyStaticBaseline = 3,
     PrepareLiveBaseline = 4,
     ApplyLive = 5,
-    Commit = 6,
-    RollbackStaticBaseline = 7
+    Commit = 6
 }
 
 [Flags]
@@ -27,75 +26,7 @@ internal enum BaselineDesiredStateCapabilities
     StaticRollback = 1 << 5
 }
 
-internal readonly struct StandardApplyFailureContext
-{
-    internal StandardApplyFailureContext(
-        StandardApplyStage failedStage,
-        Exception error,
-        bool rollbackAttempted,
-        bool rollbackSucceeded,
-        bool liveStageFailed,
-        long elapsedMilliseconds)
-    {
-        FailedStage = failedStage;
-        Error = error;
-        RollbackAttempted = rollbackAttempted;
-        RollbackSucceeded = rollbackSucceeded;
-        LiveStageFailed = liveStageFailed;
-        ElapsedMilliseconds = elapsedMilliseconds;
-    }
-
-    internal StandardApplyStage FailedStage { get; }
-    internal Exception Error { get; }
-    internal bool RollbackAttempted { get; }
-    internal bool RollbackSucceeded { get; }
-    internal bool LiveStageFailed { get; }
-    internal long ElapsedMilliseconds { get; }
-}
-
-internal readonly struct StandardApplyOutcome
-{
-    internal StandardApplyOutcome(
-        bool success,
-        StandardApplyStage completedStage,
-        bool liveApplied,
-        bool rollbackAttempted,
-        bool rollbackSucceeded,
-        long elapsedMilliseconds,
-        Exception? error = null)
-    {
-        Success = success;
-        CompletedStage = completedStage;
-        LiveApplied = liveApplied;
-        RollbackAttempted = rollbackAttempted;
-        RollbackSucceeded = rollbackSucceeded;
-        ElapsedMilliseconds = elapsedMilliseconds;
-        Error = error;
-    }
-
-    internal bool Success { get; }
-    internal StandardApplyStage CompletedStage { get; }
-    internal bool LiveApplied { get; }
-    internal bool RollbackAttempted { get; }
-    internal bool RollbackSucceeded { get; }
-    internal long ElapsedMilliseconds { get; }
-    internal Exception? Error { get; }
-}
-
-internal interface IStandardBaselineDesiredStateOperations<TDesiredState>
-{
-    string DomainKey { get; }
-    BaselineDesiredStateCapabilities Capabilities { get; }
-    void Validate(TDesiredState desiredState);
-    void RestoreStaticBaseline(TDesiredState desiredState);
-    void ApplyDesiredStateToStaticBaseline(TDesiredState desiredState);
-    void PrepareLiveBaseline(TDesiredState desiredState);
-    void ApplyDesiredStateToLive(TDesiredState desiredState);
-    void Commit(TDesiredState desiredState);
-    void HandleFailure(TDesiredState desiredState, StandardApplyFailureContext failureContext);
-}
-
-internal abstract class StandardBaselineDesiredStateOperations<TDesiredState> : IStandardBaselineDesiredStateOperations<TDesiredState>
+internal abstract class StandardBaselineDesiredStateOperations<TDesiredState>
 {
     public abstract string DomainKey { get; }
     public abstract BaselineDesiredStateCapabilities Capabilities { get; }
@@ -105,20 +36,19 @@ internal abstract class StandardBaselineDesiredStateOperations<TDesiredState> : 
     public virtual void PrepareLiveBaseline(TDesiredState desiredState) { }
     public virtual void ApplyDesiredStateToLive(TDesiredState desiredState) { }
     public virtual void Commit(TDesiredState desiredState) { }
-    public virtual void HandleFailure(TDesiredState desiredState, StandardApplyFailureContext failureContext) { }
+    public virtual void HandleFailure(TDesiredState desiredState, bool liveStageFailed) { }
 }
 
 internal static class StandardBaselineDesiredStateCoordinator
 {
-    internal static StandardApplyOutcome Run<TDesiredState>(
+    internal static void Run<TDesiredState>(
         StandardDomainApplyPlan applyPlan,
         TDesiredState desiredState,
-        IStandardBaselineDesiredStateOperations<TDesiredState> operations)
+        StandardBaselineDesiredStateOperations<TDesiredState> operations)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         BaselineDesiredStateCapabilities capabilities = operations.Capabilities;
         StandardApplyStage currentStage = StandardApplyStage.None;
-        bool liveApplied = false;
 
         try
         {
@@ -152,37 +82,25 @@ internal static class StandardBaselineDesiredStateCoordinator
                 {
                     currentStage = StandardApplyStage.ApplyLive;
                     operations.ApplyDesiredStateToLive(desiredState);
-                    liveApplied = true;
                 }
             }
 
             currentStage = StandardApplyStage.Commit;
             operations.Commit(desiredState);
             stopwatch.Stop();
-            return new StandardApplyOutcome(
-                success: true,
-                completedStage: StandardApplyStage.Commit,
-                liveApplied: liveApplied,
-                rollbackAttempted: false,
-                rollbackSucceeded: false,
-                elapsedMilliseconds: stopwatch.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {
             stopwatch.Stop();
             StandardApplyStage failedStage = currentStage;
-            bool rollbackAttempted = false;
-            bool rollbackSucceeded = false;
 
             if (failedStage == StandardApplyStage.ApplyStaticBaseline &&
                 (capabilities & BaselineDesiredStateCapabilities.StaticRollback) != 0 &&
                 (capabilities & BaselineDesiredStateCapabilities.StaticBaseline) != 0)
             {
-                rollbackAttempted = true;
                 try
                 {
                     operations.RestoreStaticBaseline(desiredState);
-                    rollbackSucceeded = true;
                 }
                 catch (Exception rollbackEx)
                 {
@@ -200,13 +118,8 @@ internal static class StandardBaselineDesiredStateCoordinator
             {
                 operations.HandleFailure(
                     desiredState,
-                    new StandardApplyFailureContext(
-                        failedStage,
-                        ex,
-                        rollbackAttempted,
-                        rollbackSucceeded,
-                        failedStage == StandardApplyStage.PrepareLiveBaseline || failedStage == StandardApplyStage.ApplyLive,
-                        stopwatch.ElapsedMilliseconds));
+                    failedStage == StandardApplyStage.PrepareLiveBaseline ||
+                    failedStage == StandardApplyStage.ApplyLive);
             }
             catch (Exception failureHandlerEx)
             {
@@ -214,15 +127,6 @@ internal static class StandardBaselineDesiredStateCoordinator
                     $"Failure handler failed for domain '{operations.DomainKey}'. {failureHandlerEx.Message}");
                 DropNSpawnPlugin.DropNSpawnLogger.LogError(failureHandlerEx);
             }
-
-            return new StandardApplyOutcome(
-                success: false,
-                completedStage: failedStage,
-                liveApplied: liveApplied,
-                rollbackAttempted: rollbackAttempted,
-                rollbackSucceeded: rollbackSucceeded,
-                elapsedMilliseconds: stopwatch.ElapsedMilliseconds,
-                error: ex);
         }
     }
 }

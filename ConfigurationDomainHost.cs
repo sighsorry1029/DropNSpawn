@@ -199,33 +199,21 @@ internal static class ConfigurationDomainHost
             return;
         }
 
-        DropNSpawnPlugin.PublishSyncedPayload(descriptor, entries, payloadSignature);
+        PluginManifestCoordinator.PublishSyncedPayload(descriptor, entries, payloadSignature);
     }
 
     internal static bool TryGetSyncedEntries<TEntry>(
         DomainDescriptor<TEntry> descriptor,
         out List<TEntry> entries,
-        out string payloadToken,
-        Action? onPayloadAvailable = null)
+        out string payloadToken)
     {
-        bool hasPayload = DropNSpawnPlugin.TryGetSyncedEntries(descriptor, out entries, out payloadToken);
-        if (hasPayload)
-        {
-            onPayloadAvailable?.Invoke();
-        }
-
-        return hasPayload;
+        return PluginManifestCoordinator.TryGetSyncedEntries(descriptor, out entries, out payloadToken);
     }
 
     internal static bool ShouldSkipSyncedPayload(DomainLoadState loadState, string payloadToken, bool isPayloadReady)
     {
         return isPayloadReady &&
                string.Equals(loadState.LastLoadedPayload, payloadToken, StringComparison.Ordinal);
-    }
-
-    internal static void HandleWaitingForSyncedPayload(Action markPending)
-    {
-        markPending?.Invoke();
     }
 
     internal static void ResetLoadState(DomainLoadState loadState)

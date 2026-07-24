@@ -100,15 +100,12 @@ internal static partial class SpawnerManager
     {
         lock (Sync)
         {
-            ClearAppliedSpawnAreaPostSpawnOverrides(spawnArea);
-            ClearAppliedSpawnAreaTotalSpawnLimit(spawnArea);
-            LiveReconcilerState.ResetPendingSpawnAreaAttempt(spawnArea);
-
-            if (spawnArea != null &&
-                LiveRegistryStore.TryGetTrackedPrefabName(spawnArea, out string prefabName))
+            if (ReferenceEquals(spawnArea, null))
             {
-                UnregisterLiveSpawnArea(spawnArea, prefabName);
+                return;
             }
+
+            UnregisterLiveSpawnArea(spawnArea);
         }
     }
 
@@ -116,11 +113,12 @@ internal static partial class SpawnerManager
     {
         lock (Sync)
         {
-            if (creatureSpawner != null &&
-                LiveRegistryStore.TryGetTrackedPrefabName(creatureSpawner, out string prefabName))
+            if (ReferenceEquals(creatureSpawner, null))
             {
-                UnregisterLiveCreatureSpawner(creatureSpawner, prefabName);
+                return;
             }
+
+            UnregisterLiveCreatureSpawner(creatureSpawner);
         }
     }
 
@@ -160,7 +158,7 @@ internal static partial class SpawnerManager
                 return;
             }
 
-            UnregisterLiveSpawnArea(spawnArea, previousPrefabName);
+            UnregisterLiveSpawnArea(spawnArea);
         }
 
         LiveRegistryStore.TrackSpawnAreaPrefab(spawnArea, prefabName);
@@ -210,7 +208,7 @@ internal static partial class SpawnerManager
                 return;
             }
 
-            UnregisterLiveCreatureSpawner(creatureSpawner, previousPrefabName);
+            UnregisterLiveCreatureSpawner(creatureSpawner);
         }
 
         LiveRegistryStore.TrackCreatureSpawnerPrefab(creatureSpawner, prefabName);
@@ -222,11 +220,6 @@ internal static partial class SpawnerManager
     private static void TrackCreatureSpawnerInstanceInternal(CreatureSpawner? creatureSpawner)
     {
         RegisterLiveCreatureSpawner(creatureSpawner);
-    }
-
-    private static IEnumerable<SpawnArea> GetRegisteredSpawnAreas(HashSet<string> dirtyPrefabs)
-    {
-        return GetRegisteredSpawnAreas(dirtyPrefabs, runtimeConfigurationSnapshot: null);
     }
 
     private static IEnumerable<SpawnArea> GetRegisteredSpawnAreas(
@@ -259,11 +252,6 @@ internal static partial class SpawnerManager
                 yield return spawnArea;
             }
         }
-    }
-
-    private static IEnumerable<CreatureSpawner> GetRegisteredCreatureSpawners(HashSet<string> dirtyPrefabs)
-    {
-        return GetRegisteredCreatureSpawners(dirtyPrefabs, runtimeConfigurationSnapshot: null);
     }
 
     private static IEnumerable<CreatureSpawner> GetRegisteredCreatureSpawners(
@@ -517,10 +505,7 @@ internal static partial class SpawnerManager
 
         foreach (SpawnArea deadInstance in deadInstances)
         {
-            if (LiveRegistryStore.TryGetTrackedPrefabName(deadInstance, out string prefabName))
-            {
-                UnregisterLiveSpawnArea(deadInstance, prefabName);
-            }
+            UnregisterLiveSpawnArea(deadInstance);
         }
     }
 
@@ -535,36 +520,48 @@ internal static partial class SpawnerManager
 
         foreach (CreatureSpawner deadInstance in deadInstances)
         {
-            if (LiveRegistryStore.TryGetTrackedPrefabName(deadInstance, out string prefabName))
-            {
-                UnregisterLiveCreatureSpawner(deadInstance, prefabName);
-            }
+            UnregisterLiveCreatureSpawner(deadInstance);
         }
     }
 
-    private static void UnregisterLiveSpawnArea(SpawnArea spawnArea, string prefabName)
+    private static void UnregisterLiveSpawnArea(SpawnArea spawnArea)
     {
         ClearAppliedSpawnAreaPostSpawnOverrides(spawnArea);
         ClearAppliedSpawnAreaTotalSpawnLimit(spawnArea);
         LiveReconcilerState.ResetPendingSpawnAreaAttempt(spawnArea);
-        LiveRegistryStore.UntrackSpawnAreaPrefab(spawnArea, out _);
+        LiveRegistryStore.UntrackSpawnAreaPrefab(spawnArea, out _, out int gameObjectInstanceId);
         RemoveSpawnAreaLocationBucket(spawnArea);
         LiveRegistryStore.RemoveLiveSnapshot(spawnArea);
         SelectorCacheStore.RemoveSpawnAreaEntryCache(spawnArea);
-        SelectorCacheStore.RemoveStaticSelectorContext(spawnArea.gameObject);
+        RuntimeStateStore.RemoveRuntimeSignature(spawnArea);
         RuntimeStateStore.RemoveLocalRuntimeState(spawnArea);
         ProvenanceRegistry.RemoveSpawnAreaProvenance(spawnArea);
+        if (gameObjectInstanceId == 0 && spawnArea != null && spawnArea.gameObject != null)
+        {
+            gameObjectInstanceId = spawnArea.gameObject.GetInstanceID();
+        }
+
+        SelectorCacheStore.RemoveStaticSelectorContext(gameObjectInstanceId);
     }
 
-    private static void UnregisterLiveCreatureSpawner(CreatureSpawner creatureSpawner, string prefabName)
+    private static void UnregisterLiveCreatureSpawner(CreatureSpawner creatureSpawner)
     {
-        LiveRegistryStore.UntrackCreatureSpawnerPrefab(creatureSpawner, out _);
+        int instanceId = creatureSpawner.GetInstanceID();
+        LiveReconcilerState.ClearAppliedCreatureSpawnerOverrides(creatureSpawner);
+        LiveReconcilerState.RemoveAppliedCreatureSpawnerCheckInterval(instanceId);
+        LiveRegistryStore.UntrackCreatureSpawnerPrefab(creatureSpawner, out _, out int gameObjectInstanceId);
         RemoveCreatureSpawnerLocationBucket(creatureSpawner);
         LiveRegistryStore.RemoveLiveSnapshot(creatureSpawner);
         SelectorCacheStore.RemoveCreatureSpawnerEntryCache(creatureSpawner);
-        SelectorCacheStore.RemoveStaticSelectorContext(creatureSpawner.gameObject);
+        RuntimeStateStore.RemoveRuntimeSignature(creatureSpawner);
         RuntimeStateStore.RemoveLocalRuntimeState(creatureSpawner);
         ProvenanceRegistry.RemoveCreatureSpawnerProvenance(creatureSpawner);
+        if (gameObjectInstanceId == 0 && creatureSpawner != null && creatureSpawner.gameObject != null)
+        {
+            gameObjectInstanceId = creatureSpawner.gameObject.GetInstanceID();
+        }
+
+        SelectorCacheStore.RemoveStaticSelectorContext(gameObjectInstanceId);
     }
 
     private static string BuildPrefabLocationBucketKey(string prefabName, string locationKey)

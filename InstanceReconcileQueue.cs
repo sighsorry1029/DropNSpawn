@@ -26,13 +26,7 @@ internal sealed class InstanceReconcileQueue<TInstance, TQueuedItem>
         _getInstance = getInstance;
     }
 
-    public int Count => _pendingItems.Count;
     public bool HasPendingWork => _pendingItems.Count > 0;
-
-    public bool Contains(int instanceId)
-    {
-        return _pendingInstanceIds.Contains(instanceId);
-    }
 
     public bool TryQueue(TInstance? instance, int epoch)
     {

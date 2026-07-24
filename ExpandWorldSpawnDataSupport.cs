@@ -21,7 +21,6 @@ internal sealed class ExpandWorldSpawnDataPayload
 
     internal EwdData.DataEntry? Data { get; }
     internal List<EwdBlueprintObject>? Objects { get; }
-    internal bool HasData => Data != null;
     internal bool HasObjects => Objects is { Count: > 0 };
 }
 

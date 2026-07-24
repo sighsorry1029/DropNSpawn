@@ -39,7 +39,7 @@ internal static partial class SpawnerManager
 
         public void RemoveSpawnAreaEntryCache(SpawnArea? spawnArea)
         {
-            if (spawnArea == null)
+            if (ReferenceEquals(spawnArea, null))
             {
                 return;
             }
@@ -71,7 +71,7 @@ internal static partial class SpawnerManager
 
         public void RemoveCreatureSpawnerEntryCache(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner == null)
+            if (ReferenceEquals(creatureSpawner, null))
             {
                 return;
             }
@@ -153,14 +153,14 @@ internal static partial class SpawnerManager
             }
         }
 
-        public void RemoveStaticSelectorContext(GameObject? gameObject)
+        public void RemoveStaticSelectorContext(int gameObjectInstanceId)
         {
-            if (gameObject == null)
+            if (gameObjectInstanceId == 0)
             {
                 return;
             }
 
-            _staticSelectorContextsByInstance.Remove(gameObject.GetInstanceID());
+            _staticSelectorContextsByInstance.Remove(gameObjectInstanceId);
         }
 
         public void Clear()

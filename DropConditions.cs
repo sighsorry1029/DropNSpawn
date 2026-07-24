@@ -99,23 +99,7 @@ internal static class DropConditionEvaluator
 
     internal static bool HasConditions(ConditionsDefinition? conditions)
     {
-        return conditions != null &&
-               (conditions.ResolvedBiomeMask.HasValue ||
-                HasAnyValues(conditions.Biomes) ||
-                HasAnyValues(conditions.RequiredGlobalKeys) ||
-                HasAnyValues(conditions.ForbiddenGlobalKeys) ||
-                HasAnyValues(conditions.Locations) ||
-                conditions.TimeOfDay != null ||
-                HasAnyValues(conditions.RequiredEnvironments) ||
-                conditions.InDungeon.HasValue ||
-                conditions.InForest.HasValue ||
-                conditions.DistanceFromCenter?.HasValues() == true ||
-                conditions.MinDistanceFromCenter.HasValue ||
-                conditions.MaxDistanceFromCenter.HasValue ||
-                conditions.Altitude?.HasValues() == true ||
-                conditions.MinAltitude.HasValue ||
-                conditions.MaxAltitude.HasValue ||
-                conditions.InsidePlayerBase.HasValue);
+        return HasStaticConditions(conditions) || HasDynamicConditions(conditions);
     }
 
     internal static bool HasDynamicConditions(ConditionsDefinition? conditions)

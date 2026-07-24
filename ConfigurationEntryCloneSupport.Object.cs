@@ -4,6 +4,30 @@ namespace DropNSpawn;
 
 internal static partial class ConfigurationEntryCloneSupport
 {
+    internal static PrefabConfigurationEntry ClonePrefabConfigurationEntry(PrefabConfigurationEntry source)
+    {
+        return new PrefabConfigurationEntry
+        {
+            RuleId = source.RuleId,
+            Prefab = source.Prefab,
+            Enabled = source.Enabled,
+            Conditions = CloneConditions(source.Conditions),
+            DropOnDestroyed = CloneDropTableDefinition(source.DropOnDestroyed),
+            MineRock = CloneDamageableDropTableDefinition(source.MineRock),
+            MineRock5 = CloneDamageableDropTableDefinition(source.MineRock5),
+            TreeBase = CloneDamageableDropTableDefinition(source.TreeBase),
+            TreeLog = CloneDamageableDropTableDefinition(source.TreeLog),
+            Container = CloneDropTableDefinition(source.Container),
+            PickableItem = ClonePickableItemDefinition(source.PickableItem),
+            Pickable = ClonePickableDefinition(source.Pickable),
+            Fish = CloneFishDefinition(source.Fish),
+            Destructible = CloneDestructibleDefinition(source.Destructible),
+            SourcePath = source.SourcePath,
+            SourceLine = source.SourceLine,
+            SourceColumn = source.SourceColumn
+        };
+    }
+
     internal static DropTableDefinition? CloneDropTableDefinition(DropTableDefinition? source)
     {
         if (source == null)

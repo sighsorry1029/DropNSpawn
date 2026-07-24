@@ -41,12 +41,9 @@ internal static partial class ObjectDropManager
             ClientRequestPriority = 100,
             KeySelector = entry => entry.RuleId,
             ApplyPayloadAction = ApplySyncedPayload,
-            WorkKinds = DomainWorkKinds.Runtime | DomainWorkKinds.SnapshotBuild | DomainWorkKinds.Reconcile,
             HasPendingSnapshotBuildWork = HasPendingSnapshotBuildWork,
-            GetPendingSnapshotBuildWorkCount = GetPendingSnapshotBuildWorkCount,
             ProcessPendingSnapshotBuildStep = ProcessPendingSnapshotBuildStep,
             HasPendingReconcileWork = HasPendingReconcileWork,
-            GetPendingReconcileWorkCount = GetPendingReconcileWorkCount,
             ProcessPendingReconcileStep = ProcessQueuedReconcileStep,
             BeforeClientManifestChanged = MarkSyncedPayloadPending,
             OnClientAuthorityCutover = EnterPendingSyncedPayloadState
@@ -82,7 +79,6 @@ internal static partial class ObjectDropManager
     {
         public RingBufferQueue<PendingObjectReconcileItem> Items { get; } = new();
         public HashSet<int> InstanceIds { get; } = new();
-        public bool ClearCreatorRestrictedContainerContents { get; set; }
         public LiveObjectComponentKind ComponentKinds { get; set; }
         public bool HighPriority { get; set; }
         public bool IsQueued { get; set; }
@@ -207,14 +203,7 @@ internal static partial class ObjectDropManager
         public Dictionary<string, LiveObjectComponentKind> ConfiguredComponentKindsByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, LiveObjectComponentKind> ReconcileComponentKindsByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
         public Dictionary<string, List<PrefabConfigurationEntry>> VneiEntriesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public Dictionary<string, string> VneiEntrySignaturesByPrefab { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string ConfigurationSignature { get; set; } = "";
-    }
-
-    private sealed class ParsedObjectConfigurationDocument
-    {
-        public List<PrefabConfigurationEntry> Configuration { get; } = new();
-        public List<string> Warnings { get; } = new();
     }
 
     private sealed class CompiledDropTableRow
@@ -329,7 +318,6 @@ internal static partial class ObjectDropManager
 
     private sealed class PendingSnapshotBuildState
     {
-        public int BuildVersion { get; set; }
         public int GameDataSignature { get; set; }
         public int SnapshotSignature { get; set; }
         public string Source { get; set; } = "";
@@ -390,7 +378,6 @@ internal static partial class ObjectDropManager
     private static bool _synchronizedPayloadReady;
     private static int? _lastCommittedAuthorityEpoch;
     private static int _reconcileQueueEpoch;
-    private static int _snapshotBuildVersion;
     private static PendingSnapshotBuildState? _pendingSnapshotBuild;
     private const string MockPrefabPrefix = "JVLmock_";
     private const int GroupConditionalApplyPlanCacheLimit = 2048;
@@ -428,8 +415,7 @@ internal static partial class ObjectDropManager
                 CommitSyncedConfigurationState,
                 state => state.ActiveEntriesByPrefab.Count,
                 "ServerSync:DropNSpawnObject",
-                () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(
-                    MarkSyncedPayloadPending),
+                MarkSyncedPayloadPending,
                 LogSyncedObjectConfigurationLoaded,
                 LogSyncedObjectConfigurationFailure));
 
@@ -599,20 +585,6 @@ internal static partial class ObjectDropManager
         }
     }
 
-    internal static int GetPendingSnapshotBuildWorkCount()
-    {
-        lock (Sync)
-        {
-            if (_pendingSnapshotBuild == null)
-            {
-                return 0;
-            }
-
-            int remainingPrefabs = Math.Max(0, _pendingSnapshotBuild.Prefabs.Count - _pendingSnapshotBuild.NextIndex);
-            return Math.Max(1, remainingPrefabs);
-        }
-    }
-
     internal static bool ProcessPendingSnapshotBuildStep(float deadline)
     {
         PendingSnapshotBuildState? buildState;
@@ -774,7 +746,6 @@ internal static partial class ObjectDropManager
 
         PendingSnapshotBuildState buildState = new()
         {
-            BuildVersion = ++_snapshotBuildVersion,
             GameDataSignature = gameDataSignature,
             SnapshotSignature = snapshotSignature,
             Source = source
@@ -946,7 +917,6 @@ internal static partial class ObjectDropManager
             state.ConfiguredComponentKindsByPrefab,
             state.ReconcileComponentKindsByPrefab);
         RebuildVneiDisplayEntries(state.Configuration, state.VneiEntriesByPrefab);
-        state.VneiEntrySignaturesByPrefab = BuildVneiEntrySignaturesByPrefab(state.VneiEntriesByPrefab);
         state.ConfigurationSignature = NetworkPayloadSyncSupport.ComputeObjectConfigurationSignature(state.Configuration);
         return state;
     }
@@ -983,13 +953,7 @@ internal static partial class ObjectDropManager
     {
         return ConfigurationLoadSupport.ParseLocalConfigurationDocuments(
             documents,
-            (yaml, path) =>
-            {
-                ParsedObjectConfigurationDocument parsedDocument = ParseConfiguration(yaml, path);
-                return new ConfigurationLoadSupport.ParsedLocalConfiguration<PrefabConfigurationEntry>(
-                    parsedDocument.Configuration,
-                    parsedDocument.Warnings);
-            },
+            ParseConfiguration,
             PrepareLocalConfigurationEntries,
             FormatYamlExceptionLocation,
             "Object override YAML must start with a root list like '- prefab: ...'.");
@@ -1049,9 +1013,11 @@ internal static partial class ObjectDropManager
         return removed;
     }
 
-    private static ParsedObjectConfigurationDocument ParseConfiguration(string yaml, string? sourcePath)
+    private static ConfigurationLoadSupport.ParsedLocalConfiguration<PrefabConfigurationEntry> ParseConfiguration(
+        string yaml,
+        string? sourcePath)
     {
-        ParsedObjectConfigurationDocument result = new();
+        ConfigurationLoadSupport.ParsedLocalConfiguration<PrefabConfigurationEntry> result = new();
         if (string.IsNullOrWhiteSpace(yaml))
         {
             return result;
@@ -1239,13 +1205,6 @@ internal static partial class ObjectDropManager
         return !DropConditionEvaluator.HasDynamicConditions(entry.Conditions);
     }
 
-    // Container defaultItems overrides are template-only by default. They apply via prefab/AddDefaultItems
-    // and do not retroactively mutate existing inventories unless a future live-mutation mode is added.
-    private static bool ContainerNeedsLiveMutation(PrefabConfigurationEntry entry)
-    {
-        return false;
-    }
-
     private static bool HasDropTableOverride(DropTablePayloadDefinition? definition)
     {
         return definition != null &&
@@ -1369,14 +1328,6 @@ internal static partial class ObjectDropManager
                (HasPickableDropOverride(definition.Drop) ||
                  definition.OverrideName != null ||
                  HasDropTableOverride(definition.ExtraDrops));
-    }
-
-    private static bool HasClientProjectedPickableOverride(PickableDefinition? definition)
-    {
-        return definition != null &&
-               (HasPickableDropOverride(definition.Drop) ||
-                definition.OverrideName != null ||
-                HasDropTableOverride(definition.ExtraDrops));
     }
 
     private static bool HasPickableDropOverride(PickableDropDefinition? definition)
@@ -1519,74 +1470,75 @@ internal static partial class ObjectDropManager
                prefabPlan.StaticDropTableTemplates.TryGetValue(componentKind, out template);
     }
 
-    private static bool TryGetOverrideDropTable(
-        GameObject gameObject,
-        Func<CompiledObjectDropRule, CompiledDropTablePayload?> payloadSelector,
-        Func<PrefabSnapshot, DropTable?> snapshotSelector,
-        LiveObjectComponentKind componentKind,
-        string contextSuffix,
-        out DropTable? overrideTable)
-    {
-        return TryGetCachedEventDropTable(gameObject, payloadSelector, snapshotSelector, componentKind, out overrideTable);
-    }
-
-    internal static DropTable? OverrideConditionalDropOnDestroyed(DropOnDestroyed dropOnDestroyed)
+    internal static bool TryOverrideConditionalDropOnDestroyed(
+        DropOnDestroyed dropOnDestroyed,
+        out DropTable? previous)
     {
         lock (Sync)
         {
-            if (!TryGetOverrideDropTable(dropOnDestroyed.gameObject, rule => rule.DropOnDestroyed, snapshot => snapshot.DropOnDestroyed, LiveObjectComponentKind.DropOnDestroyed, "DropOnDestroyed", out DropTable? overrideTable))
+            previous = null;
+            if (!TryGetCachedEventDropTable(dropOnDestroyed.gameObject, rule => rule.DropOnDestroyed, snapshot => snapshot.DropOnDestroyed, LiveObjectComponentKind.DropOnDestroyed, out DropTable? overrideTable))
             {
-                return null;
+                return false;
             }
 
-            DropTable previous = dropOnDestroyed.m_dropWhenDestroyed;
+            previous = dropOnDestroyed.m_dropWhenDestroyed;
             dropOnDestroyed.m_dropWhenDestroyed = overrideTable!;
-            return previous;
+            return true;
         }
     }
 
-    internal static DropTable? OverrideConditionalMineRockDrops(MineRock mineRock)
+    internal static bool TryOverrideConditionalMineRockDrops(
+        MineRock mineRock,
+        out DropTable? previous)
     {
         lock (Sync)
         {
-            if (!TryGetOverrideDropTable(mineRock.gameObject, rule => rule.MineRock, snapshot => snapshot.MineRock, LiveObjectComponentKind.MineRock, "MineRock", out DropTable? overrideTable))
+            previous = null;
+            if (!TryGetCachedEventDropTable(mineRock.gameObject, rule => rule.MineRock, snapshot => snapshot.MineRock, LiveObjectComponentKind.MineRock, out DropTable? overrideTable))
             {
-                return null;
+                return false;
             }
 
-            DropTable previous = mineRock.m_dropItems;
+            previous = mineRock.m_dropItems;
             mineRock.m_dropItems = overrideTable!;
-            return previous;
+            return true;
         }
     }
 
-    internal static DropTable? OverrideConditionalMineRock5Drops(MineRock5 mineRock5)
+    internal static bool TryOverrideConditionalMineRock5Drops(
+        MineRock5 mineRock5,
+        out DropTable? previous)
     {
         lock (Sync)
         {
-            if (!TryGetOverrideDropTable(mineRock5.gameObject, rule => rule.MineRock5, snapshot => snapshot.MineRock5, LiveObjectComponentKind.MineRock5, "MineRock5", out DropTable? overrideTable))
+            previous = null;
+            if (!TryGetCachedEventDropTable(mineRock5.gameObject, rule => rule.MineRock5, snapshot => snapshot.MineRock5, LiveObjectComponentKind.MineRock5, out DropTable? overrideTable))
             {
-                return null;
+                return false;
             }
 
-            DropTable previous = mineRock5.m_dropItems;
+            previous = mineRock5.m_dropItems;
             mineRock5.m_dropItems = overrideTable!;
-            return previous;
+            return true;
         }
     }
 
-    internal static DropTable? OverrideContainerDrops(Container container)
+    internal static bool TryOverrideContainerDrops(
+        Container container,
+        out DropTable? previous)
     {
         lock (Sync)
         {
+            previous = null;
             if (!TryGetEffectiveContainerDropTable(container.gameObject, out DropTable? overrideTable))
             {
-                return null;
+                return false;
             }
 
-            DropTable previous = container.m_defaultItems;
+            previous = container.m_defaultItems;
             container.m_defaultItems = overrideTable!;
-            return previous;
+            return true;
         }
     }
 
@@ -1600,43 +1552,52 @@ internal static partial class ObjectDropManager
             out overrideTable);
     }
 
-    internal static DropTable? OverrideConditionalTreeBaseDrops(TreeBase treeBase)
+    internal static bool TryOverrideConditionalTreeBaseDrops(
+        TreeBase treeBase,
+        out DropTable? previous)
     {
         lock (Sync)
         {
-            if (!TryGetOverrideDropTable(treeBase.gameObject, rule => rule.TreeBase, snapshot => snapshot.TreeBase, LiveObjectComponentKind.TreeBase, "TreeBase", out DropTable? overrideTable))
+            previous = null;
+            if (!TryGetCachedEventDropTable(treeBase.gameObject, rule => rule.TreeBase, snapshot => snapshot.TreeBase, LiveObjectComponentKind.TreeBase, out DropTable? overrideTable))
             {
-                return null;
+                return false;
             }
 
-            DropTable previous = treeBase.m_dropWhenDestroyed;
+            previous = treeBase.m_dropWhenDestroyed;
             treeBase.m_dropWhenDestroyed = overrideTable!;
-            return previous;
+            return true;
         }
     }
 
-    internal static DropTable? OverrideConditionalTreeLogDrops(TreeLog treeLog)
+    internal static bool TryOverrideConditionalTreeLogDrops(
+        TreeLog treeLog,
+        out DropTable? previous)
     {
         lock (Sync)
         {
-            if (!TryGetOverrideDropTable(treeLog.gameObject, rule => rule.TreeLog, snapshot => snapshot.TreeLog, LiveObjectComponentKind.TreeLog, "TreeLog", out DropTable? overrideTable))
+            previous = null;
+            if (!TryGetCachedEventDropTable(treeLog.gameObject, rule => rule.TreeLog, snapshot => snapshot.TreeLog, LiveObjectComponentKind.TreeLog, out DropTable? overrideTable))
             {
-                return null;
+                return false;
             }
 
-            DropTable previous = treeLog.m_dropWhenDestroyed;
+            previous = treeLog.m_dropWhenDestroyed;
             treeLog.m_dropWhenDestroyed = overrideTable!;
-            return previous;
+            return true;
         }
     }
 
-    internal static GameObject? OverrideConditionalDestructibleSpawnWhenDestroyed(Destructible destructible)
+    internal static bool TryOverrideConditionalDestructibleSpawnWhenDestroyed(
+        Destructible destructible,
+        out GameObject? previous)
     {
         lock (Sync)
         {
+            previous = null;
             if (!TryGetConditionalDropContext(destructible.gameObject, out _, out _, out List<CompiledObjectDropRule> compiledRules))
             {
-                return null;
+                return false;
             }
 
             GameObject? effectiveSpawnPrefab = null;
@@ -1655,12 +1616,12 @@ internal static partial class ObjectDropManager
 
             if (!hasOverride)
             {
-                return null;
+                return false;
             }
 
-            GameObject? previous = destructible.m_spawnWhenDestroyed;
+            previous = destructible.m_spawnWhenDestroyed;
             destructible.m_spawnWhenDestroyed = effectiveSpawnPrefab;
-            return previous;
+            return true;
         }
     }
 
@@ -1698,12 +1659,6 @@ internal static partial class ObjectDropManager
                 SnapshotState.SnapshotsByPrefab.Add(snapshot.Prefab.name, snapshot);
             }
         }
-    }
-
-    private static void RefreshSnapshots()
-    {
-        SnapshotState.Clear();
-        CaptureSnapshotsIfNeeded();
     }
 
     private static IEnumerable<GameObject> EnumeratePrefabs()
@@ -2356,7 +2311,11 @@ internal static partial class ObjectDropManager
                compiledRule.FishExtraDrops != null ||
                compiledRule.Pickable != null ||
                compiledRule.PickableItem != null ||
-               compiledRule.Destructible != null
+               compiledRule.Destructible != null ||
+               compiledRule.MineRockScalars != null ||
+               compiledRule.MineRock5Scalars != null ||
+               compiledRule.TreeBaseScalars != null ||
+               compiledRule.TreeLogScalars != null
             ? compiledRule
             : null;
     }
@@ -3036,34 +2995,6 @@ internal static partial class ObjectDropManager
         }
 
         return piece.GetCreator() == 0L;
-    }
-
-    private static void ClearContainerContentsIfNeeded(GameObject gameObject, PrefabConfigurationEntry entry)
-    {
-        if (!ContainerNeedsLiveMutation(entry) ||
-            !HasDropTableOverride(entry.Container) ||
-            !gameObject.TryGetComponent(out Container container))
-        {
-            return;
-        }
-
-        if (!EntryMatches(gameObject, entry, allowConditionalMatches: true))
-        {
-            return;
-        }
-
-        if (!container.IsOwner())
-        {
-            return;
-        }
-
-        Inventory inventory = container.GetInventory();
-        if (inventory.NrOfItems() == 0)
-        {
-            return;
-        }
-
-        inventory.RemoveAll();
     }
 
     private static void RestoreConfiguredComponents(GameObject gameObject, PrefabSnapshot snapshot, PrefabConfigurationEntry entry, bool updateRuntimeState)

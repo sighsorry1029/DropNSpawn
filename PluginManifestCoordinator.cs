@@ -48,7 +48,7 @@ internal static class PluginManifestCoordinator
         }
     }
 
-    internal static string GetSyncedManifestValue(DomainDescriptor domain)
+    private static string GetSyncedManifestValue(DomainDescriptor domain)
     {
         return GetSyncedManifestEntry(domain).Value ?? "";
     }
@@ -70,7 +70,7 @@ internal static class PluginManifestCoordinator
             domain,
             entries,
             knownSignature,
-            manifest => AssignServerManifestValue(GetSyncedManifestEntry(domain), manifest, broadcastToConnectedClients: true));
+            manifest => AssignServerManifestValue(GetSyncedManifestEntry(domain), manifest));
     }
 
     internal static void EnterClientAuthorityCutover()
@@ -127,8 +127,7 @@ internal static class PluginManifestCoordinator
 
     private static void AssignServerManifestValue(
         CustomSyncedValue<string> syncedValue,
-        string manifest,
-        bool broadcastToConnectedClients)
+        string manifest)
     {
         manifest ??= "";
         if (string.Equals(syncedValue.Value ?? "", manifest, StringComparison.Ordinal))
@@ -136,21 +135,6 @@ internal static class PluginManifestCoordinator
             return;
         }
 
-        if (broadcastToConnectedClients || !DropNSpawnPlugin.IsSourceOfTruth)
-        {
-            syncedValue.AssignLocalValue(manifest);
-            return;
-        }
-
-        bool originalProcessingServerUpdate = ConfigSync.ProcessingServerUpdate;
-        ConfigSync.ProcessingServerUpdate = true;
-        try
-        {
-            syncedValue.AssignLocalValue(manifest);
-        }
-        finally
-        {
-            ConfigSync.ProcessingServerUpdate = originalProcessingServerUpdate;
-        }
+        syncedValue.AssignLocalValue(manifest);
     }
 }

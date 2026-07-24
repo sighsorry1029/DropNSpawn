@@ -519,7 +519,7 @@ internal static partial class NetworkPayloadSyncSupport
         }
 
         if (targetPayloadIndex.OrderedKeys.Count > 0 &&
-            changedEntryCount > Math.Ceiling(targetPayloadIndex.OrderedKeys.Count * transport.TransportPolicy.MaxDeltaChangedEntryRatio))
+            changedEntryCount > Math.Ceiling(targetPayloadIndex.OrderedKeys.Count * DefaultMaxDeltaChangedEntryRatio))
         {
             deltaPayloadBytes = Array.Empty<byte>();
             return false;
@@ -550,11 +550,6 @@ internal static partial class NetworkPayloadSyncSupport
     {
         resolvedTargetPayloadIndex = targetPayloadIndex;
         artifact = null;
-
-        if (!transport.SupportsDeltaTransfers)
-        {
-            return false;
-        }
 
         string normalizedBaseHash = NormalizeBaseHash(baseHash);
         if (normalizedBaseHash.Length == 0 ||
@@ -605,7 +600,7 @@ internal static partial class NetworkPayloadSyncSupport
 
             byte[] compressedDeltaPayloadBytes = CompressBytes(deltaPayloadBytes);
             if (compressedDeltaPayloadBytes.Length == 0 ||
-                compressedDeltaPayloadBytes.Length >= fullCompressedPayloadBytes.Length * transport.TransportPolicy.MaxDeltaCompressedSizeRatio)
+                compressedDeltaPayloadBytes.Length >= fullCompressedPayloadBytes.Length * DefaultMaxDeltaCompressedSizeRatio)
             {
                 return false;
             }

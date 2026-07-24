@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
-using System.Text;
 using UnityEngine;
 
 namespace DropNSpawn;
@@ -371,8 +369,7 @@ internal static partial class SpawnSystemManager
 
         SpawnSystemSnapshot aggregatedSnapshot = new()
         {
-            SystemId = 0,
-            ListCount = 1
+            SystemId = 0
         };
 
         // Live SpawnSystem instances often expose the same authoritative table multiple times.
@@ -427,57 +424,7 @@ internal static partial class SpawnSystemManager
             });
         }
 
-        AssignReferenceIds(aggregatedSnapshot);
         return aggregatedSnapshot;
-    }
-
-    private static void AssignReferenceIds(SpawnSystemSnapshot snapshot)
-    {
-        Dictionary<string, int> duplicateOrdinals = new(StringComparer.OrdinalIgnoreCase);
-        PrefabOwnerResolver.OwnerSnapshot ownerSnapshot = PrefabOwnerResolver.GetSnapshot();
-
-        foreach (SpawnSystemEntrySnapshot entry in snapshot.Entries
-                     .OrderBy(current => current.ListIndex)
-                     .ThenBy(current => current.EntryIndex))
-        {
-            string prefabName = NormalizeReferencePrefabName(entry.Data.m_prefab) ?? "entry";
-            string ownerName = ownerSnapshot.GetOwnerName(prefabName);
-            string duplicateKey = $"{ownerName}|{prefabName}";
-            int ordinal = duplicateOrdinals.TryGetValue(duplicateKey, out int currentOrdinal) ? currentOrdinal + 1 : 1;
-            duplicateOrdinals[duplicateKey] = ordinal;
-            entry.RefId = BuildReferenceId(ownerName, prefabName, ordinal);
-        }
-    }
-
-    private static string BuildReferenceId(string ownerName, string prefabName, int ordinal)
-    {
-        return $"spawn_{NormalizeRefIdToken(ownerName)}_{NormalizeRefIdToken(prefabName)}_{ordinal.ToString("000", CultureInfo.InvariantCulture)}";
-    }
-
-    private static string NormalizeRefIdToken(string? value)
-    {
-        StringBuilder builder = new();
-        bool wroteSeparator = false;
-        foreach (char rawCharacter in (value ?? "").Trim().ToLowerInvariant())
-        {
-            if (char.IsLetterOrDigit(rawCharacter))
-            {
-                builder.Append(rawCharacter);
-                wroteSeparator = false;
-                continue;
-            }
-
-            if (builder.Length == 0 || wroteSeparator)
-            {
-                continue;
-            }
-
-            builder.Append('_');
-            wroteSeparator = true;
-        }
-
-        string normalized = builder.ToString().Trim('_');
-        return normalized.Length == 0 ? "entry" : normalized;
     }
 
     private static SpawnSystemSnapshot CaptureSnapshotIfNeeded(SpawnSystem system)
@@ -498,8 +445,7 @@ internal static partial class SpawnSystemManager
     {
         SpawnSystemSnapshot snapshot = new()
         {
-            SystemId = system.GetInstanceID(),
-            ListCount = Math.Max(1, system.m_spawnLists.Count)
+            SystemId = system.GetInstanceID()
         };
 
         for (int listIndex = 0; listIndex < system.m_spawnLists.Count; listIndex++)
@@ -519,7 +465,6 @@ internal static partial class SpawnSystemManager
             }
         }
 
-        AssignReferenceIds(snapshot);
         return snapshot;
     }
 

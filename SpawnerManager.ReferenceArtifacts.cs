@@ -101,11 +101,6 @@ internal static partial class SpawnerManager
         return PrefabOutputSections.SerializeReferenceSections(sections, Serializer);
     }
 
-    private static string SerializeReferenceEntries(IEnumerable<SpawnerReferenceEntry> entries)
-    {
-        return ReferenceRefreshSupport.SerializeReferenceSections(entries, entry => entry.Prefab, Serializer);
-    }
-
     private static string BuildLocationReferenceConfigurationTemplate()
     {
         List<TemplateAggregate> aggregates = BuildTemplateAggregates();

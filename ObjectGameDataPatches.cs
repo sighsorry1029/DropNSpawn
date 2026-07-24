@@ -1,14 +1,27 @@
+using System;
 using HarmonyLib;
 using UnityEngine;
 
 namespace DropNSpawn;
+
+internal readonly struct TemporaryFieldOverrideState<T> where T : class
+{
+    internal TemporaryFieldOverrideState(T? previous)
+    {
+        Applied = true;
+        Previous = previous;
+    }
+
+    internal bool Applied { get; }
+    internal T? Previous { get; }
+}
 
 [HarmonyPatch(typeof(Piece), nameof(Piece.Awake))]
 internal static class PieceAwakePatch
 {
     private static void Postfix(Piece __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Piece);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.Piece);
     }
 }
 
@@ -22,7 +35,7 @@ internal static class PieceSetCreatorPatch
             return;
         }
 
-        ObjectDropManager.ReconcilePieceInstance(__instance, __instance.GetCreator() != 0L);
+        ObjectDropManager.ReconcilePieceInstance(__instance);
     }
 }
 
@@ -54,7 +67,7 @@ internal static class DestructibleAwakePatch
 {
     private static void Postfix(Destructible __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Destructible);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.Destructible);
     }
 }
 
@@ -89,23 +102,45 @@ internal static class DestructibleDamagePatch
 [HarmonyPatch(typeof(Destructible), "Destroy")]
 internal static class DestructibleDestroyPatch
 {
-    private static void Prefix(Destructible __instance, out GameObject? __state)
+    private static void Prefix(
+        Destructible __instance,
+        out TemporaryFieldOverrideState<GameObject> __state)
     {
+        __state = default;
         if (!PluginSettingsFacade.IsObjectDomainEnabled())
         {
-            __state = null;
             return;
         }
 
-        __state = ObjectDropManager.OverrideConditionalDestructibleSpawnWhenDestroyed(__instance);
+        if (ObjectDropManager.TryOverrideConditionalDestructibleSpawnWhenDestroyed(
+                __instance,
+                out GameObject? previous))
+        {
+            __state = new TemporaryFieldOverrideState<GameObject>(previous);
+        }
     }
 
-    private static void Postfix(Destructible __instance, GameObject? __state)
+    private static void Postfix(
+        Destructible __instance,
+        TemporaryFieldOverrideState<GameObject> __state)
     {
-        if (__state != null)
+        if (__state.Applied)
         {
-            __instance.m_spawnWhenDestroyed = __state;
+            __instance.m_spawnWhenDestroyed = __state.Previous;
         }
+    }
+
+    private static Exception? Finalizer(
+        Destructible __instance,
+        TemporaryFieldOverrideState<GameObject> __state,
+        Exception? __exception)
+    {
+        if (__exception != null && __state.Applied)
+        {
+            __instance.m_spawnWhenDestroyed = __state.Previous;
+        }
+
+        return __exception;
     }
 }
 
@@ -114,7 +149,7 @@ internal static class DropOnDestroyedAwakePatch
 {
     private static void Postfix(DropOnDestroyed __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.DropOnDestroyed);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.DropOnDestroyed);
     }
 }
 
@@ -123,7 +158,7 @@ internal static class ContainerAwakePatch
 {
     private static void Postfix(Container __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Container);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.Container);
     }
 }
 
@@ -138,7 +173,7 @@ internal static class PickableAwakePatch
             return;
         }
 
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Pickable);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.Pickable);
     }
 }
 
@@ -153,7 +188,7 @@ internal static class PickableItemAwakePatch
             return;
         }
 
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.PickableItem);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.PickableItem);
     }
 }
 
@@ -162,77 +197,141 @@ internal static class FishAwakePatch
 {
     private static void Postfix(Fish __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.Fish);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.Fish);
     }
 }
 
 [HarmonyPatch(typeof(Container), "AddDefaultItems")]
 internal static class ContainerAddDefaultItemsPatch
 {
-    private static void Prefix(Container __instance, out DropTable? __state)
+    private static void Prefix(
+        Container __instance,
+        out TemporaryFieldOverrideState<DropTable> __state)
     {
+        __state = default;
         if (!PluginSettingsFacade.IsObjectDomainEnabled())
         {
-            __state = null;
             return;
         }
 
-        __state = ObjectDropManager.OverrideContainerDrops(__instance);
+        if (ObjectDropManager.TryOverrideContainerDrops(__instance, out DropTable? previous))
+        {
+            __state = new TemporaryFieldOverrideState<DropTable>(previous);
+        }
     }
 
-    private static void Postfix(Container __instance, DropTable? __state)
+    private static void Postfix(
+        Container __instance,
+        TemporaryFieldOverrideState<DropTable> __state)
     {
-        if (__state != null)
+        if (__state.Applied)
         {
-            __instance.m_defaultItems = __state;
+            __instance.m_defaultItems = __state.Previous!;
         }
+    }
+
+    private static Exception? Finalizer(
+        Container __instance,
+        TemporaryFieldOverrideState<DropTable> __state,
+        Exception? __exception)
+    {
+        if (__exception != null && __state.Applied)
+        {
+            __instance.m_defaultItems = __state.Previous!;
+        }
+
+        return __exception;
     }
 }
 
 [HarmonyPatch(typeof(DropOnDestroyed), "OnDestroyed")]
 internal static class DropOnDestroyedPatch
 {
-    private static void Prefix(DropOnDestroyed __instance, out DropTable? __state)
+    private static void Prefix(
+        DropOnDestroyed __instance,
+        out TemporaryFieldOverrideState<DropTable> __state)
     {
+        __state = default;
         if (!PluginSettingsFacade.IsObjectDomainEnabled())
         {
-            __state = null;
             return;
         }
 
-        __state = ObjectDropManager.OverrideConditionalDropOnDestroyed(__instance);
+        if (ObjectDropManager.TryOverrideConditionalDropOnDestroyed(
+                __instance,
+                out DropTable? previous))
+        {
+            __state = new TemporaryFieldOverrideState<DropTable>(previous);
+        }
     }
 
-    private static void Postfix(DropOnDestroyed __instance, DropTable? __state)
+    private static void Postfix(
+        DropOnDestroyed __instance,
+        TemporaryFieldOverrideState<DropTable> __state)
     {
-        if (__state != null)
+        if (__state.Applied)
         {
-            __instance.m_dropWhenDestroyed = __state;
+            __instance.m_dropWhenDestroyed = __state.Previous!;
         }
+    }
+
+    private static Exception? Finalizer(
+        DropOnDestroyed __instance,
+        TemporaryFieldOverrideState<DropTable> __state,
+        Exception? __exception)
+    {
+        if (__exception != null && __state.Applied)
+        {
+            __instance.m_dropWhenDestroyed = __state.Previous!;
+        }
+
+        return __exception;
     }
 }
 
 [HarmonyPatch(typeof(MineRock), "RPC_Hit")]
 internal static class MineRockHitPatch
 {
-    private static void Prefix(MineRock __instance, out DropTable? __state)
+    private static void Prefix(
+        MineRock __instance,
+        out TemporaryFieldOverrideState<DropTable> __state)
     {
+        __state = default;
         if (!PluginSettingsFacade.IsObjectDomainEnabled())
         {
-            __state = null;
             return;
         }
 
         ObjectDropManager.ApplyLazyMineRockScalarsIfNeeded(__instance);
-        __state = ObjectDropManager.OverrideConditionalMineRockDrops(__instance);
+        if (ObjectDropManager.TryOverrideConditionalMineRockDrops(
+                __instance,
+                out DropTable? previous))
+        {
+            __state = new TemporaryFieldOverrideState<DropTable>(previous);
+        }
     }
 
-    private static void Postfix(MineRock __instance, DropTable? __state)
+    private static void Postfix(
+        MineRock __instance,
+        TemporaryFieldOverrideState<DropTable> __state)
     {
-        if (__state != null)
+        if (__state.Applied)
         {
-            __instance.m_dropItems = __state;
+            __instance.m_dropItems = __state.Previous!;
         }
+    }
+
+    private static Exception? Finalizer(
+        MineRock __instance,
+        TemporaryFieldOverrideState<DropTable> __state,
+        Exception? __exception)
+    {
+        if (__exception != null && __state.Applied)
+        {
+            __instance.m_dropItems = __state.Previous!;
+        }
+
+        return __exception;
     }
 }
 
@@ -241,31 +340,53 @@ internal static class MineRockStartPatch
 {
     private static void Postfix(MineRock __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.MineRock);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.MineRock);
     }
 }
 
 [HarmonyPatch(typeof(MineRock5), "RPC_Damage")]
 internal static class MineRock5DamagePatch
 {
-    private static void Prefix(MineRock5 __instance, out DropTable? __state)
+    private static void Prefix(
+        MineRock5 __instance,
+        out TemporaryFieldOverrideState<DropTable> __state)
     {
+        __state = default;
         if (!PluginSettingsFacade.IsObjectDomainEnabled())
         {
-            __state = null;
             return;
         }
 
         ObjectDropManager.ApplyLazyMineRock5ScalarsIfNeeded(__instance);
-        __state = ObjectDropManager.OverrideConditionalMineRock5Drops(__instance);
+        if (ObjectDropManager.TryOverrideConditionalMineRock5Drops(
+                __instance,
+                out DropTable? previous))
+        {
+            __state = new TemporaryFieldOverrideState<DropTable>(previous);
+        }
     }
 
-    private static void Postfix(MineRock5 __instance, DropTable? __state)
+    private static void Postfix(
+        MineRock5 __instance,
+        TemporaryFieldOverrideState<DropTable> __state)
     {
-        if (__state != null)
+        if (__state.Applied)
         {
-            __instance.m_dropItems = __state;
+            __instance.m_dropItems = __state.Previous!;
         }
+    }
+
+    private static Exception? Finalizer(
+        MineRock5 __instance,
+        TemporaryFieldOverrideState<DropTable> __state,
+        Exception? __exception)
+    {
+        if (__exception != null && __state.Applied)
+        {
+            __instance.m_dropItems = __state.Previous!;
+        }
+
+        return __exception;
     }
 }
 
@@ -274,31 +395,53 @@ internal static class MineRock5AwakePatch
 {
     private static void Postfix(MineRock5 __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.MineRock5);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.MineRock5);
     }
 }
 
 [HarmonyPatch(typeof(TreeBase), "RPC_Damage")]
 internal static class TreeBaseDamagePatch
 {
-    private static void Prefix(TreeBase __instance, out DropTable? __state)
+    private static void Prefix(
+        TreeBase __instance,
+        out TemporaryFieldOverrideState<DropTable> __state)
     {
+        __state = default;
         if (!PluginSettingsFacade.IsObjectDomainEnabled())
         {
-            __state = null;
             return;
         }
 
         ObjectDropManager.ApplyLazyTreeBaseScalarsIfNeeded(__instance);
-        __state = ObjectDropManager.OverrideConditionalTreeBaseDrops(__instance);
+        if (ObjectDropManager.TryOverrideConditionalTreeBaseDrops(
+                __instance,
+                out DropTable? previous))
+        {
+            __state = new TemporaryFieldOverrideState<DropTable>(previous);
+        }
     }
 
-    private static void Postfix(TreeBase __instance, DropTable? __state)
+    private static void Postfix(
+        TreeBase __instance,
+        TemporaryFieldOverrideState<DropTable> __state)
     {
-        if (__state != null)
+        if (__state.Applied)
         {
-            __instance.m_dropWhenDestroyed = __state;
+            __instance.m_dropWhenDestroyed = __state.Previous!;
         }
+    }
+
+    private static Exception? Finalizer(
+        TreeBase __instance,
+        TemporaryFieldOverrideState<DropTable> __state,
+        Exception? __exception)
+    {
+        if (__exception != null && __state.Applied)
+        {
+            __instance.m_dropWhenDestroyed = __state.Previous!;
+        }
+
+        return __exception;
     }
 }
 
@@ -307,30 +450,52 @@ internal static class TreeBaseAwakePatch
 {
     private static void Postfix(TreeBase __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.TreeBase);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.TreeBase);
     }
 }
 
 [HarmonyPatch(typeof(TreeLog), "Destroy")]
 internal static class TreeLogDestroyPatch
 {
-    private static void Prefix(TreeLog __instance, out DropTable? __state)
+    private static void Prefix(
+        TreeLog __instance,
+        out TemporaryFieldOverrideState<DropTable> __state)
     {
+        __state = default;
         if (!PluginSettingsFacade.IsObjectDomainEnabled())
         {
-            __state = null;
             return;
         }
 
-        __state = ObjectDropManager.OverrideConditionalTreeLogDrops(__instance);
+        if (ObjectDropManager.TryOverrideConditionalTreeLogDrops(
+                __instance,
+                out DropTable? previous))
+        {
+            __state = new TemporaryFieldOverrideState<DropTable>(previous);
+        }
     }
 
-    private static void Postfix(TreeLog __instance, DropTable? __state)
+    private static void Postfix(
+        TreeLog __instance,
+        TemporaryFieldOverrideState<DropTable> __state)
     {
-        if (__state != null)
+        if (__state.Applied)
         {
-            __instance.m_dropWhenDestroyed = __state;
+            __instance.m_dropWhenDestroyed = __state.Previous!;
         }
+    }
+
+    private static Exception? Finalizer(
+        TreeLog __instance,
+        TemporaryFieldOverrideState<DropTable> __state,
+        Exception? __exception)
+    {
+        if (__exception != null && __state.Applied)
+        {
+            __instance.m_dropWhenDestroyed = __state.Previous!;
+        }
+
+        return __exception;
     }
 }
 
@@ -353,6 +518,6 @@ internal static class TreeLogAwakePatch
 {
     private static void Postfix(TreeLog __instance)
     {
-        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, clearCreatorRestrictedContainerContents: false, ObjectDropManager.LiveObjectComponentKind.TreeLog);
+        ObjectDropManager.QueueObjectInstanceReconcile(__instance.gameObject, ObjectDropManager.LiveObjectComponentKind.TreeLog);
     }
 }

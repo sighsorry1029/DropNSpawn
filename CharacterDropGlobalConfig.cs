@@ -10,6 +10,7 @@ namespace DropNSpawn;
 internal static class CharacterDropGlobalConfig
 {
     private const string CreatureLevelControlPluginGuid = "org.bepinex.plugins.creaturelevelcontrol";
+    private const float DefaultOnePerPlayerNearbyRange = 32f;
 
     internal enum CharacterLootSystem
     {
@@ -41,7 +42,7 @@ internal static class CharacterDropGlobalConfig
         _onePerPlayerNearbyRange = plugin.BindConfigEntry(
             "2 - Character",
             "OnePerPlayer drop check range",
-            32f,
+            DefaultOnePerPlayerNearbyRange,
             new ConfigDescription(
                 "If 0, disables the nearby-player override and uses vanilla server-wide online player count for character-drop onePerPlayer. If greater than 0, counts only living players within this many horizontal XZ meters of the dropping character.",
                 new AcceptableValueRange<float>(0f, 100f)),
@@ -151,12 +152,7 @@ internal static class CharacterDropGlobalConfig
 
     internal static float GetOnePerPlayerNearbyRange()
     {
-        return Mathf.Max(0f, _onePerPlayerNearbyRange?.Value ?? 100f);
-    }
-
-    internal static bool IsOnePerPlayerNearbyRangeLivingPlayersOnly()
-    {
-        return true;
+        return Mathf.Max(0f, _onePerPlayerNearbyRange?.Value ?? DefaultOnePerPlayerNearbyRange);
     }
 
     internal static bool IsDropInStackBlacklisted(string? prefabName)

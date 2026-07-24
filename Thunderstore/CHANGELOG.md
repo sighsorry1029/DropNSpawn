@@ -1,3 +1,9 @@
+## 1.3.4
+
+- Hardened correctness across hot reloads, temporary object overrides, delayed spawner activation, and synchronized payload worker shutdown.
+- Reduced runtime and maintenance complexity by removing redundant state, forwarding layers, wrappers, and duplicated domain-specific paths while keeping related behavior co-located.
+- Added Expand World Data 1.66-1.68 readiness compatibility, aligned the runtime and compile-time minimum with EWD 1.66, and retained support for the latest cloned-location and custom-biome behavior.
+
 ## 1.3.3
 
 - Added optional CreatureManager faction integration so registered custom factions can be resolved, applied, listed in validation guidance, and restored from spawned-creature ZDO data.

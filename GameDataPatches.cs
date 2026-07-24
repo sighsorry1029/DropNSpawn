@@ -29,6 +29,15 @@ internal static class ObjectDBCopyOtherDBPatch
     }
 }
 
+[HarmonyPatch(typeof(ZNet), "Shutdown")]
+internal static class ZNetShutdownPatch
+{
+    private static void Prefix()
+    {
+        CharacterDropManager.ResetWorldRuntimeState();
+    }
+}
+
 [HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
 internal static class ZoneSystemStartPatch
 {

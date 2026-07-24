@@ -25,7 +25,6 @@ internal sealed class CharacterDropSnapshot
 
 internal sealed class PendingCharacterDropSnapshotBuildState
 {
-    public int BuildVersion { get; set; }
     public int GameDataSignature { get; set; }
     public int SnapshotSignature { get; set; }
     public string Source { get; set; } = "";
@@ -49,7 +48,6 @@ internal static class CharacterDropRuntime
     private static int? _lastProcessedSnapshotSignature;
     private static int? _lastProcessedGameDataSignature;
     private static int? _lastBootstrappedLiveObjectsSceneSignature;
-    private static int _snapshotBuildVersion;
     private static PendingCharacterDropSnapshotBuildState? _pendingSnapshotBuild;
 
     internal static void Reset()
@@ -62,7 +60,6 @@ internal static class CharacterDropRuntime
         _lastProcessedGameDataSignature = null;
         _lastBootstrappedLiveObjectsSceneSignature = null;
         _pendingSnapshotBuild = null;
-        _snapshotBuildVersion = 0;
     }
 
     internal static bool HasSnapshots()
@@ -106,7 +103,6 @@ internal static class CharacterDropRuntime
 
         PendingCharacterDropSnapshotBuildState buildState = new()
         {
-            BuildVersion = ++_snapshotBuildVersion,
             GameDataSignature = gameDataSignature,
             SnapshotSignature = snapshotSignature,
             Source = source
@@ -118,17 +114,6 @@ internal static class CharacterDropRuntime
     internal static bool HasPendingSnapshotBuildWork()
     {
         return _pendingSnapshotBuild != null;
-    }
-
-    internal static int GetPendingSnapshotBuildWorkCount()
-    {
-        if (_pendingSnapshotBuild == null)
-        {
-            return 0;
-        }
-
-        int remainingPrefabs = Math.Max(0, _pendingSnapshotBuild.Prefabs.Count - _pendingSnapshotBuild.NextIndex);
-        return Math.Max(1, remainingPrefabs);
     }
 
     internal static bool ProcessPendingSnapshotBuildStep(
@@ -197,14 +182,6 @@ internal static class CharacterDropRuntime
                 SnapshotsByPrefab.Add(snapshot.Prefab.name, snapshot);
             }
         }
-    }
-
-    internal static void RefreshSnapshots(IEnumerable<GameObject> prefabs, Func<GameObject, CharacterDropSnapshot?> captureSnapshot)
-    {
-        Snapshots.Clear();
-        SnapshotsByPrefab.Clear();
-        _lastBootstrappedLiveObjectsSceneSignature = null;
-        CaptureSnapshotsIfNeeded(prefabs, captureSnapshot);
     }
 
     internal static void RegisterLiveCharacterDrop(CharacterDrop characterDrop, string prefabName)

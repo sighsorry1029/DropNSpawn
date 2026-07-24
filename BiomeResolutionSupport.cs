@@ -12,8 +12,15 @@ internal static class BiomeResolutionSupport
     private static readonly Dictionary<string, Heightmap.Biome> VanillaBiomeLookup = BuildVanillaBiomeLookup();
     private static readonly Type? ExpandWorldDataBiomeManagerType = Type.GetType("ExpandWorldData.BiomeManager, ExpandWorldData");
     private static readonly Type? ExpandWorldDataDataManagerType = Type.GetType("ExpandWorldData.DataManager, ExpandWorldData");
+    private static readonly FieldInfo? ExpandWorldDataConfigSyncField = Type
+        .GetType("ExpandWorldData.EWD, ExpandWorldData")
+        ?.GetField("ConfigSync", BindingFlags.Public | BindingFlags.Static);
     private static readonly PropertyInfo? ExpandWorldDataIsReadyProperty = ExpandWorldDataDataManagerType
         ?.GetProperty("IsReady", BindingFlags.Public | BindingFlags.Static);
+    private static readonly PropertyInfo? ExpandWorldDataIsSourceOfTruthProperty = ExpandWorldDataConfigSyncField
+        ?.FieldType.GetProperty("IsSourceOfTruth", BindingFlags.Public | BindingFlags.Instance);
+    private static readonly PropertyInfo? ExpandWorldDataInitialSyncDoneProperty = ExpandWorldDataConfigSyncField
+        ?.FieldType.GetProperty("InitialSyncDone", BindingFlags.Public | BindingFlags.Instance);
     private static readonly MethodInfo? ExpandWorldDataTryGetBiomeMethod = Type
         .GetType("ExpandWorldData.BiomeManager, ExpandWorldData")
         ?.GetMethod("TryGetBiome", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string), typeof(Heightmap.Biome).MakeByRefType() }, null);
@@ -165,14 +172,43 @@ internal static class BiomeResolutionSupport
 
     internal static bool IsExpandWorldDataReadyOrUnavailable()
     {
-        if (ExpandWorldDataIsReadyProperty == null)
+        if (ExpandWorldDataIsReadyProperty != null)
+        {
+            try
+            {
+                if (ExpandWorldDataIsReadyProperty.GetValue(null) is bool isReady)
+                {
+                    return isReady;
+                }
+            }
+            catch
+            {
+                // Fall through to the ConfigSync contract used by newer EWD versions.
+            }
+        }
+
+        if (ExpandWorldDataConfigSyncField == null ||
+            ExpandWorldDataIsSourceOfTruthProperty == null ||
+            ExpandWorldDataInitialSyncDoneProperty == null)
         {
             return true;
         }
 
         try
         {
-            return ExpandWorldDataIsReadyProperty.GetValue(null) as bool? ?? true;
+            object? configSync = ExpandWorldDataConfigSyncField.GetValue(null);
+            if (configSync == null)
+            {
+                return true;
+            }
+
+            if (ExpandWorldDataIsSourceOfTruthProperty.GetValue(configSync) is not bool isSourceOfTruth ||
+                ExpandWorldDataInitialSyncDoneProperty.GetValue(configSync) is not bool initialSyncDone)
+            {
+                return true;
+            }
+
+            return isSourceOfTruth || initialSyncDone;
         }
         catch
         {

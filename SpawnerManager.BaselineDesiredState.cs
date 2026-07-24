@@ -21,9 +21,9 @@ internal static partial class SpawnerManager
         public override void ApplyDesiredStateToLive(SpawnerDesiredState desiredState) => ApplySpawnerDesiredStateToLive(desiredState);
         public override void Commit(SpawnerDesiredState desiredState) => RecordAppliedState(desiredState.GameDataSignature, desiredState.DomainEnabled, desiredState.CurrentEntrySignatures);
 
-        public override void HandleFailure(SpawnerDesiredState desiredState, StandardApplyFailureContext failureContext)
+        public override void HandleFailure(SpawnerDesiredState desiredState, bool liveStageFailed)
         {
-            if (!failureContext.LiveStageFailed || desiredState.ReloadPrefabs.Count == 0)
+            if (!liveStageFailed || desiredState.ReloadPrefabs.Count == 0)
             {
                 return;
             }
@@ -52,14 +52,10 @@ internal static partial class SpawnerManager
         bool queueLiveReconcile)
     {
         SpawnerDesiredState desiredState = BuildSpawnerDesiredState(availablePrefabs, gameDataSignature, domainEnabled, currentEntrySignatures, queueLiveReconcile);
-        StandardApplyOutcome outcome = StandardBaselineDesiredStateCoordinator.Run(
+        StandardBaselineDesiredStateCoordinator.Run(
             desiredState.ApplyPlan,
             desiredState,
             SpawnerApplyOperations.Instance);
-        if (!outcome.Success)
-        {
-            return;
-        }
     }
 
     private static SpawnerDesiredState BuildSpawnerDesiredState(

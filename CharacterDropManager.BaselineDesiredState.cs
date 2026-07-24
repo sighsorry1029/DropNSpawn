@@ -41,14 +41,10 @@ internal static partial class CharacterDropManager
         string effectiveConfigurationSignature)
     {
         CharacterDesiredState desiredState = BuildCharacterDesiredState(gameDataSignature, domainEnabled, currentEntrySignatures, effectiveConfigurationSignature);
-        StandardApplyOutcome outcome = StandardBaselineDesiredStateCoordinator.Run(
+        StandardBaselineDesiredStateCoordinator.Run(
             desiredState.ApplyPlan,
             desiredState,
             CharacterApplyOperations.Instance);
-        if (!outcome.Success)
-        {
-            return;
-        }
     }
 
     private static CharacterDesiredState BuildCharacterDesiredState(

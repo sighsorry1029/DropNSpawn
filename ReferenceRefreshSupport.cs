@@ -26,69 +26,6 @@ internal static class ReferenceRefreshSupport
         return ComputeStableHash(builder.ToString());
     }
 
-    internal static bool TryReadYamlList<T>(string path, IDeserializer deserializer, out List<T> entries, out string error)
-    {
-        entries = new List<T>();
-        error = "";
-
-        if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-        {
-            return false;
-        }
-
-        try
-        {
-            string content = File.ReadAllText(path);
-            return TryDeserializeYamlList(content, deserializer, out entries, out error);
-        }
-        catch (Exception ex)
-        {
-            error = ex.Message;
-            entries = new List<T>();
-            return false;
-        }
-    }
-
-    internal static bool TryDeserializeYamlList<T>(string content, IDeserializer deserializer, out List<T> entries, out string error)
-    {
-        entries = new List<T>();
-        error = "";
-
-        try
-        {
-            using StringReader reader = new(content ?? "");
-            entries = deserializer.Deserialize<List<T>>(reader) ?? new List<T>();
-            return true;
-        }
-        catch (Exception ex)
-        {
-            error = ex.Message;
-            entries = new List<T>();
-            return false;
-        }
-    }
-
-    internal static List<T> MergeMissingByKey<T>(IEnumerable<T> existingEntries, IEnumerable<T> currentEntries, Func<T, string?> getKey, out int addedCount)
-    {
-        List<T> mergedEntries = existingEntries?.ToList() ?? new List<T>();
-        HashSet<string> existingKeys = ToNormalizedKeySet(mergedEntries.Select(getKey));
-        addedCount = 0;
-
-        foreach (T currentEntry in currentEntries ?? Enumerable.Empty<T>())
-        {
-            string key = NormalizeKey(getKey(currentEntry));
-            if (key.Length == 0 || !existingKeys.Add(key))
-            {
-                continue;
-            }
-
-            mergedEntries.Add(currentEntry);
-            addedCount++;
-        }
-
-        return mergedEntries;
-    }
-
     internal static string SerializeReferenceSections<T>(IEnumerable<T> entries, Func<T, string> getPrefabName, ISerializer serializer)
     {
         List<PrefabOwnerSection<T>> sections = PrefabOutputSections.BuildSections(entries ?? Enumerable.Empty<T>(), getPrefabName);

@@ -10,7 +10,6 @@ internal static partial class SpawnerManager
 
     private sealed class SpawnerLiveReconcilerState
     {
-        private readonly HashSet<string> _missingComponentWarnings = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, int> _appliedCreatureSpawnerCheckIntervals = new();
         private readonly Dictionary<CreatureSpawner, ExpandWorldSpawnDataPayload> _appliedCreatureSpawnerData = new();
         private readonly Dictionary<CreatureSpawner, string> _appliedCreatureSpawnerFaction = new();
@@ -24,19 +23,9 @@ internal static partial class SpawnerManager
         private readonly Dictionary<SpawnArea, Vector3> _pendingSpawnAreaSpawnPoints = new();
         private readonly Dictionary<SpawnArea, GameObject> _pendingSpawnAreaSpawnedObjects = new();
 
-        public bool TryAddMissingComponentWarning(string key)
-        {
-            return _missingComponentWarnings.Add(key);
-        }
-
-        public void ClearMissingComponentWarnings()
-        {
-            _missingComponentWarnings.Clear();
-        }
-
         public void ResetPendingSpawnAreaAttempt(SpawnArea? spawnArea)
         {
-            if (spawnArea == null)
+            if (ReferenceEquals(spawnArea, null))
             {
                 return;
             }
@@ -179,7 +168,7 @@ internal static partial class SpawnerManager
 
         public void RemoveAppliedCreatureSpawnerData(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner == null)
+            if (ReferenceEquals(creatureSpawner, null))
             {
                 return;
             }
@@ -211,7 +200,7 @@ internal static partial class SpawnerManager
 
         public void RemoveAppliedCreatureSpawnerFaction(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner == null)
+            if (ReferenceEquals(creatureSpawner, null))
             {
                 return;
             }
@@ -243,7 +232,7 @@ internal static partial class SpawnerManager
 
         public void RemoveAppliedCreatureSpawnerTimeOfDay(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner == null)
+            if (ReferenceEquals(creatureSpawner, null))
             {
                 return;
             }
@@ -266,6 +255,11 @@ internal static partial class SpawnerManager
         public void SetAppliedCreatureSpawnerCheckInterval(int instanceId, int interval)
         {
             _appliedCreatureSpawnerCheckIntervals[instanceId] = interval;
+        }
+
+        public void RemoveAppliedCreatureSpawnerCheckInterval(int instanceId)
+        {
+            _appliedCreatureSpawnerCheckIntervals.Remove(instanceId);
         }
 
         public void SetAppliedSpawnAreaPrefabs(SpawnArea spawnArea, List<SpawnArea.SpawnData> prefabs)
@@ -292,7 +286,8 @@ internal static partial class SpawnerManager
 
         public bool TryTakeAppliedSpawnAreaPrefabs(SpawnArea? spawnArea, out List<SpawnArea.SpawnData> prefabs)
         {
-            if (spawnArea != null && _appliedSpawnAreaPrefabsByInstance.TryGetValue(spawnArea, out List<SpawnArea.SpawnData>? candidate))
+            if (!ReferenceEquals(spawnArea, null) &&
+                _appliedSpawnAreaPrefabsByInstance.TryGetValue(spawnArea, out List<SpawnArea.SpawnData>? candidate))
             {
                 prefabs = candidate;
                 _appliedSpawnAreaPrefabsByInstance.Remove(spawnArea);
@@ -400,7 +395,7 @@ internal static partial class SpawnerManager
 
         public void RemoveAppliedSpawnAreaTotalSpawnLimit(SpawnArea? spawnArea)
         {
-            if (spawnArea == null)
+            if (ReferenceEquals(spawnArea, null))
             {
                 return;
             }
@@ -410,7 +405,6 @@ internal static partial class SpawnerManager
 
         public void Clear()
         {
-            _missingComponentWarnings.Clear();
             _appliedCreatureSpawnerCheckIntervals.Clear();
             _appliedCreatureSpawnerData.Clear();
             _appliedCreatureSpawnerFaction.Clear();

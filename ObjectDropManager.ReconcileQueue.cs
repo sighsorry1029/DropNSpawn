@@ -13,7 +13,7 @@ internal static partial class ObjectDropManager
         private readonly RingBufferQueue<PendingObjectReconcileGroup> _pendingHighPriorityObjectReconcileGroups = new();
         private readonly RingBufferQueue<PendingObjectReconcileGroup> _pendingLowPriorityObjectReconcileGroups = new();
         private readonly Dictionary<string, PendingObjectReconcileGroupState> _pendingObjectReconcileGroups = new(StringComparer.Ordinal);
-        private readonly Dictionary<int, bool> _pendingObjectReconcileClearFlags = new();
+        private readonly HashSet<int> _pendingObjectReconcileInstanceIds = new();
 
         public bool HasPendingWork()
         {
@@ -25,17 +25,6 @@ internal static partial class ObjectDropManager
         {
             return _pendingHighPriorityObjectReconcileGroups.Count > 0 ||
                    (!highPriorityOnly && _pendingLowPriorityObjectReconcileGroups.Count > 0);
-        }
-
-        public int GetPendingWorkCount()
-        {
-            int count = 0;
-            foreach (PendingObjectReconcileGroupState groupState in _pendingObjectReconcileGroups.Values)
-            {
-                count += groupState.Items.Count;
-            }
-
-            return count;
         }
 
         public bool TryGetGroupState(string groupKey, out PendingObjectReconcileGroupState groupState)
@@ -80,32 +69,19 @@ internal static partial class ObjectDropManager
             return _pendingLowPriorityObjectReconcileGroups.TryDequeue(out queuedGroup);
         }
 
-        public bool TryMergeOrAddClearFlag(int instanceId, bool clearCreatorRestrictedContainerContents)
+        public bool TryAddPendingInstance(int instanceId)
         {
-            if (_pendingObjectReconcileClearFlags.TryGetValue(instanceId, out bool existingClearFlag))
-            {
-                _pendingObjectReconcileClearFlags[instanceId] = existingClearFlag || clearCreatorRestrictedContainerContents;
-                return true;
-            }
-
-            _pendingObjectReconcileClearFlags[instanceId] = clearCreatorRestrictedContainerContents;
-            return false;
+            return _pendingObjectReconcileInstanceIds.Add(instanceId);
         }
 
-        public bool TryTakeClearFlag(int instanceId, out bool clearCreatorRestrictedContainerContents)
+        public bool TryTakePendingInstance(int instanceId)
         {
-            if (_pendingObjectReconcileClearFlags.TryGetValue(instanceId, out clearCreatorRestrictedContainerContents))
-            {
-                _pendingObjectReconcileClearFlags.Remove(instanceId);
-                return true;
-            }
-
-            return false;
+            return _pendingObjectReconcileInstanceIds.Remove(instanceId);
         }
 
         public void RemovePendingState(int instanceId)
         {
-            _pendingObjectReconcileClearFlags.Remove(instanceId);
+            _pendingObjectReconcileInstanceIds.Remove(instanceId);
         }
 
         public PendingObjectReconcileGroupState GetOrCreateGroup(
@@ -132,11 +108,11 @@ internal static partial class ObjectDropManager
             _pendingHighPriorityObjectReconcileGroups.Clear();
             _pendingLowPriorityObjectReconcileGroups.Clear();
             _pendingObjectReconcileGroups.Clear();
-            _pendingObjectReconcileClearFlags.Clear();
+            _pendingObjectReconcileInstanceIds.Clear();
         }
     }
 
-    internal static void QueueObjectInstanceReconcile(GameObject? gameObject, bool clearCreatorRestrictedContainerContents, LiveObjectComponentKind sourceKind)
+    internal static void QueueObjectInstanceReconcile(GameObject? gameObject, LiveObjectComponentKind sourceKind)
     {
         lock (Sync)
         {
@@ -161,7 +137,7 @@ internal static partial class ObjectDropManager
                 return;
             }
 
-            QueueTrackedObjectInstanceReconcileLocked(gameObject, prefabName, clearCreatorRestrictedContainerContents);
+            QueueTrackedObjectInstanceReconcileLocked(gameObject, prefabName);
         }
     }
 
@@ -173,22 +149,9 @@ internal static partial class ObjectDropManager
         }
     }
 
-    internal static int GetPendingReconcileWorkCount()
-    {
-        lock (Sync)
-        {
-            return GetPendingReconcileWorkCountLocked();
-        }
-    }
-
     private static bool HasPendingReconcileWorkLocked()
     {
         return ReconcileQueueState.HasPendingWork();
-    }
-
-    private static int GetPendingReconcileWorkCountLocked()
-    {
-        return ReconcileQueueState.GetPendingWorkCount();
     }
 
     internal static bool ProcessQueuedReconcileStep(float deadline)
@@ -251,12 +214,12 @@ internal static partial class ObjectDropManager
                     continue;
                 }
 
-                if (!ReconcileQueueState.TryTakeClearFlag(queuedItem.InstanceId, out bool clearCreatorRestrictedContainerContents))
+                if (!ReconcileQueueState.TryTakePendingInstance(queuedItem.InstanceId))
                 {
                     continue;
                 }
 
-                ReconcileObjectInstanceCore(queuedItem.GameObject, clearCreatorRestrictedContainerContents);
+                ReconcileObjectInstanceCore(queuedItem.GameObject);
                 if (groupState.Items.Count > 0)
                 {
                     EnqueueObjectReconcileGroup(queuedGroup.GroupKey, groupState);
@@ -351,11 +314,10 @@ internal static partial class ObjectDropManager
 
     private static void QueueTrackedObjectInstanceReconcileLocked(
         GameObject gameObject,
-        string prefabName,
-        bool clearCreatorRestrictedContainerContents)
+        string prefabName)
     {
         int instanceId = gameObject.GetInstanceID();
-        if (ReconcileQueueState.TryMergeOrAddClearFlag(instanceId, clearCreatorRestrictedContainerContents))
+        if (!ReconcileQueueState.TryAddPendingInstance(instanceId))
         {
             return;
         }
@@ -364,7 +326,6 @@ internal static partial class ObjectDropManager
         PrefabProfileCatalogState.TryGetReconcileKinds(prefabName, out LiveObjectComponentKind configuredKinds);
         PendingObjectReconcileGroupState groupState = ReconcileQueueState.GetOrCreateGroup(groupKey, configuredKinds, IsHighPriorityPrefab(prefabName));
 
-        groupState.ClearCreatorRestrictedContainerContents |= clearCreatorRestrictedContainerContents;
         if (!groupState.InstanceIds.Add(instanceId))
         {
             return;

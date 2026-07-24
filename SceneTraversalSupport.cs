@@ -43,11 +43,6 @@ internal static class SceneTraversalSupport
         }
     }
 
-    internal static void TraverseHierarchy(Transform? root, Action<Transform> visitor)
-    {
-        TraverseHierarchy(root, visitor, new List<Transform>());
-    }
-
     private static void TraverseHierarchy(Transform? root, Action<Transform> visitor, List<Transform> pendingTransforms)
     {
         if (root == null || visitor == null)

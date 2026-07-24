@@ -8,11 +8,6 @@ internal static class LocationOnDestroyPatch
 {
     private static void Prefix(Location __instance)
     {
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
-        {
-            return;
-        }
-
         SpawnerManager.UntrackLocationInstanceProvenance(__instance);
     }
 }

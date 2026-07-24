@@ -40,31 +40,18 @@ internal static partial class NetworkPayloadSyncSupport
     private readonly struct DomainTransportPolicy
     {
         public DomainTransportPolicy(
-            int chunkSizeBytes,
             int publishedCacheBudgetBytes,
             bool usesLargeRequestLane,
-            bool supportsDeltaTransfers,
-            bool enableArtifactPrewarm,
-            float maxDeltaChangedEntryRatio,
-            float maxDeltaCompressedSizeRatio)
+            bool enableArtifactPrewarm)
         {
-            ChunkSizeBytes = Math.Max(1, chunkSizeBytes);
             PublishedCacheBudgetBytes = Math.Max(0, publishedCacheBudgetBytes);
             UsesLargeRequestLane = usesLargeRequestLane;
-            SupportsDeltaTransfers = supportsDeltaTransfers;
             EnableArtifactPrewarm = enableArtifactPrewarm;
-            MaxDeltaChangedEntryRatio = Math.Max(0f, maxDeltaChangedEntryRatio);
-            MaxDeltaCompressedSizeRatio = Math.Max(0f, maxDeltaCompressedSizeRatio);
         }
 
-        public int ChunkSizeBytes { get; }
         public int PublishedCacheBudgetBytes { get; }
         public bool UsesLargeRequestLane { get; }
-        public bool SupportsDeltaTransfers { get; }
         public bool EnableArtifactPrewarm { get; }
-        public float MaxDeltaChangedEntryRatio { get; }
-        public float MaxDeltaCompressedSizeRatio { get; }
-        public int MaxOutboundChunkBytesPerFrame => ChunkSizeBytes * 2;
     }
 
     private static DomainTransportPolicy ResolveTransportPolicy(DomainTransportProfile profile)
@@ -72,45 +59,25 @@ internal static partial class NetworkPayloadSyncSupport
         return profile switch
         {
             DomainTransportProfile.SmallConfig => new DomainTransportPolicy(
-                DefaultChunkSizeBytes,
                 8 * 1024 * 1024,
                 usesLargeRequestLane: false,
-                supportsDeltaTransfers: true,
-                enableArtifactPrewarm: false,
-                DefaultMaxDeltaChangedEntryRatio,
-                DefaultMaxDeltaCompressedSizeRatio),
+                enableArtifactPrewarm: false),
             DomainTransportProfile.MediumConfig => new DomainTransportPolicy(
-                DefaultChunkSizeBytes,
                 12 * 1024 * 1024,
                 usesLargeRequestLane: false,
-                supportsDeltaTransfers: true,
-                enableArtifactPrewarm: false,
-                DefaultMaxDeltaChangedEntryRatio,
-                DefaultMaxDeltaCompressedSizeRatio),
+                enableArtifactPrewarm: false),
             DomainTransportProfile.LargeConfig => new DomainTransportPolicy(
-                DefaultChunkSizeBytes,
                 24 * 1024 * 1024,
                 usesLargeRequestLane: true,
-                supportsDeltaTransfers: true,
-                enableArtifactPrewarm: false,
-                DefaultMaxDeltaChangedEntryRatio,
-                DefaultMaxDeltaCompressedSizeRatio),
+                enableArtifactPrewarm: false),
             DomainTransportProfile.LargeWithArtifacts => new DomainTransportPolicy(
-                DefaultChunkSizeBytes,
                 24 * 1024 * 1024,
                 usesLargeRequestLane: true,
-                supportsDeltaTransfers: true,
-                enableArtifactPrewarm: true,
-                DefaultMaxDeltaChangedEntryRatio,
-                DefaultMaxDeltaCompressedSizeRatio),
+                enableArtifactPrewarm: true),
             _ => new DomainTransportPolicy(
-                DefaultChunkSizeBytes,
                 8 * 1024 * 1024,
                 usesLargeRequestLane: false,
-                supportsDeltaTransfers: true,
-                enableArtifactPrewarm: false,
-                DefaultMaxDeltaChangedEntryRatio,
-                DefaultMaxDeltaCompressedSizeRatio)
+                enableArtifactPrewarm: false)
         };
     }
 
@@ -253,8 +220,6 @@ internal static partial class NetworkPayloadSyncSupport
             CacheDirectoryName = metadata.CacheDirectoryName;
             UsesLargeRequestLane = TransportPolicy.UsesLargeRequestLane;
             PublishedCacheBudgetBytes = TransportPolicy.PublishedCacheBudgetBytes;
-            ChunkSizeBytes = TransportPolicy.ChunkSizeBytes;
-            SupportsDeltaTransfers = TransportPolicy.SupportsDeltaTransfers;
             EnableArtifactPrewarm = TransportPolicy.EnableArtifactPrewarm;
             Codec = codec;
             SignatureBuilder = codec.SignatureBuilder;
@@ -272,8 +237,7 @@ internal static partial class NetworkPayloadSyncSupport
         public string CacheDirectoryName { get; }
         public bool UsesLargeRequestLane { get; }
         public int PublishedCacheBudgetBytes { get; }
-        public int ChunkSizeBytes { get; }
-        public bool SupportsDeltaTransfers { get; }
+        public int ChunkSizeBytes => DefaultChunkSizeBytes;
         public bool EnableArtifactPrewarm { get; }
         public DomainCodec<TEntry> Codec { get; }
         public Func<List<TEntry>, string> SignatureBuilder { get; }
@@ -455,7 +419,6 @@ internal static partial class NetworkPayloadSyncSupport
             _host = null;
             _registeredRpc = null;
             AdvanceRoleEpochAndResetWorkQueuesLocked();
-            _payloadProcessingWorkersRunning = 0;
             foreach (IDomainTransport transport in TransportsByDomainKey.Values)
             {
                 transport.ResetState();
@@ -471,25 +434,6 @@ internal static partial class NetworkPayloadSyncSupport
                    PendingReloadActions.Count > 0 ||
                    PendingOutboundTransferKeys.Count > 0 ||
                    HasPendingClientRequestWorkLocked();
-        }
-    }
-
-    internal static int GetPendingWorkCount()
-    {
-        lock (Sync)
-        {
-            int count = PendingMainThreadPayloadCommits.Count +
-                        PendingReloadActions.Count +
-                        PendingOutboundTransferKeys.Count;
-            foreach (IDomainTransport transport in AllTransports)
-            {
-                if (transport.HasWaitingRequest())
-                {
-                    count++;
-                }
-            }
-
-            return count;
         }
     }
 
@@ -589,11 +533,6 @@ internal static partial class NetworkPayloadSyncSupport
         Action<string> applyManifest)
     {
         QueuePublishPayload(GetTransport(domain), entries, knownSignature, applyManifest);
-    }
-
-    internal static string PublishPayload<TEntry>(DomainDescriptor<TEntry> domain, List<TEntry> entries, string? knownSignature = null)
-    {
-        return PublishPayload(GetTransport(domain), entries, knownSignature);
     }
 
     internal static List<TEntry> CloneEntries<TEntry>(DomainDescriptor<TEntry> domain, List<TEntry>? entries)
@@ -979,84 +918,6 @@ PublishExit:
         if (applyImmediately)
         {
             applyManifest(manifestToApply);
-        }
-    }
-
-    private static string PublishPayload<TEntry>(DomainTransport<TEntry> transport, List<TEntry> entries, string? knownSignature = null)
-    {
-        lock (Sync)
-        {
-            EnsureRpcRegisteredLocked();
-
-            if (TryReusePublishedManifestForSignatureLocked(transport, knownSignature, out string knownManifest))
-            {
-                return knownManifest;
-            }
-
-            PreparedPublishPayload<TEntry> preparedPayload = PreparePublishPayloadLocked(transport, entries, knownSignature);
-            if (TryReusePublishedManifestForSignatureLocked(transport, preparedPayload.Signature, out string manifestBySignature))
-            {
-                return manifestBySignature;
-            }
-
-            if (TryReusePublishedManifestForHashLocked(
-                    transport,
-                    preparedPayload.PayloadHash,
-                    preparedPayload.Signature,
-                    out string manifestByHash))
-            {
-                return manifestByHash;
-            }
-
-            byte[] compressedPayload = CompressBytes(preparedPayload.PayloadBytes);
-            PayloadEntryIndex<TEntry>? preparedPublishedPayloadIndex = null;
-            TransferArtifact? primaryDeltaArtifact = null;
-            PayloadManifest manifest = new()
-            {
-                Hash = preparedPayload.PayloadHash,
-                CompressedSize = compressedPayload.Length,
-                ChunkCount = Math.Max(1, (int)Math.Ceiling(compressedPayload.Length / (double)transport.ChunkSizeBytes)),
-                EntryCount = preparedPayload.EntryCount
-            };
-            string previousHash = transport.PublishedPayloadManifest.Hash;
-            if (previousHash.Length > 0 &&
-                !string.Equals(previousHash, preparedPayload.PayloadHash, StringComparison.Ordinal))
-            {
-                TryBuildPrimaryDeltaArtifact(
-                    transport,
-                    previousHash,
-                    transport.PublishedPayloadBytes,
-                    transport.PublishedPayloadIndex,
-                    preparedPayload.PayloadHash,
-                    preparedPayload.PayloadBytes,
-                    targetPayloadIndex: null,
-                    compressedPayload,
-                    out preparedPublishedPayloadIndex,
-                    out primaryDeltaArtifact);
-            }
-
-            transport.LastPublishedSignature = preparedPayload.Signature;
-            transport.LastPublishedManifest = manifest.Serialize();
-            RememberPublishedPayloadLocked(
-                transport,
-                previousHash,
-                transport.PublishedPayloadBytes,
-                transport.PublishedPayloadIndex);
-            transport.PublishedPayloadBytes = preparedPayload.PayloadBytes;
-            transport.PublishedCompressedBytes = compressedPayload;
-            transport.PublishedPayloadIndex = preparedPublishedPayloadIndex;
-            transport.PublishedPayloadManifest = manifest;
-            ClearPublishedTransferArtifactsLocked(transport);
-            EnsureFullTransferArtifactLocked(transport, preparedPayload.PayloadHash);
-            if (primaryDeltaArtifact != null &&
-                !transport.PublishedTransferArtifacts.ContainsKey(primaryDeltaArtifact.CacheKey))
-            {
-                StoreTransferArtifactLocked(transport, primaryDeltaArtifact);
-            }
-            TrimTransportCachesLocked(transport);
-            TrimAllPublishedCachesLocked();
-
-            return transport.LastPublishedManifest;
         }
     }
 

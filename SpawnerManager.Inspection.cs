@@ -292,27 +292,6 @@ internal static partial class SpawnerManager
         }
     }
 
-    private static string FormatInspectionEntrySummary(SpawnerConfigurationEntry entry)
-    {
-        if (entry == null)
-        {
-            return "(null)";
-        }
-
-        string selector = FormatLocationSelector(entry.Locations);
-        if (entry.CreatureSpawner != null)
-        {
-            return $"{selector}, creatureSpawner.creature={entry.CreatureSpawner.Creature ?? "(null)"}";
-        }
-
-        if (entry.SpawnArea?.Creatures != null)
-        {
-            return $"{selector}, spawnArea.creatures={entry.SpawnArea.Creatures.Count}";
-        }
-
-        return selector;
-    }
-
     private static string FormatInspectionEntrySummary(SpawnerRuntimeEntry entry)
     {
         if (entry == null)

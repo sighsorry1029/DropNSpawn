@@ -41,9 +41,7 @@ internal static partial class SpawnSystemManager
             ClientRequestPriority = 40,
             KeySelector = entry => entry.RuleId,
             ApplyPayloadAction = ApplySyncedPayload,
-            WorkKinds = DomainWorkKinds.Runtime | DomainWorkKinds.Reconcile,
             HasPendingReconcileWork = HasPendingReconcileWork,
-            GetPendingReconcileWorkCount = GetPendingReconcileWorkCount,
             ProcessPendingReconcileStep = ProcessQueuedReconcileStep,
             BeforeClientManifestChanged = MarkSyncedPayloadPending,
             OnClientAuthorityCutover = EnterPendingSyncedPayloadState
@@ -71,7 +69,6 @@ internal static partial class SpawnSystemManager
 
     private sealed class SpawnSystemEntrySnapshot
     {
-        public string RefId { get; set; } = "";
         public int ListIndex { get; set; }
         public int EntryIndex { get; set; }
         public SpawnSystem.SpawnData Data { get; set; } = null!;
@@ -80,7 +77,6 @@ internal static partial class SpawnSystemManager
     private sealed class SpawnSystemSnapshot
     {
         public int SystemId { get; set; }
-        public int ListCount { get; set; }
         public List<SpawnSystemEntrySnapshot> Entries { get; } = new();
     }
 
@@ -88,7 +84,6 @@ internal static partial class SpawnSystemManager
     {
         public CanonicalSpawnSystemEntry Entry { get; set; } = null!;
         public SpawnSystem.SpawnData Data { get; set; } = null!;
-        public string Context { get; set; } = "";
         public SpawnSystemCustomDataSupport.PreparedPayload? CustomDataPayload { get; set; }
         public TimeOfDayDefinition? RuntimeTimeOfDay { get; set; }
     }
@@ -96,7 +91,6 @@ internal static partial class SpawnSystemManager
     private sealed class PreparedSpawnSystemModel
     {
         public CanonicalSpawnSystemEntry Entry { get; set; } = null!;
-        public string RuleId { get; set; } = "";
         public string EntrySignature { get; set; } = "";
         public string Context { get; set; } = "";
         public TimeOfDayDefinition? RuntimeTimeOfDay { get; set; }
@@ -105,7 +99,6 @@ internal static partial class SpawnSystemManager
     private sealed class FinalizedPreparedEntryCacheEntry
     {
         public int GameDataSignature { get; set; }
-        public string RuleId { get; set; } = "";
         public string EntrySignature { get; set; } = "";
         public SpawnSystem.SpawnData Data { get; set; } = null!;
         public SpawnSystemCustomDataSupport.PreparedPayload? CustomDataPayload { get; set; }
@@ -120,7 +113,6 @@ internal static partial class SpawnSystemManager
         public string ApplyTargetSignature { get; set; } = "";
         public bool QueueEspRefreshForLiveSystems { get; set; }
         public List<PreparedSpawnSystemModel> Models { get; } = new();
-        public string PreparedEntriesSignature { get; set; } = "";
     }
 
     private sealed class PendingPreparedEntriesBuildRequest
@@ -150,13 +142,6 @@ internal static partial class SpawnSystemManager
         public List<SpawnSystem.SpawnData>? BuildingLiveEntries { get; set; }
         public CompiledSpawnSystemTable? PreviousActiveTable { get; set; }
         public CompiledSpawnSystemTable? PreviousVanillaTable { get; set; }
-        public bool RuntimeStateSwapped { get; set; }
-    }
-
-    private sealed class ParsedSpawnSystemConfigurationDocument
-    {
-        public List<SpawnSystemConfigurationEntry> Configuration { get; } = new();
-        public List<string> Warnings { get; } = new();
     }
 
     private sealed class CompiledSpawnSystemTable
@@ -177,7 +162,6 @@ internal static partial class SpawnSystemManager
         public int ListCount { get; set; }
         public int RowCount { get; set; }
         public int ContentHash { get; set; }
-        public string SamplePrefabs { get; set; }
     }
 
     private sealed class PendingCompiledTableRetirement
@@ -303,8 +287,7 @@ internal static partial class SpawnSystemManager
                 CommitConfigurationState,
                 state => state.Configuration.Count,
                 "ServerSync:DropNSpawnSpawnSystem",
-                () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(
-                    MarkSyncedPayloadPending),
+                MarkSyncedPayloadPending,
                 LogSyncedSpawnSystemConfigurationLoaded,
                 LogSyncedSpawnSystemConfigurationFailure));
     internal static bool ShouldReloadForPath(string? path)
@@ -536,14 +519,6 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    internal static int GetPendingReconcileWorkCount()
-    {
-        lock (Sync)
-        {
-            return GetPendingReconcileWorkCountLocked();
-        }
-    }
-
     private static bool HasPendingReconcileWorkLocked()
     {
         return BuildPipelineState.CompletedPreparedEntriesBuildResult != null ||
@@ -551,47 +526,6 @@ internal static partial class SpawnSystemManager
                DeferredBiomeState.HasWork ||
                PendingLiveSystemAttaches.Count > 0 ||
                EspSpawnSystemCompatibility.HasPendingRefreshes();
-    }
-
-    private static int GetPendingReconcileWorkCountLocked()
-    {
-        int count = 0;
-        if (BuildPipelineState.CompletedPreparedEntriesBuildResult != null)
-        {
-            count++;
-        }
-
-        if (DeferredBiomeState.HasWork)
-        {
-            count++;
-        }
-
-        if (BuildPipelineState.PendingCompiledTableBuild != null)
-        {
-            count += CountPendingCompiledTableBuildWork(BuildPipelineState.PendingCompiledTableBuild);
-        }
-
-        count += PendingLiveSystemAttaches.Count;
-        count += EspSpawnSystemCompatibility.GetPendingRefreshCount();
-        return count;
-    }
-
-    private static int CountPendingCompiledTableBuildWork(PendingCompiledTableBuildState buildState)
-    {
-        if (!buildState.DomainEnabled)
-        {
-            return 1;
-        }
-
-        int count = Math.Max(0, buildState.Models.Count - buildState.NextFinalizeIndex);
-        count += Math.Max(0, buildState.FinalizedEntries.Count - buildState.NextCompiledEntryIndex);
-        if (buildState.BuildingActiveTable == null ||
-            buildState.BuildingActiveTable.Lists.Count == 0)
-        {
-            count++;
-        }
-
-        return Math.Max(1, count + 1);
     }
 
     private static void HandleSourceOfTruthGameDataReady()
@@ -745,13 +679,7 @@ internal static partial class SpawnSystemManager
     {
         return ConfigurationLoadSupport.ParseLocalConfigurationDocuments(
             documents,
-            (yaml, path) =>
-            {
-                ParsedSpawnSystemConfigurationDocument parsedDocument = ParseConfiguration(yaml, path);
-                return new ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnSystemConfigurationEntry>(
-                    parsedDocument.Configuration,
-                    parsedDocument.Warnings);
-            },
+            ParseConfiguration,
             (configuration, path, _) => CloneAndNormalizeConfigurationEntries(configuration, path),
             FormatYamlExceptionLocation,
             "Spawnsystem authoritative YAML must start with a root list like '- prefab: Fox'.");
@@ -932,9 +860,11 @@ internal static partial class SpawnSystemManager
             warn: WarnInvalidEntry);
     }
 
-    private static ParsedSpawnSystemConfigurationDocument ParseConfiguration(string yaml, string? sourcePath)
+    private static ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnSystemConfigurationEntry> ParseConfiguration(
+        string yaml,
+        string? sourcePath)
     {
-        ParsedSpawnSystemConfigurationDocument result = new();
+        ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnSystemConfigurationEntry> result = new();
         if (string.IsNullOrWhiteSpace(yaml))
         {
             return result;
@@ -1210,15 +1140,13 @@ internal static partial class SpawnSystemManager
             {
                 ListCount = 0,
                 RowCount = 0,
-                ContentHash = 0,
-                SamplePrefabs = ""
+                ContentHash = 0
             };
         }
 
         int listCount = 0;
         int rowCount = 0;
         int hash = 17;
-        List<string> samplePrefabs = new();
         foreach (SpawnSystemList spawnList in spawnLists)
         {
             if (spawnList == null)
@@ -1244,10 +1172,6 @@ internal static partial class SpawnSystemManager
                     : spawnData?.m_name ?? "<null>";
                 hash = unchecked(hash * 31 + StringComparer.OrdinalIgnoreCase.GetHashCode(prefabName));
                 hash = unchecked(hash * 31 + (spawnData?.m_enabled == true ? 1 : 0));
-                if (samplePrefabs.Count < 8)
-                {
-                    samplePrefabs.Add(prefabName);
-                }
             }
         }
 
@@ -1255,8 +1179,7 @@ internal static partial class SpawnSystemManager
         {
             ListCount = listCount,
             RowCount = rowCount,
-            ContentHash = hash,
-            SamplePrefabs = samplePrefabs.Count > 0 ? string.Join(",", samplePrefabs) : "<empty>"
+            ContentHash = hash
         };
     }
 
@@ -1485,10 +1408,9 @@ internal static partial class SpawnSystemManager
             result.Models.Add(new PreparedSpawnSystemModel
             {
                 Entry = entry,
-                RuleId = entry.RuleId,
                 EntrySignature = NetworkPayloadSyncSupport.ComputeSpawnSystemEntrySignature(entry),
                 Context = CreateConfigurationContext(index, entry),
-                RuntimeTimeOfDay = GetConfiguredTimeOfDay(entry)
+                RuntimeTimeOfDay = entry.SpawnSystem?.TimeOfDay
             });
         }
 
@@ -1806,8 +1728,6 @@ internal static partial class SpawnSystemManager
             return false;
         }
 
-        string ruleId = model.RuleId;
-        model.RuleId = ruleId;
         string entrySignature = model.EntrySignature.Length > 0
             ? model.EntrySignature
             : NetworkPayloadSyncSupport.ComputeSpawnSystemEntrySignature(model.Entry);
@@ -1826,7 +1746,6 @@ internal static partial class SpawnSystemManager
             {
                 Entry = model.Entry,
                 Data = cachedEntry.Data.Clone(),
-                Context = model.Context,
                 CustomDataPayload = cachedEntry.CustomDataPayload,
                 RuntimeTimeOfDay = cachedEntry.RuntimeTimeOfDay
             };
@@ -1849,7 +1768,6 @@ internal static partial class SpawnSystemManager
         FinalizedPreparedEntryCache[cacheKey] = new FinalizedPreparedEntryCacheEntry
         {
             GameDataSignature = gameDataSignature,
-            RuleId = ruleId,
             EntrySignature = entrySignature,
             Data = data.Clone(),
             CustomDataPayload = customDataPayload,
@@ -1860,7 +1778,6 @@ internal static partial class SpawnSystemManager
         {
             Entry = model.Entry,
             Data = data,
-            Context = model.Context,
             CustomDataPayload = customDataPayload,
             RuntimeTimeOfDay = model.RuntimeTimeOfDay
         };
@@ -2094,7 +2011,7 @@ internal static partial class SpawnSystemManager
                 .ToList();
         }
 
-        TimeOfDayDefinition? timeOfDay = GetConfiguredTimeOfDay(entry);
+        TimeOfDayDefinition? timeOfDay = spawn?.TimeOfDay;
         if (timeOfDay != null)
         {
             TimeOfDayFormatting.GetBroadSpawnFlags(timeOfDay, out bool allowDay, out bool allowNight);
@@ -2307,22 +2224,6 @@ internal static partial class SpawnSystemManager
             hash = hash * 31 + ZNetScene.instance.m_nonNetViewPrefabs.Count;
             return hash;
         }
-    }
-
-    private static int HashNormalizedKeys(int hash, IEnumerable<string?> keys)
-    {
-        unchecked
-        {
-            foreach (string key in (keys ?? Enumerable.Empty<string?>())
-                         .Select(ReferenceRefreshSupport.NormalizeKey)
-                         .Where(key => key.Length > 0)
-                         .OrderBy(key => key, StringComparer.OrdinalIgnoreCase))
-            {
-                hash = hash * 31 + StringComparer.OrdinalIgnoreCase.GetHashCode(key);
-            }
-        }
-
-        return hash;
     }
 
     private static IEnumerable<string> BuildConfiguredSpawnSystemResolutionKeys()
@@ -2675,11 +2576,6 @@ internal static partial class SpawnSystemManager
         }
 
         return normalized.Count == 0 ? null : normalized;
-    }
-
-    private static TimeOfDayDefinition? GetConfiguredTimeOfDay(SpawnSystemConfigurationEntry? entry)
-    {
-        return entry?.SpawnSystem?.TimeOfDay;
     }
 
     private static void NormalizeSpawnSystemIntRange(ref int? min, ref int? max, string context, string fieldName)

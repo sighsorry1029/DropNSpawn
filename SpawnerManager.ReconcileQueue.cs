@@ -38,11 +38,6 @@ internal static partial class SpawnerManager
                    _pendingCreatureSpawnerReconciles.HasPendingWork;
         }
 
-        public int GetPendingWorkCount()
-        {
-            return _pendingSpawnAreaReconciles.Count + _pendingCreatureSpawnerReconciles.Count;
-        }
-
         public bool TryDequeueNextSpawnArea(int epoch, out SpawnArea? spawnArea)
         {
             return _pendingSpawnAreaReconciles.TryDequeueCurrent(epoch, out spawnArea, out _);
@@ -94,23 +89,10 @@ internal static partial class SpawnerManager
         }
     }
 
-    internal static int GetPendingReconcileWorkCount()
-    {
-        lock (Sync)
-        {
-            return GetPendingReconcileWorkCountLocked();
-        }
-    }
-
     private static bool HasPendingReconcileWorkLocked()
     {
         return ProvenanceRegistry.HasPendingRootScans() ||
                ReconcileQueue.HasPendingWork();
-    }
-
-    private static int GetPendingReconcileWorkCountLocked()
-    {
-        return ProvenanceRegistry.PendingRootScanCount() + ReconcileQueue.GetPendingWorkCount();
     }
 
     internal static bool ProcessQueuedReconcileStep(float deadline)

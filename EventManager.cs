@@ -34,7 +34,6 @@ internal static class EventManager
             ClientRequestPriority = 95,
             KeySelector = entry => entry.Event ?? "",
             ApplyPayloadAction = ApplySyncedPayload,
-            WorkKinds = DomainWorkKinds.Runtime,
             BeforeClientManifestChanged = MarkSyncedPayloadPending,
             OnClientAuthorityCutover = EnterPendingSyncedPayloadState
         });
@@ -51,22 +50,14 @@ internal static class EventManager
     private static bool _synchronizedPayloadReady;
     private static List<EventDefinition> ActiveDefinitions = new();
     private static List<RandomEvent>? BaselineEvents;
+    private static float? BaselineEventChance;
+    private static float? BaselineEventIntervalMinutes;
     private static readonly List<SpawnSystem.SpawnData> AppliedSpawnData = new();
     private static readonly Dictionary<RandomEvent, EventRuntimeMetadata> EventMetadata = new();
-    private static readonly List<ActiveMultipleEvent> MultipleActiveEvents = new();
+    private static readonly List<RandomEvent> MultipleActiveEvents = new();
     private static MethodInfo? ExpandWorldCommandRunMethod;
     private static bool ExpandWorldCommandRunMethodLookedUp;
     private static bool MissingCommandManagerWarningLogged;
-
-    private sealed class ActiveMultipleEvent
-    {
-        internal ActiveMultipleEvent(RandomEvent activeEvent)
-        {
-            Event = activeEvent;
-        }
-
-        internal RandomEvent Event { get; }
-    }
 
     private sealed class EventRuntimeMetadata
     {
@@ -153,7 +144,7 @@ internal static class EventManager
                 CommitConfigurationState,
                 state => state.Count,
                 "ServerSync:DropNSpawnEvents",
-                () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(MarkSyncedPayloadPending)));
+                MarkSyncedPayloadPending));
     private static DomainLoadState LoadState => ConfigurationRuntime.LoadState;
 
     internal static void Initialize()
@@ -179,11 +170,41 @@ internal static class EventManager
 
     internal static void Dispose()
     {
-        MultipleActiveEvents.Clear();
-        _initialized = false;
-        _synchronizedPayloadReady = false;
-        _configurationSignature = "";
-        ConfigurationRuntime.ResetLoadState();
+        EventGlobalConfig.Dispose();
+        lock (Sync)
+        {
+            ClearAppliedPayloadsLocked();
+            EventMetadata.Clear();
+            MultipleActiveEvents.Clear();
+            if (RandEventSystem.instance != null && BaselineEvents != null)
+            {
+                RandEventSystem.instance.m_events = CloneEvents(BaselineEvents);
+            }
+
+            if (RandEventSystem.instance != null && BaselineEventChance.HasValue)
+            {
+                RandEventSystem.instance.m_eventChance = BaselineEventChance.Value;
+            }
+
+            if (RandEventSystem.instance != null && BaselineEventIntervalMinutes.HasValue)
+            {
+                RandEventSystem.instance.m_eventIntervalMin = BaselineEventIntervalMinutes.Value;
+            }
+
+            if (RandEventSystem.instance != null)
+            {
+                RandEventSystem.SetRandomEventsNeedsRefresh();
+            }
+
+            BaselineEvents = null;
+            BaselineEventChance = null;
+            BaselineEventIntervalMinutes = null;
+            ActiveDefinitions = new List<EventDefinition>();
+            _initialized = false;
+            _synchronizedPayloadReady = false;
+            _configurationSignature = "";
+            ConfigurationRuntime.ResetLoadState();
+        }
     }
 
     internal static void NotifyGameDataReady(string source)
@@ -220,6 +241,8 @@ internal static class EventManager
         lock (Sync)
         {
             BaselineEvents = null;
+            BaselineEventChance = null;
+            BaselineEventIntervalMinutes = null;
             ClearAppliedPayloadsLocked();
             EventMetadata.Clear();
             MultipleActiveEvents.Clear();
@@ -468,24 +491,34 @@ internal static class EventManager
         List<ConfigurationLoadSupport.LocalYamlDocument> documents)
     {
         List<EventDefinition> definitions = new();
+        List<string> errors = new();
         int loadedFileCount = 0;
         foreach (ConfigurationLoadSupport.LocalYamlDocument document in documents)
         {
             if (document.ReadError != null)
             {
-                DropNSpawnPlugin.DropNSpawnLogger.LogError($"Failed to load event override YAML '{document.Path}': {document.ReadError}");
+                errors.Add($"Failed to load event override YAML '{document.Path}': {document.ReadError}");
                 continue;
             }
 
-            List<EventDefinition> parsed = ParseYaml(document.Yaml ?? "", Path.GetFileName(document.Path));
+            if (!TryParseYaml(
+                    document.Yaml ?? "",
+                    Path.GetFileName(document.Path),
+                    out List<EventDefinition> parsed,
+                    out string parseError))
+            {
+                errors.Add(parseError);
+                continue;
+            }
+
             definitions.AddRange(parsed);
             loadedFileCount++;
         }
 
-        NormalizeDefinitions(definitions);
         return new LocalLoadResult<EventDefinition>
         {
             Entries = definitions,
+            Errors = errors,
             ParsedEntryCount = definitions.Count,
             LoadedFileCount = loadedFileCount
         };
@@ -509,21 +542,49 @@ internal static class EventManager
         return DomainConfigurationFileSupport.IsOverrideConfigurationFileName(DomainName, fileName);
     }
 
-    private static List<EventDefinition> ParseYaml(string yaml, string sourceName)
+    private static bool TryParseYaml(
+        string yaml,
+        string sourceName,
+        out List<EventDefinition> definitions,
+        out string error)
     {
+        definitions = new List<EventDefinition>();
+        error = "";
         if (string.IsNullOrWhiteSpace(yaml))
         {
-            return new List<EventDefinition>();
+            return true;
         }
 
         try
         {
-            return Deserializer.Deserialize<List<EventDefinition>>(yaml) ?? new List<EventDefinition>();
+            definitions = Deserializer.Deserialize<List<EventDefinition>>(yaml) ?? new List<EventDefinition>();
+            for (int index = 0; index < definitions.Count; index++)
+            {
+                EventDefinition? definition = definitions[index];
+                if (definition == null)
+                {
+                    error = $"Failed to parse event YAML '{sourceName}': entry {index + 1} is null.";
+                    definitions = new List<EventDefinition>();
+                    return false;
+                }
+
+                List<EventSpawnDefinition>? spawns = definition.Spawns;
+                if (spawns != null && spawns.Any(spawn => spawn == null))
+                {
+                    error = $"Failed to parse event YAML '{sourceName}': entry {index + 1} contains a null spawn.";
+                    definitions = new List<EventDefinition>();
+                    return false;
+                }
+            }
+
+            NormalizeDefinitions(definitions);
+            return true;
         }
         catch (Exception ex)
         {
-            DropNSpawnPlugin.DropNSpawnLogger.LogError($"Failed to parse event YAML '{sourceName}': {ex.Message}");
-            return new List<EventDefinition>();
+            error = $"Failed to parse event YAML '{sourceName}': {ex.Message}";
+            definitions = new List<EventDefinition>();
+            return false;
         }
     }
 
@@ -595,6 +656,8 @@ internal static class EventManager
             return;
         }
 
+        BaselineEventChance ??= RandEventSystem.instance.m_eventChance;
+        BaselineEventIntervalMinutes ??= RandEventSystem.instance.m_eventIntervalMin;
         RandEventSystem.instance.m_eventChance = PluginSettingsFacade.GetRandomEventChance();
         RandEventSystem.instance.m_eventIntervalMin = PluginSettingsFacade.GetRandomEventIntervalMinutes();
 
@@ -621,11 +684,11 @@ internal static class EventManager
             forcedEvent.Update(true, true, true, dt);
         }
 
-        List<ActiveMultipleEvent> stoppedEvents = MultipleActiveEvents
+        List<RandomEvent> stoppedEvents = MultipleActiveEvents
             .Where(activeEvent =>
             {
-                bool anyPlayerInArea = eventSystem.IsAnyPlayerInEventArea(activeEvent.Event);
-                return activeEvent.Event.Update(true, true, anyPlayerInArea, dt);
+                bool anyPlayerInArea = eventSystem.IsAnyPlayerInEventArea(activeEvent);
+                return activeEvent.Update(true, true, anyPlayerInArea, dt);
             })
             .ToList();
 
@@ -649,7 +712,7 @@ internal static class EventManager
 
         float minimumDistance = PluginSettingsFacade.GetMinimumDistanceBetweenEvents();
         if (MultipleActiveEvents.Any(activeEvent =>
-                Utils.DistanceXZ(activeEvent.Event.m_pos, pos) < minimumDistance))
+                Utils.DistanceXZ(activeEvent.m_pos, pos) < minimumDistance))
         {
             return true;
         }
@@ -657,7 +720,7 @@ internal static class EventManager
         RandomEvent clonedEvent = ev.Clone();
         clonedEvent.m_pos = pos;
         clonedEvent.OnStart();
-        MultipleActiveEvents.Add(new ActiveMultipleEvent(clonedEvent));
+        MultipleActiveEvents.Add(clonedEvent);
         eventSystem.m_randomEvent = clonedEvent;
         eventSystem.SendCurrentRandomEvent();
         return true;
@@ -683,7 +746,7 @@ internal static class EventManager
 
         if (MultipleActiveEvents.Count == 1)
         {
-            SendEventToEveryone(MultipleActiveEvents[0].Event);
+            SendEventToEveryone(MultipleActiveEvents[0]);
             return true;
         }
 
@@ -699,13 +762,13 @@ internal static class EventManager
                 continue;
             }
 
-            ActiveMultipleEvent nearestEvent = MultipleActiveEvents
-                .OrderBy(activeEvent => Utils.DistanceXZ(activeEvent.Event.m_pos, peer.m_refPos))
+            RandomEvent nearestEvent = MultipleActiveEvents
+                .OrderBy(activeEvent => Utils.DistanceXZ(activeEvent.m_pos, peer.m_refPos))
                 .First();
             ZRoutedRpc.instance.InvokeRoutedRPC(
                 peer.m_uid,
                 "SetEvent",
-                new object[] { nearestEvent.Event.m_name, nearestEvent.Event.m_time, nearestEvent.Event.m_pos });
+                new object[] { nearestEvent.m_name, nearestEvent.m_time, nearestEvent.m_pos });
         }
 
         return true;
@@ -748,9 +811,8 @@ internal static class EventManager
 
         Vector3 playerPosition = Player.m_localPlayer.transform.position;
         RandomEvent? nearestEvent = MultipleActiveEvents
-            .OrderBy(activeEvent => Utils.DistanceXZ(activeEvent.Event.m_pos, playerPosition))
-            .FirstOrDefault()
-            ?.Event;
+            .OrderBy(activeEvent => Utils.DistanceXZ(activeEvent.m_pos, playerPosition))
+            .FirstOrDefault();
 
         eventSystem.m_randomEvent = nearestEvent;
         if (nearestEvent != null && eventSystem.IsInsideRandomEventArea(nearestEvent, playerPosition))
@@ -878,21 +940,21 @@ internal static class EventManager
         }
     }
 
-    private static void StopMultipleEventsLocked(List<ActiveMultipleEvent> activeEvents, bool callOnStop)
+    private static void StopMultipleEventsLocked(List<RandomEvent> activeEvents, bool callOnStop)
     {
         if (activeEvents.Count == 0)
         {
             return;
         }
 
-        foreach (ActiveMultipleEvent activeEvent in activeEvents)
+        foreach (RandomEvent activeEvent in activeEvents)
         {
             if (callOnStop)
             {
-                activeEvent.Event.OnStop();
+                activeEvent.OnStop();
             }
 
-            EventMetadata.Remove(activeEvent.Event);
+            EventMetadata.Remove(activeEvent);
         }
 
         MultipleActiveEvents.RemoveAll(activeEvents.Contains);
@@ -1250,13 +1312,7 @@ internal static class EventManager
         for (int index = 0; index < definitions.Count; index++)
         {
             EventSpawnDefinition definition = definitions[index];
-            CanonicalSpawnSystemEntry entry = new()
-            {
-                Prefab = definition.Prefab,
-                Enabled = definition.Enabled ?? true,
-                SpawnSystem = definition.SpawnSystem
-            };
-
+            CanonicalSpawnSystemEntry entry = ConvertEventSpawnToSpawnSystemEntry(definition);
             SpawnSystemManager.NormalizeEntry(entry);
             SpawnSystem.SpawnData data = new();
             string spawnContext = $"{context}.spawns[{index.ToString(CultureInfo.InvariantCulture)}]";
@@ -1312,12 +1368,12 @@ internal static class EventManager
                 !ReferenceEquals(group.Preferred, ev)))
             .Select(ev =>
             {
-                EventDefinition definition = ConvertToDefinition(ev, includeEventDefaults: true, includeSpawnDefaults: false);
+                EventDefinition definition = ConvertToDefinition(ev, includeSpawnDefaults: false);
                 SuppressReferenceOnlyFields(definition);
                 return new EventReferenceOutputEntry(definition, ResolveEventOwnerName(definition, ownerSnapshot));
             })
             .ToList();
-        return BuildGeneratedYamlHeader("reference") + BuildEventReferenceDefinitionsYaml(entries, includeEventDefaults: true, includeEmptySpawnList: false);
+        return BuildGeneratedYamlHeader("reference") + BuildEventReferenceDefinitionsYaml(entries);
     }
 
     private static List<KnownVanillaEventVariantGroup> FindKnownVanillaEventVariantGroups(
@@ -1427,14 +1483,11 @@ internal static class EventManager
 
     private static string ComputeComparableEventSignature(RandomEvent ev)
     {
-        EventDefinition definition = ConvertToDefinition(ev, includeEventDefaults: true, includeSpawnDefaults: true);
+        EventDefinition definition = ConvertToDefinition(ev, includeSpawnDefaults: true);
         return NetworkPayloadSyncSupport.ComputeEventConfigurationSignature(new[] { definition });
     }
 
-    private static string BuildEventReferenceDefinitionsYaml(
-        List<EventReferenceOutputEntry> entries,
-        bool includeEventDefaults,
-        bool includeEmptySpawnList)
+    private static string BuildEventReferenceDefinitionsYaml(List<EventReferenceOutputEntry> entries)
     {
         if (entries.Count == 0)
         {
@@ -1463,7 +1516,7 @@ internal static class EventManager
             PrefabOutputSections.AppendSectionHeaderComment(builder, section.OwnerName);
             foreach (EventReferenceOutputEntry entry in section.Entries)
             {
-                AppendEventDefinition(builder, entry.Definition, includeEventDefaults, includeEmptySpawnList);
+                AppendEventDefinition(builder, entry.Definition);
             }
 
             wroteSection = true;
@@ -1516,30 +1569,22 @@ internal static class EventManager
                "# Edit DNS_events.yml instead; generated files may be overwritten.\n\n";
     }
 
-    private static void AppendEventDefinition(StringBuilder builder, EventDefinition definition, bool includeEventDefaults, bool includeEmptySpawnList)
+    private static void AppendEventDefinition(StringBuilder builder, EventDefinition definition)
     {
         AppendYamlListEntryLine(builder, 0, "event", definition.Event);
         AppendYamlOptionalRawListLine(builder, 1, "settings", definition.Settings);
         AppendYamlOptionalFloatListLine(builder, 1, "standalone", definition.Standalone);
         AppendYamlOptionalFloatLine(builder, 1, "spawnerDelay", definition.SpawnerDelay);
-        AppendEventConditions(builder, definition.Conditions, includeEventDefaults);
+        AppendEventConditions(builder, definition.Conditions);
         AppendYamlOptionalInlineListLine(builder, 1, "messages", definition.Messages);
-        if (includeEventDefaults)
-        {
-            AppendYamlStringLine(builder, 1, "forceEnvironment", definition.ForceEnvironment);
-            AppendYamlStringLine(builder, 1, "forceMusic", definition.ForceMusic);
-        }
-        else
-        {
-            AppendYamlOptionalStringLine(builder, 1, "forceEnvironment", definition.ForceEnvironment);
-            AppendYamlOptionalStringLine(builder, 1, "forceMusic", definition.ForceMusic);
-        }
+        AppendYamlStringLine(builder, 1, "forceEnvironment", definition.ForceEnvironment);
+        AppendYamlStringLine(builder, 1, "forceMusic", definition.ForceMusic);
         AppendYamlOptionalInlineListLine(builder, 1, "startCommands", definition.StartCommands);
         AppendYamlOptionalInlineListLine(builder, 1, "endCommands", definition.EndCommands);
-        AppendEventSpawns(builder, definition.Spawns, includeEmptySpawnList);
+        AppendEventSpawns(builder, definition.Spawns);
     }
 
-    private static void AppendEventConditions(StringBuilder builder, EventConditionsDefinition? conditions, bool includeEmptyFields)
+    private static void AppendEventConditions(StringBuilder builder, EventConditionsDefinition? conditions)
     {
         if (conditions == null)
         {
@@ -1560,7 +1605,7 @@ internal static class EventManager
         AppendYamlOptionalInlineListLine(builder, 2, "forbiddenPlayerKeys", conditions.ForbiddenPlayerKeys);
     }
 
-    private static void AppendEventSpawns(StringBuilder builder, List<EventSpawnDefinition>? spawns, bool includeEmptyFields)
+    private static void AppendEventSpawns(StringBuilder builder, List<EventSpawnDefinition>? spawns)
     {
         if (spawns == null)
         {
@@ -1569,11 +1614,6 @@ internal static class EventManager
 
         if (spawns.Count == 0)
         {
-            if (includeEmptyFields)
-            {
-                AppendYamlLine(builder, 1, "spawns: []");
-            }
-
             return;
         }
 
@@ -1617,14 +1657,6 @@ internal static class EventManager
     {
         builder.Append(' ', indent * 2);
         builder.Append(key).Append(": ").AppendLine(FormatYamlString(value));
-    }
-
-    private static void AppendYamlOptionalStringLine(StringBuilder builder, int indent, string key, string? value)
-    {
-        if (!string.IsNullOrWhiteSpace(value))
-        {
-            AppendYamlStringLine(builder, indent, key, value);
-        }
     }
 
     private static void AppendYamlOptionalBoolLine(StringBuilder builder, int indent, string key, bool? value)
@@ -1705,46 +1737,29 @@ internal static class EventManager
         return $"'{normalized.Replace("'", "''")}'";
     }
 
-    private static EventDefinition ConvertToDefinition(RandomEvent ev, bool includeEventDefaults, bool includeSpawnDefaults)
+    private static EventDefinition ConvertToDefinition(RandomEvent ev, bool includeSpawnDefaults)
     {
-        RandomEvent defaults = new();
         List<SpawnSystem.SpawnData> spawns = ev.m_spawn ?? new List<SpawnSystem.SpawnData>();
         EventRuntimeMetadata? metadata = EventMetadata.TryGetValue(ev, out EventRuntimeMetadata foundMetadata) ? foundMetadata : null;
         EventDefinition definition = new()
         {
             Event = ev.m_name,
-            Settings = includeEventDefaults ||
-                       ev.m_enabled != defaults.m_enabled ||
-                       ev.m_random != defaults.m_random ||
-                       !FloatEquals(ev.m_duration, defaults.m_duration) ||
-                       !FloatEquals(ev.m_eventRange, defaults.m_eventRange) ||
-                       ev.m_pauseIfNoPlayerInArea != defaults.m_pauseIfNoPlayerInArea
-                ? new List<string>
-                {
-                    ev.m_enabled.ToString().ToLowerInvariant(),
-                    ev.m_random.ToString().ToLowerInvariant(),
-                    FormatFloat(ev.m_duration),
-                    FormatFloat(ev.m_eventRange),
-                    ev.m_pauseIfNoPlayerInArea.ToString().ToLowerInvariant()
-                }
-                : null,
-            Standalone = includeEventDefaults || !FloatEquals(ev.m_standaloneInterval, defaults.m_standaloneInterval) ||
-                         !FloatEquals(ev.m_standaloneChance, defaults.m_standaloneChance)
-                ? new List<float> { ev.m_standaloneInterval, ev.m_standaloneChance }
-                : null,
-            SpawnerDelay = includeEventDefaults || !FloatEquals(ev.m_spawnerDelay, defaults.m_spawnerDelay) ? ev.m_spawnerDelay : null,
-            Conditions = ConvertConditions(ev, metadata, includeEventDefaults),
-            Messages = includeEventDefaults || !string.IsNullOrWhiteSpace(ev.m_startMessage) || !string.IsNullOrWhiteSpace(ev.m_endMessage)
-                ? new List<string> { ev.m_startMessage ?? "", ev.m_endMessage ?? "" }
-                : null,
-            ForceEnvironment = includeEventDefaults ? ev.m_forceEnvironment ?? "" : !string.IsNullOrWhiteSpace(ev.m_forceEnvironment) ? ev.m_forceEnvironment : null,
-            ForceMusic = includeEventDefaults ? ev.m_forceMusic ?? "" : !string.IsNullOrWhiteSpace(ev.m_forceMusic) ? ev.m_forceMusic : null,
-            StartCommands = includeEventDefaults || (metadata?.StartCommands?.Count ?? 0) > 0
-                ? metadata?.StartCommands?.ToList() ?? new List<string>()
-                : null,
-            EndCommands = includeEventDefaults || (metadata?.EndCommands?.Count ?? 0) > 0
-                ? metadata?.EndCommands?.ToList() ?? new List<string>()
-                : null,
+            Settings = new List<string>
+            {
+                ev.m_enabled.ToString().ToLowerInvariant(),
+                ev.m_random.ToString().ToLowerInvariant(),
+                FormatFloat(ev.m_duration),
+                FormatFloat(ev.m_eventRange),
+                ev.m_pauseIfNoPlayerInArea.ToString().ToLowerInvariant()
+            },
+            Standalone = new List<float> { ev.m_standaloneInterval, ev.m_standaloneChance },
+            SpawnerDelay = ev.m_spawnerDelay,
+            Conditions = ConvertConditions(ev, metadata),
+            Messages = new List<string> { ev.m_startMessage ?? "", ev.m_endMessage ?? "" },
+            ForceEnvironment = ev.m_forceEnvironment ?? "",
+            ForceMusic = ev.m_forceMusic ?? "",
+            StartCommands = metadata?.StartCommands?.ToList() ?? new List<string>(),
+            EndCommands = metadata?.EndCommands?.ToList() ?? new List<string>(),
             Spawns = spawns
                 .Where(spawn => spawn != null)
                 .Select(spawn => ConvertSpawnDefinition(spawn, includeSpawnDefaults))
@@ -1759,10 +1774,9 @@ internal static class EventManager
         return definition;
     }
 
-    private static EventConditionsDefinition? ConvertConditions(RandomEvent ev, EventRuntimeMetadata? metadata, bool full)
+    private static EventConditionsDefinition ConvertConditions(RandomEvent ev, EventRuntimeMetadata? metadata)
     {
         List<string> playerBase = ConvertPlayerBaseCondition(metadata?.PlayerBase, ev.m_nearBaseOnly);
-        RandomEvent defaults = new();
         List<string> biomes = ConvertBiomes(ev.m_biome);
         List<string> requiredEnvironments = metadata?.RequiredEnvironments?.ToList() ?? new List<string>();
         IntRangeDefinition? playerLimit = metadata?.PlayerLimit != null ? CloneRange(metadata.PlayerLimit) : null;
@@ -1773,38 +1787,24 @@ internal static class EventManager
         List<string> playerAll = ev.m_altRequiredPlayerKeysAll ?? new List<string>();
         List<ItemDrop> blockedKnownItems = ev.m_altRequiredNotKnownItems ?? new List<ItemDrop>();
         List<string> playerBlocked = ev.m_altNotRequiredPlayerKeys ?? new List<string>();
-        bool hasReferenceConditions =
-            metadata?.HasConditionValues() == true ||
-            ev.m_biome != defaults.m_biome ||
-            ev.m_nearBaseOnly ||
-            requiredEnvironments.Count > 0 ||
-            (playerLimit?.HasValues() ?? false) ||
-            HasKeyRequirements(ev);
-
-        if (!full && !hasReferenceConditions)
-        {
-            return null;
-        }
 
         return new EventConditionsDefinition
         {
-            Biomes = full || ev.m_biome != defaults.m_biome ? biomes : null,
-            PlayerBase = full || ev.m_nearBaseOnly || metadata?.PlayerBase != null ? playerBase : null,
-            RequiredEnvironments = full || requiredEnvironments.Count > 0 ? requiredEnvironments : null,
-            Players = full || (playerLimit?.HasValues() ?? false)
-                ? new List<string>
-                {
-                    RangeFormatting.FormatShorthand(playerLimit ?? RangeFormatting.From(0, null)),
-                    FormatFloat(metadata?.PlayerDistance ?? 100f)
-                }
-                : null,
-            RequiredGlobalKeys = full || globalRequired.Count > 0 ? globalRequired.ToList() : null,
-            ForbiddenGlobalKeys = full || globalBlocked.Count > 0 ? globalBlocked.ToList() : null,
-            RequiredPlayerKeysAny = full || playerAny.Count > 0 ? playerAny.ToList() : null,
-            RequiredPlayerKeysAll = full || playerAll.Count > 0 ? playerAll.ToList() : null,
-            ForbiddenPlayerKeys = full || playerBlocked.Count > 0 ? playerBlocked.ToList() : null,
-            RequiredKnownItems = full || knownItems.Count > 0 ? ConvertItemDrops(knownItems) : null,
-            ForbiddenKnownItems = full || blockedKnownItems.Count > 0 ? ConvertItemDrops(blockedKnownItems) : null
+            Biomes = biomes,
+            PlayerBase = playerBase,
+            RequiredEnvironments = requiredEnvironments,
+            Players = new List<string>
+            {
+                RangeFormatting.FormatShorthand(playerLimit ?? RangeFormatting.From(0, null)),
+                FormatFloat(metadata?.PlayerDistance ?? 100f)
+            },
+            RequiredGlobalKeys = globalRequired.ToList(),
+            ForbiddenGlobalKeys = globalBlocked.ToList(),
+            RequiredPlayerKeysAny = playerAny.ToList(),
+            RequiredPlayerKeysAll = playerAll.ToList(),
+            ForbiddenPlayerKeys = playerBlocked.ToList(),
+            RequiredKnownItems = ConvertItemDrops(knownItems),
+            ForbiddenKnownItems = ConvertItemDrops(blockedKnownItems)
         };
     }
 
@@ -1831,17 +1831,6 @@ internal static class EventManager
         }
 
         return new List<string> { "near", "away" };
-    }
-
-    private static bool HasKeyRequirements(RandomEvent ev)
-    {
-        return (ev.m_requiredGlobalKeys?.Count ?? 0) > 0 ||
-               (ev.m_notRequiredGlobalKeys?.Count ?? 0) > 0 ||
-               (ev.m_altRequiredKnownItems?.Count ?? 0) > 0 ||
-               (ev.m_altRequiredPlayerKeysAny?.Count ?? 0) > 0 ||
-               (ev.m_altRequiredPlayerKeysAll?.Count ?? 0) > 0 ||
-               (ev.m_altRequiredNotKnownItems?.Count ?? 0) > 0 ||
-               (ev.m_altNotRequiredPlayerKeys?.Count ?? 0) > 0;
     }
 
     private static EventSpawnDefinition ConvertSpawnDefinition(SpawnSystem.SpawnData data, bool full)
@@ -2344,11 +2333,6 @@ internal static class EventManager
             .Where(value => value.Length > 0)
             .ToList();
         return normalized.Count == 0 ? null : normalized;
-    }
-
-    private static bool FloatEquals(float left, float right)
-    {
-        return Math.Abs(left - right) < 0.0001f;
     }
 
     private static string FormatFloat(float value)

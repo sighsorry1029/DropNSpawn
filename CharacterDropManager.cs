@@ -42,9 +42,7 @@ internal static partial class CharacterDropManager
             ClientRequestPriority = 10,
             KeySelector = entry => entry.RuleId,
             ApplyPayloadAction = ApplySyncedPayload,
-            WorkKinds = DomainWorkKinds.Runtime | DomainWorkKinds.SnapshotBuild,
             HasPendingSnapshotBuildWork = HasPendingSnapshotBuildWork,
-            GetPendingSnapshotBuildWorkCount = GetPendingSnapshotBuildWorkCount,
             ProcessPendingSnapshotBuildStep = ProcessPendingSnapshotBuildStep,
             BeforeClientManifestChanged = MarkSyncedPayloadPending,
             OnClientAuthorityCutover = EnterPendingSyncedPayloadState
@@ -59,20 +57,13 @@ internal static partial class CharacterDropManager
         public bool DropInStack { get; set; }
     }
 
-    private sealed class SyncedCharacterConfigurationState
+    private sealed class CharacterConfigurationState
     {
         public List<CharacterDropPrefabEntry> Configuration { get; } = new();
         public Dictionary<string, List<CharacterDropPrefabEntry>> ActiveEntriesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public HashSet<string> ConfiguredCharacterDropPrefabs { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> PrefabsWithCharacterDropOverrides { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public Dictionary<string, string> EntrySignaturesByPrefab { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, string> CurrentEntrySignaturesByPrefab { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string ConfigurationSignature { get; set; } = "";
-    }
-
-    private sealed class ParsedCharacterConfigurationDocument
-    {
-        public List<CharacterDropPrefabEntry> Configuration { get; } = new();
-        public List<string> Warnings { get; } = new();
     }
 
     private sealed class CharacterRuntimeContextSnapshot
@@ -93,7 +84,7 @@ internal static partial class CharacterDropManager
         .ConfigureDefaultValuesHandling(DefaultValuesHandling.OmitNull | DefaultValuesHandling.OmitDefaults)
         .Build();
 
-    private static readonly CharacterConfigurationRuntimeState RuntimeState = new();
+    private static CharacterConfigurationState RuntimeState = new();
     private static readonly InvalidEntryDiagnostics InvalidEntryWarnings = new();
     private static readonly System.Reflection.FieldInfo? DropsEnabledField = AccessTools.Field(typeof(CharacterDrop), "m_dropsEnabled");
     [ThreadStatic] private static CharacterDrop? OnePerPlayerScopeCharacterDrop;
@@ -123,9 +114,9 @@ internal static partial class CharacterDropManager
     private static string PrimaryOverrideConfigurationPathYml => Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, $"{PluginSettingsFacade.GetYamlDomainFilePrefix("character")}.yml");
     private static string PrimaryOverrideConfigurationPathYaml => Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, $"{PluginSettingsFacade.GetYamlDomainFilePrefix("character")}.yaml");
     private static string FullScaffoldConfigurationPath => Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, $"{PluginSettingsFacade.GetYamlDomainFilePrefix("character")}.full.yml");
-    private static readonly DomainConfigurationRuntime<CharacterDropPrefabEntry, SyncedCharacterConfigurationState> ConfigurationRuntime =
+    private static readonly DomainConfigurationRuntime<CharacterDropPrefabEntry, CharacterConfigurationState> ConfigurationRuntime =
         new(
-            new DomainLoadHooks<CharacterDropPrefabEntry, SyncedCharacterConfigurationState>(
+            new DomainLoadHooks<CharacterDropPrefabEntry, CharacterConfigurationState>(
                 ParseLocalConfigurationDocuments,
                 BuildSyncedConfigurationState,
                 CommitSyncedConfigurationState,
@@ -139,7 +130,7 @@ internal static partial class CharacterDropManager
                     Descriptor,
                     RuntimeState.Configuration,
                     RuntimeState.ConfigurationSignature)),
-            new DomainSyncHooks<CharacterDropPrefabEntry, SyncedCharacterConfigurationState>(
+            new DomainSyncHooks<CharacterDropPrefabEntry, CharacterConfigurationState>(
                 (out List<CharacterDropPrefabEntry> configuration, out string payloadToken) =>
                     ConfigurationDomainHost.TryGetSyncedEntries(Descriptor, out configuration, out payloadToken),
                 payloadToken => ConfigurationDomainHost.ShouldSkipSyncedPayload(
@@ -150,8 +141,7 @@ internal static partial class CharacterDropManager
                 CommitSyncedConfigurationState,
                 state => state.ActiveEntriesByPrefab.Count,
                 "ServerSync:DropNSpawnCharacter",
-                () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(
-                    MarkSyncedPayloadPending),
+                MarkSyncedPayloadPending,
                 LogSyncedCharacterConfigurationLoaded,
                 LogSyncedCharacterConfigurationFailure));
     internal static bool ShouldReloadForPath(string? path)
@@ -319,14 +309,6 @@ internal static partial class CharacterDropManager
         }
     }
 
-    internal static int GetPendingSnapshotBuildWorkCount()
-    {
-        lock (Sync)
-        {
-            return CharacterDropRuntime.GetPendingSnapshotBuildWorkCount();
-        }
-    }
-
     internal static bool ProcessPendingSnapshotBuildStep(float deadline)
     {
         lock (Sync)
@@ -404,15 +386,39 @@ internal static partial class CharacterDropManager
 
     private static void ResetLoadedConfigurationState()
     {
-        RuntimeState.Reset();
+        RuntimeState = new CharacterConfigurationState();
         InvalidEntryWarnings.Clear();
-        CharacterDropRuntime.Reset();
         _compiledState = CharacterCompiledState.Empty;
         _compiledStateConfigurationSignature = "";
         _compiledStateGameDataSignature = null;
         _cachedFrameGameDataSignatureFrame = -1;
         _cachedFrameGameDataSignatureValue = 0;
         Volatile.Write(ref _synchronizedPayloadReady, false);
+    }
+
+    internal static void ResetWorldRuntimeState()
+    {
+        lock (Sync)
+        {
+            HashSet<string> previouslyAppliedPrefabs = BuildLastAppliedPrefabs();
+            RestoreSnapshots(previouslyAppliedPrefabs);
+            RestoreTrackedCharacterDrops(previouslyAppliedPrefabs);
+
+            CharacterDropRuntime.Reset();
+            _compiledState = CharacterCompiledState.Empty;
+            _compiledStateConfigurationSignature = "";
+            _compiledStateGameDataSignature = null;
+            _lastAppliedEntrySignaturesByPrefab.Clear();
+            _lastAppliedConfigurationSignature = "";
+            _lastAppliedGameDataSignature = null;
+            _lastAppliedDomainEnabled = null;
+            _lastAppliedSynchronizedPayloadReady = false;
+            _runtimeContextSnapshot = null;
+            _cachedFrameGameDataSignatureFrame = -1;
+            _cachedFrameGameDataSignatureValue = 0;
+            OnePerPlayerScopeCharacterDrop = null;
+            OnePerPlayerScopeDepth = 0;
+        }
     }
 
     private static List<CharacterDropPrefabEntry> CloneAndNormalizeConfigurationEntries(
@@ -518,12 +524,12 @@ internal static partial class CharacterDropManager
         return true;
     }
 
-    private static SyncedCharacterConfigurationState BuildSyncedConfigurationState(
+    private static CharacterConfigurationState BuildSyncedConfigurationState(
         List<CharacterDropPrefabEntry> configuration,
         string sourceName)
     {
         using InvalidEntryDiagnostics.SuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(sourceName);
-        SyncedCharacterConfigurationState state = new();
+        CharacterConfigurationState state = new();
         foreach (CharacterDropPrefabEntry entry in CloneAndNormalizeConfigurationEntries(configuration, sourceName))
         {
             if (string.IsNullOrWhiteSpace(entry.Prefab))
@@ -541,36 +547,17 @@ internal static partial class CharacterDropManager
             GetOrCreateActiveEntries(state.ActiveEntriesByPrefab, entry.Prefab).Add(entry);
         }
 
-        foreach (string prefabName in state.ActiveEntriesByPrefab.Keys)
-        {
-            state.ConfiguredCharacterDropPrefabs.Add(prefabName);
-        }
         RebuildCharacterDropOverridePrefabSet(state.ActiveEntriesByPrefab, state.PrefabsWithCharacterDropOverrides);
 
         state.ConfigurationSignature = NetworkPayloadSyncSupport.ComputeCharacterConfigurationSignature(state.Configuration);
-        state.EntrySignaturesByPrefab = BuildActiveEntrySignaturesByPrefab(state.ActiveEntriesByPrefab);
+        state.CurrentEntrySignaturesByPrefab = BuildActiveEntrySignaturesByPrefab(state.ActiveEntriesByPrefab);
         return state;
     }
 
-    private static void CommitSyncedConfigurationState(SyncedCharacterConfigurationState state, string payloadToken)
+    private static void CommitSyncedConfigurationState(CharacterConfigurationState state, string payloadToken)
     {
         ResetLoadedConfigurationState();
-        RuntimeState.Configuration = state.Configuration;
-        foreach ((string prefabName, List<CharacterDropPrefabEntry> entries) in state.ActiveEntriesByPrefab)
-        {
-            RuntimeState.ActiveEntriesByPrefab[prefabName] = entries;
-        }
-
-        ReplaceEntrySignatures(RuntimeState.CurrentEntrySignaturesByPrefab, state.EntrySignaturesByPrefab);
-        foreach (string prefabName in state.ConfiguredCharacterDropPrefabs)
-        {
-            RuntimeState.ConfiguredCharacterDropPrefabs.Add(prefabName);
-        }
-        foreach (string prefabName in state.PrefabsWithCharacterDropOverrides)
-        {
-            RuntimeState.PrefabsWithCharacterDropOverrides.Add(prefabName);
-        }
-        RuntimeState.ConfigurationSignature = state.ConfigurationSignature;
+        RuntimeState = state;
         LoadState.LastLoadedPayload = payloadToken;
         LoadState.LastRejectedPayload = "";
         LoadState.PendingStrictPayload = "";
@@ -586,13 +573,7 @@ internal static partial class CharacterDropManager
     {
         return ConfigurationLoadSupport.ParseLocalConfigurationDocuments(
             documents,
-            (yaml, path) =>
-            {
-                ParsedCharacterConfigurationDocument parsedDocument = ParseConfiguration(yaml, path);
-                return new ConfigurationLoadSupport.ParsedLocalConfiguration<CharacterDropPrefabEntry>(
-                    parsedDocument.Configuration,
-                    parsedDocument.Warnings);
-            },
+            ParseConfiguration,
             PrepareLocalConfigurationEntries,
             FormatYamlExceptionLocation,
             "Character override YAML must start with a root list like '- prefab: ...'.");
@@ -659,9 +640,11 @@ internal static partial class CharacterDropManager
         return removed;
     }
 
-    private static ParsedCharacterConfigurationDocument ParseConfiguration(string yaml, string? sourcePath)
+    private static ConfigurationLoadSupport.ParsedLocalConfiguration<CharacterDropPrefabEntry> ParseConfiguration(
+        string yaml,
+        string? sourcePath)
     {
-        ParsedCharacterConfigurationDocument result = new();
+        ConfigurationLoadSupport.ParsedLocalConfiguration<CharacterDropPrefabEntry> result = new();
         if (string.IsNullOrWhiteSpace(yaml))
         {
             return result;
@@ -804,11 +787,6 @@ internal static partial class CharacterDropManager
 
         string normalized = ruleId.Trim();
         return normalized.Length == 0 ? null : normalized;
-    }
-
-    private static bool HasCustomDropHandling(List<CharacterDropEntryDefinition>? drops)
-    {
-        return drops?.Any(drop => (drop.AmountLimit.HasValue && drop.AmountLimit.Value >= 0) || drop.DropInStack == true) == true;
     }
 
     private static bool HasCustomDropHandling(IReadOnlyList<CompiledCharacterDropDefinition>? drops)
@@ -1149,11 +1127,6 @@ internal static partial class CharacterDropManager
     private static void CaptureSnapshotsIfNeeded()
     {
         CharacterDropRuntime.CaptureSnapshotsIfNeeded(EnumerateRelevantPrefabs(), CaptureSnapshot);
-    }
-
-    private static void RefreshSnapshots()
-    {
-        CharacterDropRuntime.RefreshSnapshots(EnumerateRelevantPrefabs(), CaptureSnapshot);
     }
 
     private static void EnsureCompiledState()
@@ -1729,67 +1702,6 @@ internal static partial class CharacterDropManager
                 .ToList()));
     }
 
-    private static bool TryBuildEffectiveCustomDropDefinitions(IEnumerable<CharacterDropPrefabEntry> entries, Character character, out List<CharacterDropEntryDefinition> definitions)
-    {
-        SortedDictionary<string, CharacterDropEntryDefinition> definitionsByFingerprint = new(StringComparer.Ordinal);
-        bool matchedCustomEntry = false;
-        foreach (CharacterDropPrefabEntry entry in entries ?? Enumerable.Empty<CharacterDropPrefabEntry>())
-        {
-            if (!EntryMatchesCharacter(entry, character))
-            {
-                continue;
-            }
-
-            if (entry.CharacterDrop == null)
-            {
-                continue;
-            }
-
-            matchedCustomEntry = true;
-            foreach (CharacterDropEntryDefinition definition in entry.CharacterDrop?.Drops ?? Enumerable.Empty<CharacterDropEntryDefinition>())
-            {
-                GameObject? dropPrefab = ResolveDropPrefab((definition.Item ?? "").Trim(), BuildCompiledDropContext(entry));
-                if (dropPrefab == null)
-                {
-                    continue;
-                }
-
-                string fingerprint = BuildDropRowFingerprint(
-                    definition,
-                    GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab));
-                definitionsByFingerprint.TryAdd(fingerprint, definition);
-            }
-        }
-
-        definitions = definitionsByFingerprint.Values.ToList();
-        return matchedCustomEntry;
-    }
-
-    private static bool TryBuildEffectiveCustomDropDefinitions(
-        IEnumerable<CompiledCharacterDropRule> rules,
-        Character character,
-        out List<CompiledCharacterDropDefinition> definitions)
-    {
-        SortedDictionary<string, CompiledCharacterDropDefinition> definitionsByFingerprint = new(StringComparer.Ordinal);
-        bool matchedCustomEntry = false;
-        foreach (CompiledCharacterDropRule rule in rules ?? Enumerable.Empty<CompiledCharacterDropRule>())
-        {
-            if (!EntryMatchesCharacter(rule.Entry, character))
-            {
-                continue;
-            }
-
-            matchedCustomEntry = true;
-            foreach (CompiledCharacterDropDefinition definition in rule.Drops)
-            {
-                definitionsByFingerprint.TryAdd(definition.Fingerprint, definition);
-            }
-        }
-
-        definitions = definitionsByFingerprint.Values.ToList();
-        return matchedCustomEntry;
-    }
-
     private static bool TryBuildEffectiveRuntimeDropDefinitions(
         IEnumerable<CompiledCharacterDropDefinition>? staticDefinitions,
         IEnumerable<CompiledCharacterDropRule> runtimeRules,
@@ -2206,22 +2118,6 @@ internal static partial class CharacterDropManager
         return clone;
     }
 
-    private static List<CharacterDrop.Drop> BuildDrops(List<CharacterDropItemSnapshot> snapshots)
-    {
-        return snapshots
-            .Select(drop => new CharacterDrop.Drop
-            {
-                m_prefab = drop.ItemPrefab,
-                m_amountMin = drop.AmountMin,
-                m_amountMax = drop.AmountMax,
-                m_chance = drop.Chance,
-                m_onePerPlayer = drop.OnePerPlayer,
-                m_levelMultiplier = drop.LevelMultiplier,
-                m_dontScale = drop.DontScale
-            })
-            .ToList();
-    }
-
     private static List<CharacterDrop.Drop> BuildDrops(IReadOnlyList<CompiledCharacterDropDefinition> definitions)
     {
         List<CharacterDrop.Drop> drops = new(definitions.Count);
@@ -2236,121 +2132,6 @@ internal static partial class CharacterDropManager
                 m_onePerPlayer = definition.OnePerPlayer,
                 m_levelMultiplier = definition.LevelMultiplier,
                 m_dontScale = definition.DontScale
-            });
-        }
-
-        return drops;
-    }
-
-    private static List<CharacterDrop.Drop> BuildDrops(List<CharacterDropEntryDefinition> definitions, string context)
-    {
-        List<CharacterDrop.Drop> drops = new();
-        foreach (CharacterDropEntryDefinition definition in definitions)
-        {
-            string itemName = (definition.Item ?? "").Trim();
-            if (itemName.Length == 0)
-            {
-                WarnInvalidEntry($"Entry '{context}' contains a character drop without a drop prefab name.");
-                continue;
-            }
-
-            GameObject? dropPrefab = ResolveDropPrefab(itemName, context);
-            if (dropPrefab == null)
-            {
-                continue;
-            }
-
-            bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab);
-            drops.Add(new CharacterDrop.Drop
-            {
-                m_prefab = dropPrefab,
-                m_amountMin = Math.Max(1, definition.AmountMin ?? 1),
-                m_amountMax = Math.Max(Math.Max(1, definition.AmountMin ?? 1), definition.AmountMax ?? definition.AmountMin ?? 1),
-                m_chance = Mathf.Max(0f, definition.Chance ?? 1f),
-                m_onePerPlayer = definition.OnePerPlayer ?? false,
-                m_levelMultiplier = levelMultiplier,
-                m_dontScale = definition.DontScale ?? false
-            });
-        }
-
-        return drops;
-    }
-
-    private static List<ResolvedConfiguredDrop> GenerateConfiguredDrops(Character character, List<CharacterDropEntryDefinition> definitions, string context)
-    {
-        List<ResolvedConfiguredDrop> drops = new();
-        int characterLevel = character.GetLevel();
-        int levelFactor = GetVanillaDropLevelFactor(characterLevel);
-        int playerCount = GetOnePerPlayerDropCount(character);
-        bool isBoss = IsBossCharacter(character);
-
-        foreach (CharacterDropEntryDefinition definition in definitions)
-        {
-            string itemName = (definition.Item ?? "").Trim();
-            if (itemName.Length == 0)
-            {
-                WarnInvalidEntry($"Entry '{context}' contains a character drop without a drop prefab name.");
-                continue;
-            }
-
-            GameObject? dropPrefab = ResolveDropPrefab(itemName, context);
-            if (dropPrefab == null)
-            {
-                continue;
-            }
-
-            float chance = Mathf.Max(0f, definition.Chance ?? 1f);
-            bool levelMultiplier = GetEffectiveCharacterDropLevelMultiplier(definition, dropPrefab);
-            bool applyGlobalCharacterLootMultiplier = ShouldApplyGlobalCharacterLootLevelMultiplier(dropPrefab, levelMultiplier);
-            bool applyVanillaLevelMultiplier = levelMultiplier && !applyGlobalCharacterLootMultiplier;
-            if (applyVanillaLevelMultiplier)
-            {
-                chance *= levelFactor;
-            }
-
-            if (UnityEngine.Random.value > chance)
-            {
-                continue;
-            }
-
-            int amountMin = Math.Max(1, definition.AmountMin ?? 1);
-            int amountMax = Math.Max(amountMin, definition.AmountMax ?? definition.AmountMin ?? 1);
-            int amount = definition.DontScale ?? false
-                ? UnityEngine.Random.Range(amountMin, amountMax)
-                : RollConfiguredDropAmount(dropPrefab, amountMin, amountMax);
-
-            if (applyVanillaLevelMultiplier)
-            {
-                amount *= levelFactor;
-            }
-
-            bool onePerPlayer = definition.OnePerPlayer ?? false;
-            if (onePerPlayer)
-            {
-                amount = playerCount;
-            }
-
-            if (applyGlobalCharacterLootMultiplier && !onePerPlayer)
-            {
-                amount = ScaleGlobalCharacterLootAmount(amount, characterLevel, isBoss);
-            }
-
-            amount = Math.Min(amount, 100);
-            if (definition.AmountLimit.HasValue && definition.AmountLimit.Value >= 0)
-            {
-                amount = Math.Min(amount, definition.AmountLimit.Value);
-            }
-
-            if (amount <= 0)
-            {
-                continue;
-            }
-
-            drops.Add(new ResolvedConfiguredDrop
-            {
-                Prefab = dropPrefab,
-                Amount = amount,
-                DropInStack = definition.DropInStack == true
             });
         }
 
@@ -2438,8 +2219,7 @@ internal static partial class CharacterDropManager
     {
         character ??= characterDrop.GetComponent<Character>();
         Vector3 point = character != null ? character.GetCenterPoint() : characterDrop.transform.position;
-        bool livingPlayersOnly = PluginSettingsFacade.IsCharacterDropOnePerPlayerNearbyRangeLivingPlayersOnly();
-        return SceneProximityQueries.CountPlayersInRangeXZ(point, range, livingPlayersOnly);
+        return SceneProximityQueries.CountPlayersInRangeXZ(point, range, livingPlayersOnly: true);
     }
 
     private static void DropConfiguredItems(List<ResolvedConfiguredDrop> drops, Vector3 centerPos, float dropArea)
@@ -2663,31 +2443,6 @@ internal static partial class CharacterDropManager
         if (prefab == null)
         {
             WarnInvalidEntry($"Entry '{context}' references unknown drop prefab '{trimmedName}'.");
-            return null;
-        }
-
-        return prefab;
-    }
-
-    private static GameObject? ResolveItemPrefab(string itemName, string context)
-    {
-        string trimmedName = (itemName ?? "").Trim();
-        if (trimmedName.Length == 0)
-        {
-            WarnInvalidEntry($"Entry '{context}' references an empty item prefab name.");
-            return null;
-        }
-
-        GameObject? prefab = ResolveKnownPrefab(trimmedName);
-        if (prefab == null)
-        {
-            WarnInvalidEntry($"Entry '{context}' references unknown item prefab '{trimmedName}'.");
-            return null;
-        }
-
-        if (!prefab.TryGetComponent(out ItemDrop _))
-        {
-            WarnInvalidEntry($"Entry '{context}' references '{trimmedName}', but it is not an item prefab.");
             return null;
         }
 

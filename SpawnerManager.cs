@@ -42,21 +42,13 @@ internal static partial class SpawnerManager
             ClientRequestPriority = 30,
             KeySelector = entry => entry.RuleId,
             ApplyPayloadAction = ApplySyncedPayload,
-            WorkKinds = DomainWorkKinds.Runtime | DomainWorkKinds.Reconcile,
             HasPendingReconcileWork = HasPendingReconcileWork,
-            GetPendingReconcileWorkCount = GetPendingReconcileWorkCount,
             ProcessPendingReconcileStep = ProcessQueuedReconcileStep,
             BeforeClientManifestChanged = MarkSyncedPayloadPending,
             OnClientAuthorityCutover = EnterPendingSyncedPayloadState
         });
     internal static DomainDescriptor<SpawnerConfigurationEntry> Descriptor => Module.DescriptorTyped;
     internal static DomainTransportMetadata<SpawnerConfigurationEntry> TransportMetadata => Module.TransportMetadataTyped;
-
-    private sealed class ParsedSpawnerConfigurationDocument
-    {
-        public List<SpawnerConfigurationEntry> Configuration { get; } = new();
-        public List<string> Warnings { get; } = new();
-    }
 
     private readonly struct PendingSpawnAreaReconcile
     {
@@ -409,8 +401,7 @@ internal static partial class SpawnerManager
                 CommitSyncedConfigurationState,
                 state => state.ActiveEntries.Count,
                 "ServerSync:DropNSpawnSpawner",
-                () => ConfigurationDomainHost.HandleWaitingForSyncedPayload(
-                    MarkSyncedPayloadPending),
+                MarkSyncedPayloadPending,
                 LogSyncedSpawnerConfigurationLoaded,
                 LogSyncedSpawnerConfigurationFailure));
 
@@ -727,10 +718,9 @@ internal static partial class SpawnerManager
         Volatile.Write(ref _runtimeConfigurationSnapshot, SpawnerRuntimeConfigurationSnapshot.Empty);
         RuntimeState.Reset();
         InvalidEntryWarnings.Clear();
-        LiveReconcilerState.ClearMissingComponentWarnings();
         SelectorCacheStore.Clear();
         RuntimeStateStore.Clear();
-        LiveRegistryStore.ClearRuntimeView();
+        LiveRegistryStore.ClearLocationBuckets();
         ProvenanceRegistry.Clear(clearCurrentContexts: false);
         InvalidateTrackedSpawnerEligibility();
     }
@@ -987,13 +977,7 @@ internal static partial class SpawnerManager
     {
         return ConfigurationLoadSupport.ParseLocalConfigurationDocuments(
             documents,
-            (yaml, path) =>
-            {
-                ParsedSpawnerConfigurationDocument parsedDocument = ParseConfiguration(yaml, path);
-                return new ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnerConfigurationEntry>(
-                    parsedDocument.Configuration,
-                    parsedDocument.Warnings);
-            },
+            ParseConfiguration,
             PrepareLocalConfigurationEntries,
             FormatYamlExceptionLocation,
             "Spawner override YAML must start with a root list like '- prefab: ...'.");
@@ -1102,9 +1086,11 @@ internal static partial class SpawnerManager
         }
     }
 
-    private static ParsedSpawnerConfigurationDocument ParseConfiguration(string yaml, string? sourcePath)
+    private static ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnerConfigurationEntry> ParseConfiguration(
+        string yaml,
+        string? sourcePath)
     {
-        ParsedSpawnerConfigurationDocument result = new();
+        ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnerConfigurationEntry> result = new();
         if (string.IsNullOrWhiteSpace(yaml))
         {
             return result;
@@ -1492,12 +1478,6 @@ internal static partial class SpawnerManager
         });
     }
 
-    private static void RefreshSnapshots()
-    {
-        ResetReferenceSnapshots();
-        CaptureSnapshotsIfNeeded();
-    }
-
     private static IEnumerable<GameObject> EnumerateRootPrefabs()
     {
         HashSet<int> seen = new();
@@ -1755,88 +1735,18 @@ internal static partial class SpawnerManager
 
     private static void ReapplyRegisteredLiveObjects(bool domainEnabled, HashSet<string> prefabs)
     {
-        SpawnerRuntimeConfigurationSnapshot runtimeConfigurationSnapshot = GetRuntimeConfigurationSnapshot();
-        foreach (SpawnArea spawnArea in GetRegisteredSpawnAreas(prefabs, runtimeConfigurationSnapshot))
-        {
-            TrackSpawnAreaInstanceInternal(spawnArea);
-            if (domainEnabled &&
-                TryGetActiveSpawnAreaEntries(spawnArea, out IReadOnlyList<SpawnerRuntimeEntry>? entries, out _))
-            {
-                ReconcileSpawnAreaInstanceInternal(spawnArea, entries!);
-                continue;
-            }
-
-            RestoreSpawnAreaInstance(spawnArea);
-        }
-
-        foreach (CreatureSpawner creatureSpawner in GetRegisteredCreatureSpawners(prefabs, runtimeConfigurationSnapshot))
-        {
-            TrackCreatureSpawnerInstanceInternal(creatureSpawner);
-            if (domainEnabled &&
-                TryGetActiveCreatureSpawnerEntries(creatureSpawner, out IReadOnlyList<SpawnerRuntimeEntry>? entries, out _))
-            {
-                ReconcileCreatureSpawnerInstanceInternal(creatureSpawner, entries!);
-                continue;
-            }
-
-            RestoreCreatureSpawnerInstance(creatureSpawner, refreshRuntimeState: true);
-        }
+        ReapplyRegisteredLiveObjects(
+            domainEnabled,
+            prefabs,
+            GetRuntimeConfigurationSnapshot());
     }
 
     private static void ReapplyOrQueueRegisteredLiveObjects(bool domainEnabled, HashSet<string> prefabs)
     {
-        SpawnerRuntimeConfigurationSnapshot runtimeConfigurationSnapshot = GetRuntimeConfigurationSnapshot();
-        foreach (SpawnArea spawnArea in GetRegisteredSpawnAreas(prefabs, runtimeConfigurationSnapshot))
-        {
-            TrackSpawnAreaInstanceInternal(spawnArea);
-            if (domainEnabled &&
-                TryGetActiveSpawnAreaEntryCache(
-                    spawnArea,
-                    runtimeConfigurationSnapshot,
-                    out MatchingEntryCache? entryCache,
-                    out string configPrefabName))
-            {
-                if (runtimeConfigurationSnapshot.RuntimeConfiguredSpawnAreaPrefabs.Contains(configPrefabName))
-                {
-                    QueueSpawnAreaReconcile(spawnArea);
-                    continue;
-                }
-
-                ReconcileSpawnAreaInstanceInternal(
-                    spawnArea,
-                    entryCache!.Entries,
-                    entryCache);
-                continue;
-            }
-
-            RestoreSpawnAreaInstance(spawnArea);
-        }
-
-        foreach (CreatureSpawner creatureSpawner in GetRegisteredCreatureSpawners(prefabs, runtimeConfigurationSnapshot))
-        {
-            TrackCreatureSpawnerInstanceInternal(creatureSpawner);
-            if (domainEnabled &&
-                TryGetActiveCreatureSpawnerEntryCache(
-                    creatureSpawner,
-                    runtimeConfigurationSnapshot,
-                    out MatchingEntryCache? entryCache,
-                    out string configPrefabName))
-            {
-                if (runtimeConfigurationSnapshot.RuntimeConfiguredCreatureSpawnerPrefabs.Contains(configPrefabName))
-                {
-                    QueueCreatureSpawnerReconcile(creatureSpawner);
-                    continue;
-                }
-
-                ReconcileCreatureSpawnerInstanceInternal(
-                    creatureSpawner,
-                    entryCache!.Entries,
-                    entryCache);
-                continue;
-            }
-
-            RestoreCreatureSpawnerInstance(creatureSpawner, refreshRuntimeState: true);
-        }
+        ReapplyOrQueueRegisteredLiveObjects(
+            domainEnabled,
+            prefabs,
+            GetRuntimeConfigurationSnapshot());
     }
 
     private static bool TryGetTargetedSelectorLocationKeys(
@@ -1874,25 +1784,6 @@ internal static partial class SpawnerManager
     }
 
 
-    private static void RestoreSpawnArea(SpawnArea target, SpawnAreaComponentSnapshot snapshot)
-    {
-        ClearAppliedSpawnAreaPostSpawnOverrides(target);
-        ClearAppliedSpawnAreaTotalSpawnLimit(target);
-        RestoreSpawnAreaValues(
-            target,
-            snapshot.LevelUpChance,
-            snapshot.SpawnInterval,
-            snapshot.TriggerDistance,
-            snapshot.SetPatrolSpawnPoint,
-            snapshot.SpawnRadius,
-            snapshot.NearRadius,
-            snapshot.FarRadius,
-            snapshot.MaxNear,
-            snapshot.MaxTotal,
-            snapshot.OnGroundOnly,
-            snapshot.Prefabs);
-    }
-
     private static void RestoreSpawnArea(SpawnArea target, SpawnAreaLiveSnapshot snapshot)
     {
         ClearAppliedSpawnAreaPostSpawnOverrides(target);
@@ -1910,33 +1801,6 @@ internal static partial class SpawnerManager
             snapshot.MaxTotal,
             snapshot.OnGroundOnly,
             snapshot.Prefabs);
-    }
-
-    private static void RestoreCreatureSpawner(CreatureSpawner target, CreatureSpawnerComponentSnapshot snapshot)
-    {
-        LiveReconcilerState.ClearAppliedCreatureSpawnerOverrides(target);
-        RestoreCreatureSpawnerValues(
-            target,
-            snapshot.CreaturePrefab,
-            snapshot.MinLevel,
-            snapshot.MaxLevel,
-            snapshot.LevelUpChance,
-            snapshot.RespawnTimeMinutes,
-            snapshot.TriggerDistance,
-            snapshot.TriggerNoise,
-            snapshot.SpawnAtNight,
-            snapshot.SpawnAtDay,
-            snapshot.RequireSpawnArea,
-            snapshot.SpawnInPlayerBase,
-            snapshot.WakeUpAnimation,
-            snapshot.SpawnCheckInterval,
-            snapshot.RequiredGlobalKey,
-            snapshot.BlockingGlobalKey,
-            snapshot.SetPatrolSpawnPoint,
-            snapshot.SpawnGroupId,
-            snapshot.MaxGroupSpawned,
-            snapshot.SpawnGroupRadius,
-            snapshot.SpawnerWeight);
     }
 
     private static void RestoreCreatureSpawner(CreatureSpawner target, CreatureSpawnerLiveSnapshot snapshot)
@@ -2166,7 +2030,7 @@ internal static partial class SpawnerManager
             target.m_triggerNoise = Mathf.Max(0f, definition.TriggerNoise.Value);
         }
 
-        TimeOfDayDefinition? timeOfDay = GetConfiguredTimeOfDay(definition);
+        TimeOfDayDefinition? timeOfDay = definition.TimeOfDay;
         if (timeOfDay != null)
         {
             TimeOfDayFormatting.GetBroadSpawnFlags(timeOfDay, out bool allowDay, out bool allowNight);
@@ -2313,53 +2177,9 @@ internal static partial class SpawnerManager
         target.m_respawnTimeMinuts = defaultRespawnTimeMinutes;
     }
 
-    private static bool HasEntryConditions(SpawnerConfigurationEntry? entry)
-    {
-        return entry != null && DropConditionEvaluator.HasConditions(entry.Conditions);
-    }
-
     private static bool HasDynamicEntryConditions(SpawnerConfigurationEntry? entry)
     {
         return entry != null && DropConditionEvaluator.HasDynamicConditions(entry.Conditions);
-    }
-
-    private static TimeOfDayDefinition? GetConfiguredTimeOfDay(CreatureSpawnerDefinition? definition)
-    {
-        if (definition == null)
-        {
-            return null;
-        }
-
-        if (definition.TimeOfDay != null)
-        {
-            return definition.TimeOfDay;
-        }
-
-        return null;
-    }
-
-    private static bool TryGetActiveSpawnAreaEntries(SpawnArea? spawnArea, out IReadOnlyList<SpawnerRuntimeEntry>? entries, out string configPrefabName)
-    {
-        entries = null;
-        if (!TryGetActiveSpawnAreaEntryCache(spawnArea, out MatchingEntryCache? entryCache, out configPrefabName))
-        {
-            return false;
-        }
-
-        entries = entryCache!.Entries;
-        return true;
-    }
-
-    private static bool TryGetActiveCreatureSpawnerEntries(CreatureSpawner? creatureSpawner, out IReadOnlyList<SpawnerRuntimeEntry>? entries, out string configPrefabName)
-    {
-        entries = null;
-        if (!TryGetActiveCreatureSpawnerEntryCache(creatureSpawner, out MatchingEntryCache? entryCache, out configPrefabName))
-        {
-            return false;
-        }
-
-        entries = entryCache!.Entries;
-        return true;
     }
 
     private static bool ShouldRuntimeReconcile(SpawnerConfigurationEntry? entry)
@@ -2912,14 +2732,6 @@ internal static partial class SpawnerManager
             string.Equals(value, "false", StringComparison.OrdinalIgnoreCase);
 
         return requiresQuotes ? $"'{value.Replace("'", "''")}'" : value;
-    }
-
-    private static void WarnMissingComponent(string key, string componentName)
-    {
-        if (LiveReconcilerState.TryAddMissingComponentWarning(key))
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogWarning($"Spawner configuration references {componentName}, but no matching '{key.Split(':')[0]}' component name was found.");
-        }
     }
 
     private static void WarnInvalidEntry(string message)

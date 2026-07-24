@@ -112,7 +112,7 @@ internal static partial class ObjectDropManager
                 continue;
             }
 
-            ReconcileConfiguredInstance(liveObject, snapshot, plan.ActiveEntries, clearCreatorRestrictedContainerContents: false);
+            ReconcileConfiguredInstance(liveObject, snapshot, plan.ActiveEntries);
         }
     }
 
@@ -136,7 +136,7 @@ internal static partial class ObjectDropManager
                 continue;
             }
 
-            QueueTrackedObjectInstanceReconcileLocked(liveObject, prefabName, clearCreatorRestrictedContainerContents: false);
+            QueueTrackedObjectInstanceReconcileLocked(liveObject, prefabName);
         }
     }
 }

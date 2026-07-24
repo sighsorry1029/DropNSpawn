@@ -335,7 +335,7 @@ internal static partial class NetworkPayloadSyncSupport
         string targetHash,
         string? baseHash)
     {
-        if (!transport.EnableArtifactPrewarm || !transport.SupportsDeltaTransfers)
+        if (!transport.EnableArtifactPrewarm)
         {
             return;
         }
@@ -494,7 +494,7 @@ internal static partial class NetworkPayloadSyncSupport
                     return;
                 }
 
-                if (compressedDeltaPayloadBytes.Length >= fullCompressedPayloadBytes.Length * transport.TransportPolicy.MaxDeltaCompressedSizeRatio)
+                if (compressedDeltaPayloadBytes.Length >= fullCompressedPayloadBytes.Length * DefaultMaxDeltaCompressedSizeRatio)
                 {
                     QueueMainThreadPayloadCommitLocked(() =>
                     {

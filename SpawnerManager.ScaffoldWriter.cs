@@ -83,7 +83,7 @@ internal static partial class SpawnerManager
     {
         AppendScaffoldLine(builder, 1, "creatureSpawner:");
         AppendScaffoldStringLine(builder, 2, "creature", definition.Creature);
-        AppendScaffoldLine(builder, 2, $"timeOfDay: {TimeOfDayFormatting.FormatInlineList(GetConfiguredTimeOfDay(definition), TimeOfDayFormatting.FromSpawnFlags(true, true))}");
+        AppendScaffoldLine(builder, 2, $"timeOfDay: {TimeOfDayFormatting.FormatInlineList(definition.TimeOfDay, TimeOfDayFormatting.FromSpawnFlags(true, true))}");
         AppendScaffoldStringLine(builder, 2, "requiredGlobalKey", definition.RequiredGlobalKey ?? "");
         AppendScaffoldStringLine(builder, 2, "blockingGlobalKey", definition.BlockingGlobalKey ?? "");
         AppendScaffoldLine(builder, 2, $"level: {RangeFormatting.FormatInlineObject(GetLevelRange(definition) ?? RangeFormatting.From(1, 1))}");
@@ -113,12 +113,6 @@ internal static partial class SpawnerManager
     private static IntRangeDefinition? GetLevelRange(CreatureSpawnerDefinition definition)
     {
         return definition.Level ?? RangeFormatting.From(definition.MinLevel, definition.MaxLevel ?? definition.MinLevel);
-    }
-
-    private static void AppendScaffoldComment(StringBuilder builder, string text)
-    {
-        builder.Append("# ");
-        builder.AppendLine(text);
     }
 
     private static void AppendScaffoldLine(StringBuilder builder, int indent, string text)

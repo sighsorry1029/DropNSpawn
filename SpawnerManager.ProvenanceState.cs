@@ -84,11 +84,6 @@ internal static partial class SpawnerManager
             return _pendingLocationRootProvenanceScans.Count > 0;
         }
 
-        public int PendingRootScanCount()
-        {
-            return _pendingLocationRootProvenanceScans.Count;
-        }
-
         public bool TryPeekPendingRootScan(out PendingLocationRootProvenanceScan pendingScan)
         {
             if (_pendingLocationRootProvenanceScans.TryPeek(out PendingLocationRootProvenanceScan? candidate))
@@ -204,7 +199,7 @@ internal static partial class SpawnerManager
 
         public void RemoveSpawnAreaProvenance(SpawnArea? spawnArea)
         {
-            if (spawnArea == null)
+            if (ReferenceEquals(spawnArea, null))
             {
                 return;
             }
@@ -241,7 +236,7 @@ internal static partial class SpawnerManager
 
         public void RemoveCreatureSpawnerProvenance(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner == null)
+            if (ReferenceEquals(creatureSpawner, null))
             {
                 return;
             }

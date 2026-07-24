@@ -332,11 +332,6 @@ internal static partial class ObjectDropManager
             kinds |= LiveObjectComponentKind.TreeLog;
         }
 
-        if (ContainerNeedsLiveMutation(entry))
-        {
-            kinds |= LiveObjectComponentKind.Container;
-        }
-
         if (entry.Pickable != null)
         {
             kinds |= LiveObjectComponentKind.Pickable;

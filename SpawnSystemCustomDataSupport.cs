@@ -24,8 +24,7 @@ internal static class SpawnSystemCustomDataSupport
         }
     }
 
-    private static readonly Dictionary<SpawnSystem.SpawnData, EwdData.DataEntry?> CustomDataBySpawnData = new();
-    private static readonly Dictionary<SpawnSystem.SpawnData, List<EwdBlueprintObject>> ObjectsBySpawnData = new();
+    private static readonly Dictionary<SpawnSystem.SpawnData, PreparedPayload> PayloadsBySpawnData = new();
     private static readonly int HashFaction = "faction".GetStableHashCode();
 
     internal static void ClearCustomData(SpawnSystem system)
@@ -39,16 +38,9 @@ internal static class SpawnSystemCustomDataSupport
         {
             foreach (SpawnSystem.SpawnData spawnData in spawnList.m_spawners)
             {
-                CustomDataBySpawnData.Remove(spawnData);
-                ObjectsBySpawnData.Remove(spawnData);
+                PayloadsBySpawnData.Remove(spawnData);
             }
         }
-    }
-
-    internal static void ClearAll()
-    {
-        CustomDataBySpawnData.Clear();
-        ObjectsBySpawnData.Clear();
     }
 
     internal static void ApplyCustomData(SpawnSystem.SpawnData spawnData, CanonicalSpawnSystemEntry entry, string context)
@@ -84,30 +76,20 @@ internal static class SpawnSystemCustomDataSupport
             return;
         }
 
-        if (payload?.CustomData == null)
+        if (payload == null || !payload.HasValues())
         {
-            CustomDataBySpawnData.Remove(spawnData);
+            PayloadsBySpawnData.Remove(spawnData);
         }
         else
         {
-            CustomDataBySpawnData[spawnData] = payload.CustomData;
-        }
-
-        if (payload?.CustomObjects == null || payload.CustomObjects.Count == 0)
-        {
-            ObjectsBySpawnData.Remove(spawnData);
-        }
-        else
-        {
-            ObjectsBySpawnData[spawnData] = payload.CustomObjects;
+            PayloadsBySpawnData[spawnData] = payload;
         }
     }
 
     internal static bool HasPreparedPayload(SpawnSystem.SpawnData? spawnData)
     {
         return spawnData != null &&
-               (CustomDataBySpawnData.ContainsKey(spawnData) ||
-                ObjectsBySpawnData.ContainsKey(spawnData));
+               PayloadsBySpawnData.ContainsKey(spawnData);
     }
 
     internal static void CopyPreparedPayload(SpawnSystem.SpawnData? source, SpawnSystem.SpawnData? target)
@@ -117,43 +99,39 @@ internal static class SpawnSystemCustomDataSupport
             return;
         }
 
-        if (CustomDataBySpawnData.TryGetValue(source, out EwdData.DataEntry? data) && data != null)
+        if (PayloadsBySpawnData.TryGetValue(source, out PreparedPayload? payload))
         {
-            CustomDataBySpawnData[target] = data;
+            PayloadsBySpawnData[target] = payload;
         }
         else
         {
-            CustomDataBySpawnData.Remove(target);
-        }
-
-        if (ObjectsBySpawnData.TryGetValue(source, out List<EwdBlueprintObject>? objects) && objects.Count > 0)
-        {
-            ObjectsBySpawnData[target] = objects;
-        }
-        else
-        {
-            ObjectsBySpawnData.Remove(target);
+            PayloadsBySpawnData.Remove(target);
         }
     }
 
     internal static void InitializeSpawn(SpawnSystem.SpawnData critter, Vector3 spawnPoint)
     {
-        if (critter == null || !CustomDataBySpawnData.TryGetValue(critter, out EwdData.DataEntry? data) || data == null)
+        if (critter == null ||
+            !PayloadsBySpawnData.TryGetValue(critter, out PreparedPayload? payload) ||
+            payload.CustomData == null)
         {
             return;
         }
 
-        EwdData.DataHelper.Init(critter.m_prefab, spawnPoint, Quaternion.identity, null, data);
+        EwdData.DataHelper.Init(critter.m_prefab, spawnPoint, Quaternion.identity, null, payload.CustomData);
     }
 
     internal static void SpawnObjects(SpawnSystem.SpawnData critter, Vector3 spawnPoint)
     {
-        if (critter == null || !ObjectsBySpawnData.TryGetValue(critter, out List<EwdBlueprintObject>? objects) || objects.Count == 0)
+        if (critter == null ||
+            !PayloadsBySpawnData.TryGetValue(critter, out PreparedPayload? payload) ||
+            payload.CustomObjects == null ||
+            payload.CustomObjects.Count == 0)
         {
             return;
         }
 
-        foreach (EwdBlueprintObject obj in objects)
+        foreach (EwdBlueprintObject obj in payload.CustomObjects)
         {
             if (obj.Chance < 1f && UnityEngine.Random.value > obj.Chance)
             {

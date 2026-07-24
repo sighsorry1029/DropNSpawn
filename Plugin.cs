@@ -1,10 +1,8 @@
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
-using System.Reflection;
 using System.Text;
 using BepInEx;
 using BepInEx.Configuration;
@@ -16,7 +14,7 @@ using ServerSync;
 namespace DropNSpawn;
 
 [BepInPlugin(ModGUID, ModName, ModVersion)]
-[BepInDependency("expand_world_data")]
+[BepInDependency("expand_world_data", "1.66")]
 [BepInDependency("sighsorry.CreatureManager", BepInDependency.DependencyFlags.SoftDependency)]
 /// <summary>
 /// Unity entrypoint and top-level wiring for the runtime platform.
@@ -56,17 +54,15 @@ public class DropNSpawnPlugin : BaseUnityPlugin
 
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
-    internal const string ModVersion = "1.3.3";
+    internal const string ModVersion = "1.3.4";
     internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
-    internal static readonly string RuntimeBuildStamp = BuildRuntimeBuildStamp();
     private static string ConfigFileName = $"{ModGUID}.cfg";
     private static string ConfigFileFullPath = Paths.ConfigPath + Path.DirectorySeparatorChar + ConfigFileName;
     internal static string YamlConfigDirectoryPath => Path.Combine(Paths.ConfigPath, ModName);
     internal static string YamlRulesWatcherPattern => $"{YamlFilePrefix}_*.*";
     internal static string CurrentConfigFileName => ConfigFileName;
     internal static string CurrentConfigFileFullPath => ConfigFileFullPath;
-    internal static string ConnectionError = "";
     internal static DropNSpawnPlugin? Instance { get; private set; }
     private readonly Harmony _harmony = new(ModGUID);
     public static readonly ManualLogSource DropNSpawnLogger = BepInEx.Logging.Logger.CreateLogSource(ModName);
@@ -92,21 +88,6 @@ public class DropNSpawnPlugin : BaseUnityPlugin
     {
         _runtimeWorkCoordinator?.ProcessUpdateFrame();
     }
-
-    private static string BuildRuntimeBuildStamp()
-    {
-        try
-        {
-            Assembly assembly = typeof(DropNSpawnPlugin).Assembly;
-            string moduleVersionId = assembly.ManifestModule.ModuleVersionId.ToString("N");
-            return $"{ModVersion}+{moduleVersionId.Substring(0, 8)}";
-        }
-        catch
-        {
-            return ModVersion;
-        }
-    }
-
 
     private void OnDestroy()
     {
@@ -134,6 +115,8 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         _runtimeWorkCoordinator = null;
         _reloadCoordinator?.Dispose();
         _reloadCoordinator = null;
+        CharacterDropManager.ResetWorldRuntimeState();
+        SpawnerGlobalConfig.Dispose();
         PluginBoundSettings.Clear();
 
         EventManager.Dispose();
@@ -155,11 +138,6 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         };
 
         _configSync = configSync;
-    }
-
-    internal static string GetSyncedManifestValue(DomainDescriptor domain)
-    {
-        return PluginManifestCoordinator.GetSyncedManifestValue(domain);
     }
 
     internal void SaveWithRespectToConfigSet(bool reload = false, bool save = true)
@@ -213,22 +191,6 @@ public class DropNSpawnPlugin : BaseUnityPlugin
     {
         get => _runtimeWorkCoordinator;
         set => _runtimeWorkCoordinator = value;
-    }
-
-    internal static bool TryGetSyncedEntries<TEntry>(
-        DomainDescriptor<TEntry> domain,
-        out List<TEntry> entries,
-        out string payloadToken)
-    {
-        return PluginManifestCoordinator.TryGetSyncedEntries(domain, out entries, out payloadToken);
-    }
-
-    internal static void PublishSyncedPayload<TEntry>(
-        DomainDescriptor<TEntry> domain,
-        List<TEntry> entries,
-        string? knownSignature)
-    {
-        PluginManifestCoordinator.PublishSyncedPayload(domain, entries, knownSignature);
     }
 
     #region ConfigOptions

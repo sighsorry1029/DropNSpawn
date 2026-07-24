@@ -28,24 +28,28 @@ internal static class CharacterDropGenerateDropListPatch
 
     private static void Prefix(CharacterDrop __instance, out State __state)
     {
+        __state = new State(previousDrops: null, hasOnePerPlayerScope: false, amountSourceDrops: null);
         bool isCharacterDomainEnabled = PluginSettingsFacade.IsCharacterDomainEnabled();
         if (!isCharacterDomainEnabled &&
             !CharacterDropManager.IsGlobalCharacterLootLevelScalingEnabled())
         {
-            __state = new State(previousDrops: null, hasOnePerPlayerScope: false, amountSourceDrops: null);
             return;
         }
 
         List<CharacterDrop.Drop>? previousDrops = isCharacterDomainEnabled
             ? CharacterDropManager.OverrideConditionalDrops(__instance)
             : null;
+        __state = new State(previousDrops, hasOnePerPlayerScope: false, amountSourceDrops: null);
         List<CharacterDrop.Drop>? previousScaledDrops = CharacterDropManager.SuppressGlobalCharacterLootLevelMultiplierDrops(
             __instance,
             out IReadOnlyList<CharacterDrop.Drop>? amountSourceDrops);
         previousDrops ??= previousScaledDrops;
+        __state = new State(previousDrops, hasOnePerPlayerScope: false, amountSourceDrops);
+        bool hasOnePerPlayerScope =
+            isCharacterDomainEnabled && CharacterDropManager.BeginOnePerPlayerNearbyPlayerScope(__instance);
         __state = new State(
             previousDrops,
-            isCharacterDomainEnabled && CharacterDropManager.BeginOnePerPlayerNearbyPlayerScope(__instance),
+            hasOnePerPlayerScope,
             amountSourceDrops);
     }
 
@@ -60,8 +64,13 @@ internal static class CharacterDropGenerateDropListPatch
         }
     }
 
-    private static Exception? Finalizer(State __state, Exception? __exception)
+    private static Exception? Finalizer(CharacterDrop __instance, State __state, Exception? __exception)
     {
+        if (__state.PreviousDrops != null)
+        {
+            __instance.m_drops = __state.PreviousDrops;
+        }
+
         if (__state.HasOnePerPlayerScope)
         {
             CharacterDropManager.EndOnePerPlayerNearbyPlayerScope();

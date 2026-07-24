@@ -31,7 +31,7 @@ internal abstract class DomainTransportMetadata
 internal sealed class DomainTransportMetadata<TEntry> : DomainTransportMetadata
 {
     internal DomainTransportMetadata(
-        DomainDescriptor<TEntry> domain,
+        string domainKey,
         int dtoVersion,
         DomainTransportProfile transportProfile,
         string displayName,
@@ -40,19 +40,17 @@ internal sealed class DomainTransportMetadata<TEntry> : DomainTransportMetadata
         Func<TEntry, string> keySelector,
         Action applyPayloadAction)
         : base(
-            domain?.DomainKey ?? "",
+            domainKey,
             dtoVersion,
             transportProfile,
             displayName,
             cacheDirectoryName,
             clientRequestPriority)
     {
-        Domain = domain ?? throw new ArgumentNullException(nameof(domain));
         KeySelector = keySelector ?? throw new ArgumentNullException(nameof(keySelector));
         ApplyPayloadAction = applyPayloadAction ?? throw new ArgumentNullException(nameof(applyPayloadAction));
     }
 
-    internal DomainDescriptor<TEntry> Domain { get; }
     internal Func<TEntry, string> KeySelector { get; }
     internal Action ApplyPayloadAction { get; }
 }

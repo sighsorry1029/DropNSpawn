@@ -34,6 +34,8 @@ internal static class EventGlobalConfig
 
     internal static void Bind(DropNSpawnPlugin plugin)
     {
+        Dispose();
+
         _eventSchedulingMode = plugin.BindConfigEntry(
             "3 - Events",
             "Event scheduling mode",
@@ -95,6 +97,46 @@ internal static class EventGlobalConfig
             synchronizedSetting: true,
             configManagerOrder: 400);
         _randomEventIntervalMinutes.SettingChanged += HandleRuntimeSettingChanged;
+    }
+
+    internal static void Dispose()
+    {
+        if (_eventSchedulingMode != null)
+        {
+            _eventSchedulingMode.SettingChanged -= HandleRuntimeSettingChanged;
+        }
+
+        if (_defaultPlayerBase != null)
+        {
+            _defaultPlayerBase.SettingChanged -= HandleDefinitionSettingChanged;
+        }
+
+        if (_minimumDistanceBetweenEvents != null)
+        {
+            _minimumDistanceBetweenEvents.SettingChanged -= HandleRuntimeSettingChanged;
+        }
+
+        if (_eventDurationMultiplier != null)
+        {
+            _eventDurationMultiplier.SettingChanged -= HandleDefinitionSettingChanged;
+        }
+
+        if (_randomEventChance != null)
+        {
+            _randomEventChance.SettingChanged -= HandleRuntimeSettingChanged;
+        }
+
+        if (_randomEventIntervalMinutes != null)
+        {
+            _randomEventIntervalMinutes.SettingChanged -= HandleRuntimeSettingChanged;
+        }
+
+        _eventSchedulingMode = null;
+        _defaultPlayerBase = null;
+        _minimumDistanceBetweenEvents = null;
+        _eventDurationMultiplier = null;
+        _randomEventChance = null;
+        _randomEventIntervalMinutes = null;
     }
 
     internal static bool IsMultipleEventsEnabled()

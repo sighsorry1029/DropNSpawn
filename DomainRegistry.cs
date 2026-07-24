@@ -15,10 +15,8 @@ internal abstract class DomainDescriptor
         Action<string> onGameDataReady,
         Func<bool> handleExpandWorldDataReady,
         Func<bool>? hasPendingSnapshotBuildWork = null,
-        Func<int>? getPendingSnapshotBuildWorkCount = null,
         Func<float, bool>? processPendingSnapshotBuildStep = null,
         Func<bool>? hasPendingReconcileWork = null,
-        Func<int>? getPendingReconcileWorkCount = null,
         Func<float, bool>? processPendingReconcileStep = null,
         Action? beforeClientManifestChanged = null,
         Action? onClientAuthorityCutover = null)
@@ -32,10 +30,8 @@ internal abstract class DomainDescriptor
         OnGameDataReady = onGameDataReady;
         HandleExpandWorldDataReady = handleExpandWorldDataReady;
         HasPendingSnapshotBuildWork = hasPendingSnapshotBuildWork;
-        GetPendingSnapshotBuildWorkCount = getPendingSnapshotBuildWorkCount;
         ProcessPendingSnapshotBuildStep = processPendingSnapshotBuildStep;
         HasPendingReconcileWork = hasPendingReconcileWork;
-        GetPendingReconcileWorkCount = getPendingReconcileWorkCount;
         ProcessPendingReconcileStep = processPendingReconcileStep;
         BeforeClientManifestChanged = beforeClientManifestChanged;
         OnClientAuthorityCutover = onClientAuthorityCutover;
@@ -50,10 +46,8 @@ internal abstract class DomainDescriptor
     internal Action<string> OnGameDataReady { get; }
     internal Func<bool> HandleExpandWorldDataReady { get; }
     internal Func<bool>? HasPendingSnapshotBuildWork { get; }
-    internal Func<int>? GetPendingSnapshotBuildWorkCount { get; }
     internal Func<float, bool>? ProcessPendingSnapshotBuildStep { get; }
     internal Func<bool>? HasPendingReconcileWork { get; }
-    internal Func<int>? GetPendingReconcileWorkCount { get; }
     internal Func<float, bool>? ProcessPendingReconcileStep { get; }
     internal Action? BeforeClientManifestChanged { get; }
     internal Action? OnClientAuthorityCutover { get; }
@@ -73,10 +67,8 @@ internal sealed class DomainDescriptor<TEntry> : DomainDescriptor
         Action<string> onGameDataReady,
         Func<bool> handleExpandWorldDataReady,
         Func<bool>? hasPendingSnapshotBuildWork = null,
-        Func<int>? getPendingSnapshotBuildWorkCount = null,
         Func<float, bool>? processPendingSnapshotBuildStep = null,
         Func<bool>? hasPendingReconcileWork = null,
-        Func<int>? getPendingReconcileWorkCount = null,
         Func<float, bool>? processPendingReconcileStep = null,
         Action? beforeClientManifestChanged = null,
         Action? onClientAuthorityCutover = null)
@@ -90,10 +82,8 @@ internal sealed class DomainDescriptor<TEntry> : DomainDescriptor
             onGameDataReady,
             handleExpandWorldDataReady,
             hasPendingSnapshotBuildWork,
-            getPendingSnapshotBuildWorkCount,
             processPendingSnapshotBuildStep,
             hasPendingReconcileWork,
-            getPendingReconcileWorkCount,
             processPendingReconcileStep,
             beforeClientManifestChanged,
             onClientAuthorityCutover)
@@ -118,25 +108,24 @@ internal static class DomainRegistry
     };
 
     internal static readonly DomainDescriptor[] RuntimeDomains =
-        SelectDescriptors(DomainWorkKinds.Runtime);
+        AllRegistrations
+            .Select(static registration => registration.Descriptor)
+            .ToArray();
 
     internal static readonly DomainDescriptor[] SnapshotBuildDomains =
-        SelectDescriptors(DomainWorkKinds.SnapshotBuild);
+        RuntimeDomains
+            .Where(HasSnapshotBuildHooks)
+            .ToArray();
 
     internal static readonly DomainDescriptor[] ReconcileDomains =
-        SelectDescriptors(DomainWorkKinds.Reconcile);
+        RuntimeDomains
+            .Where(HasReconcileHooks)
+            .ToArray();
 
     internal static readonly DomainTransportMetadata[] Transports =
         AllRegistrations
-            .Where(static registration => (registration.WorkKinds & DomainWorkKinds.Runtime) != 0)
             .Select(static registration => registration.TransportMetadata)
             .ToArray();
-
-    static DomainRegistry()
-    {
-        ValidateWorkHooks(SnapshotBuildDomains, DomainWorkKinds.SnapshotBuild);
-        ValidateWorkHooks(ReconcileDomains, DomainWorkKinds.Reconcile);
-    }
 
     internal static void InitializeRuntimeDomains()
     {
@@ -146,34 +135,36 @@ internal static class DomainRegistry
         }
     }
 
-    private static DomainDescriptor[] SelectDescriptors(DomainWorkKinds workKind)
+    private static bool HasSnapshotBuildHooks(DomainDescriptor domain)
     {
-        return AllRegistrations
-            .Where(registration => (registration.WorkKinds & workKind) != 0)
-            .Select(static registration => registration.Descriptor)
-            .ToArray();
+        return ValidateWorkHookPair(
+            domain,
+            "snapshot-build",
+            domain.HasPendingSnapshotBuildWork != null,
+            domain.ProcessPendingSnapshotBuildStep != null);
     }
 
-    private static void ValidateWorkHooks(DomainDescriptor[] domains, DomainWorkKinds workKind)
+    private static bool HasReconcileHooks(DomainDescriptor domain)
     {
-        foreach (DomainDescriptor domain in domains)
+        return ValidateWorkHookPair(
+            domain,
+            "reconcile",
+            domain.HasPendingReconcileWork != null,
+            domain.ProcessPendingReconcileStep != null);
+    }
+
+    private static bool ValidateWorkHookPair(
+        DomainDescriptor domain,
+        string workKind,
+        bool hasPendingHook,
+        bool hasProcessHook)
+    {
+        if (hasPendingHook != hasProcessHook)
         {
-            bool hasRequiredHooks = workKind switch
-            {
-                DomainWorkKinds.SnapshotBuild => domain.HasPendingSnapshotBuildWork != null &&
-                                                 domain.ProcessPendingSnapshotBuildStep != null,
-                DomainWorkKinds.Reconcile => domain.HasPendingReconcileWork != null &&
-                                             domain.ProcessPendingReconcileStep != null,
-                _ => true
-            };
-
-            if (hasRequiredHooks)
-            {
-                continue;
-            }
-
             throw new InvalidOperationException(
-                $"Domain '{domain.DomainKey}' is registered for {workKind} work without the required coordinator hooks.");
+                $"Domain '{domain.DomainKey}' has an incomplete {workKind} coordinator hook pair.");
         }
+
+        return hasPendingHook;
     }
 }

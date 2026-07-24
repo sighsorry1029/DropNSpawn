@@ -62,12 +62,6 @@ internal static partial class CharacterDropManager
         AppendScaffoldLine(builder, indent + 1, $"dropInStack: {FormatYamlBool(definition.DropInStack ?? false)}");
     }
 
-    private static void AppendScaffoldComment(StringBuilder builder, string text)
-    {
-        builder.Append("# ");
-        builder.AppendLine(text);
-    }
-
     private static void AppendScaffoldLine(StringBuilder builder, int indent, string text)
     {
         builder.Append(' ', indent * 2);

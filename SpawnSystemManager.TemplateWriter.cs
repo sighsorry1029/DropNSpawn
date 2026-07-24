@@ -46,17 +46,6 @@ internal static partial class SpawnSystemManager
         yield return $"    faction: null # ex) ForestMonsters # Values: {FactionIntegration.GetNativeFactionList()}";
     }
 
-    private static string BuildPrimaryOverrideConfigurationTemplate()
-    {
-        SpawnSystemSnapshot? snapshot = GetTemplateSnapshot();
-        if (snapshot == null)
-        {
-            return "[]" + Environment.NewLine;
-        }
-
-        return BuildCompressedPrimaryOverrideConfigurationDocument(snapshot);
-    }
-
     private static string BuildFullScaffoldConfigurationTemplate()
     {
         SpawnSystemSnapshot? snapshot = GetTemplateSnapshot();

@@ -122,11 +122,6 @@ internal static class SpawnAreaAwakePatch
 {
     private static void Postfix(SpawnArea __instance)
     {
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
-        {
-            return;
-        }
-
         SpawnerManager.HandleSpawnAreaInstanceAwake(__instance);
     }
 }
@@ -248,11 +243,6 @@ internal static class CreatureSpawnerAwakePatch
 {
     private static void Postfix(CreatureSpawner __instance)
     {
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
-        {
-            return;
-        }
-
         SpawnerManager.HandleCreatureSpawnerInstanceAwake(__instance);
     }
 }
@@ -262,11 +252,6 @@ internal static class CreatureSpawnerOnDestroyPatch
 {
     private static void Prefix(CreatureSpawner __instance)
     {
-        if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
-        {
-            return;
-        }
-
         SpawnerManager.UntrackCreatureSpawnerInstance(__instance);
     }
 }

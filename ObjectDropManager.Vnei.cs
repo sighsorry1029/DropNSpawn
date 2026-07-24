@@ -9,17 +9,11 @@ internal static partial class ObjectDropManager
 {
     private static void RefreshVneiCompatibility(Dictionary<string, string> previousVneiEntrySignatures)
     {
-        RefreshVneiCompatibility(previousVneiEntrySignatures, BuildVneiEntrySignaturesByPrefab());
+        VneiCompatibility.RefreshObjectPrefabs(
+            BuildDirtyPrefabs(previousVneiEntrySignatures, BuildVneiEntrySignaturesByPrefab()));
     }
 
-    private static void RefreshVneiCompatibility(
-        Dictionary<string, string> previousVneiEntrySignatures,
-        Dictionary<string, string> currentVneiEntrySignatures)
-    {
-        VneiCompatibility.RefreshObjectPrefabs(BuildDirtyPrefabs(previousVneiEntrySignatures, currentVneiEntrySignatures));
-    }
-
-    private static PrefabConfigurationEntry? CreateVneiDisplayBaseEntry(PrefabConfigurationEntry? entry)
+    private static PrefabConfigurationEntry? CreateVneiProjectionEntry(PrefabConfigurationEntry? entry)
     {
         if (entry == null ||
             !entry.Enabled ||
@@ -28,211 +22,32 @@ internal static partial class ObjectDropManager
             return null;
         }
 
-        DropTableDefinition? dropOnDestroyed = CreateClientProjectionDropTableDefinition(entry.DropOnDestroyed);
-        DamageableDropTableDefinition? mineRock = CreateClientProjectionDamageableDropTableDefinition(entry.MineRock);
-        DamageableDropTableDefinition? mineRock5 = CreateClientProjectionDamageableDropTableDefinition(entry.MineRock5);
-        DamageableDropTableDefinition? treeBase = CreateClientProjectionDamageableDropTableDefinition(entry.TreeBase);
-        DamageableDropTableDefinition? treeLog = CreateClientProjectionDamageableDropTableDefinition(entry.TreeLog);
-        DropTableDefinition? container = CreateClientProjectionDropTableDefinition(entry.Container);
-        PickableDefinition? pickable = CreateClientProjectionPickableDefinition(entry.Pickable);
-        PickableItemDefinition? pickableItem = CreateClientProjectionPickableItemDefinition(entry.PickableItem);
-        FishDefinition? fish = CreateClientProjectionFishDefinition(entry.Fish);
-        DestructibleDefinition? destructible = CreateClientProjectionDestructibleDefinition(entry.Destructible);
-        if (dropOnDestroyed == null &&
-            mineRock == null &&
-            mineRock5 == null &&
-            treeBase == null &&
-            treeLog == null &&
-            container == null &&
-            pickable == null &&
-            pickableItem == null &&
-            fish == null &&
-            destructible == null)
+        PrefabConfigurationEntry projection = ConfigurationEntryCloneSupport.ClonePrefabConfigurationEntry(entry);
+        projection.DropOnDestroyed = HasDropTableOverride(entry.DropOnDestroyed) ? projection.DropOnDestroyed : null;
+        projection.MineRock = HasDamageableOverride(entry.MineRock) ? projection.MineRock : null;
+        projection.MineRock5 = HasDamageableOverride(entry.MineRock5) ? projection.MineRock5 : null;
+        projection.TreeBase = HasDamageableOverride(entry.TreeBase) ? projection.TreeBase : null;
+        projection.TreeLog = HasDamageableOverride(entry.TreeLog) ? projection.TreeLog : null;
+        projection.Container = HasDropTableOverride(entry.Container) ? projection.Container : null;
+        projection.Pickable = HasPickableOverride(entry.Pickable) ? projection.Pickable : null;
+        projection.PickableItem = null;
+        projection.Fish = HasFishOverride(entry.Fish) ? projection.Fish : null;
+        projection.Destructible = HasDestructibleOverride(entry.Destructible) ? projection.Destructible : null;
+
+        if (projection.DropOnDestroyed == null &&
+            projection.MineRock == null &&
+            projection.MineRock5 == null &&
+            projection.TreeBase == null &&
+            projection.TreeLog == null &&
+            projection.Container == null &&
+            projection.Pickable == null &&
+            projection.Fish == null &&
+            projection.Destructible == null)
         {
             return null;
         }
 
-        return new PrefabConfigurationEntry
-        {
-            RuleId = entry.RuleId,
-            Prefab = entry.Prefab,
-            Enabled = true,
-            Conditions = entry.Conditions,
-            DropOnDestroyed = dropOnDestroyed,
-            MineRock = mineRock,
-            MineRock5 = mineRock5,
-            TreeBase = treeBase,
-            TreeLog = treeLog,
-            Container = container,
-            Pickable = pickable,
-            PickableItem = pickableItem,
-            Fish = fish,
-            Destructible = destructible
-        };
-    }
-
-    private static DropTableDefinition? CreateClientProjectionDropTableDefinition(DropTableDefinition? definition)
-    {
-        if (!HasDropTableOverride(definition))
-        {
-            return null;
-        }
-
-        return new DropTableDefinition
-        {
-            Rolls = CloneIntRange(definition!.Rolls),
-            DropMin = definition.DropMin,
-            DropMax = definition.DropMax,
-            DropChance = definition.DropChance,
-            OneOfEach = definition.OneOfEach,
-            Drops = CloneDropEntries(definition.Drops)
-        };
-    }
-
-    private static DamageableDropTableDefinition? CreateClientProjectionDamageableDropTableDefinition(DamageableDropTableDefinition? definition)
-    {
-        if (!HasDamageableOverride(definition))
-        {
-            return null;
-        }
-
-        return new DamageableDropTableDefinition
-        {
-            Health = definition!.Health,
-            MinToolTier = definition.MinToolTier,
-            Rolls = CloneIntRange(definition.Rolls),
-            DropMin = definition.DropMin,
-            DropMax = definition.DropMax,
-            DropChance = definition.DropChance,
-            OneOfEach = definition.OneOfEach,
-            Drops = CloneDropEntries(definition.Drops)
-        };
-    }
-
-    private static PickableDefinition? CreateClientProjectionPickableDefinition(PickableDefinition? definition)
-    {
-        if (!HasClientProjectedPickableOverride(definition))
-        {
-            return null;
-        }
-
-        return new PickableDefinition
-        {
-            OverrideName = definition!.OverrideName,
-            Drop = definition.Drop == null
-                ? null
-                : new PickableDropDefinition
-                {
-                    Item = definition.Drop.Item,
-                    Amount = definition.Drop.Amount,
-                    MinAmountScaled = definition.Drop.MinAmountScaled,
-                    DontScale = definition.Drop.DontScale
-                },
-            ExtraDrops = CreateClientProjectionDropTablePayloadDefinition(definition.ExtraDrops)
-        };
-    }
-
-    private static PickableItemDefinition? CreateClientProjectionPickableItemDefinition(PickableItemDefinition? definition)
-    {
-        if (!HasPickableItemOverride(definition))
-        {
-            return null;
-        }
-
-        return new PickableItemDefinition
-        {
-            RandomDrops = CloneRandomPickableItems(definition!.RandomDrops),
-            Drop = definition.Drop == null
-                ? null
-                : new PickableItemDropDefinition
-                {
-                    Item = definition.Drop.Item,
-                    Stack = definition.Drop.Stack
-                }
-        };
-    }
-
-    private static FishDefinition? CreateClientProjectionFishDefinition(FishDefinition? definition)
-    {
-        if (!HasFishOverride(definition))
-        {
-            return null;
-        }
-
-        return new FishDefinition
-        {
-            ExtraDrops = CreateClientProjectionDropTablePayloadDefinition(definition!.ExtraDrops)
-        };
-    }
-
-    private static DestructibleDefinition? CreateClientProjectionDestructibleDefinition(DestructibleDefinition? definition)
-    {
-        if (!HasDestructibleOverride(definition))
-        {
-            return null;
-        }
-
-        return new DestructibleDefinition
-        {
-            Health = definition!.Health,
-            MinToolTier = definition.MinToolTier,
-            DestructibleType = definition.DestructibleType,
-            SpawnWhenDestroyed = definition.SpawnWhenDestroyed
-        };
-    }
-
-    private static DropTablePayloadDefinition? CreateClientProjectionDropTablePayloadDefinition(DropTablePayloadDefinition? definition)
-    {
-        if (!HasDropTableOverride(definition))
-        {
-            return null;
-        }
-
-        return new DropTablePayloadDefinition
-        {
-            Rolls = CloneIntRange(definition!.Rolls),
-            DropMin = definition.DropMin,
-            DropMax = definition.DropMax,
-            DropChance = definition.DropChance,
-            OneOfEach = definition.OneOfEach,
-            Drops = CloneDropEntries(definition.Drops)
-        };
-    }
-
-    private static List<DropEntryDefinition>? CloneDropEntries(List<DropEntryDefinition>? definitions)
-    {
-        return definitions?.Select(definition => new DropEntryDefinition
-        {
-            Item = definition.Item,
-            Stack = CloneIntRange(definition.Stack),
-            StackMin = definition.StackMin,
-            StackMax = definition.StackMax,
-            Weight = definition.Weight,
-            DontScale = definition.DontScale
-        }).ToList();
-    }
-
-    private static List<RandomPickableItemDefinition>? CloneRandomPickableItems(List<RandomPickableItemDefinition>? definitions)
-    {
-        return definitions?.Select(definition => new RandomPickableItemDefinition
-        {
-            Item = definition.Item,
-            Stack = CloneIntRange(definition.Stack),
-            StackMin = definition.StackMin,
-            StackMax = definition.StackMax,
-            Weight = definition.Weight
-        }).ToList();
-    }
-
-    private static IntRangeDefinition? CloneIntRange(IntRangeDefinition? range)
-    {
-        return range == null
-            ? null
-            : new IntRangeDefinition
-            {
-                Min = range.Min,
-                Max = range.Max
-            };
+        return projection;
     }
 
     private static void RebuildVneiDisplayEntries(IEnumerable<PrefabConfigurationEntry> entries)
@@ -263,55 +78,10 @@ internal static partial class ObjectDropManager
         }
     }
 
-    private static PrefabConfigurationEntry? CreateVneiProjectionEntry(PrefabConfigurationEntry? entry)
-    {
-        if (entry == null ||
-            !entry.Enabled ||
-            string.IsNullOrWhiteSpace(entry.Prefab))
-        {
-            return null;
-        }
-
-        PrefabConfigurationEntry? projection = CreateVneiDisplayBaseEntry(entry);
-        if (projection == null)
-        {
-            bool hasVneiVisibleFields =
-                HasDropTableOverride(entry.DropOnDestroyed) ||
-                HasDamageableOverride(entry.MineRock) ||
-                HasDamageableOverride(entry.MineRock5) ||
-                HasDamageableOverride(entry.TreeBase) ||
-                HasDamageableOverride(entry.TreeLog) ||
-                HasDropTableOverride(entry.Container) ||
-                HasFishOverride(entry.Fish) ||
-                HasDestructibleOverride(entry.Destructible);
-            if (!hasVneiVisibleFields)
-            {
-                return null;
-            }
-
-            projection = new PrefabConfigurationEntry
-            {
-                RuleId = entry.RuleId,
-                Prefab = entry.Prefab,
-                Enabled = true,
-                Conditions = entry.Conditions
-            };
-        }
-
-        projection.PickableItem = null;
-        return projection;
-    }
-
     private static Dictionary<string, string> BuildVneiEntrySignaturesByPrefab()
     {
-        return BuildVneiEntrySignaturesByPrefab(RuntimeState.VneiEntriesByPrefab);
-    }
-
-    private static Dictionary<string, string> BuildVneiEntrySignaturesByPrefab(
-        Dictionary<string, List<PrefabConfigurationEntry>> vneiEntriesByPrefab)
-    {
         return DomainEntrySignatureSupport.BuildSignaturesByKey(
-            vneiEntriesByPrefab,
+            RuntimeState.VneiEntriesByPrefab,
             entries => NetworkPayloadSyncSupport.ComputeObjectConfigurationSignature(entries
                 .OrderBy(entry => entry.RuleId, StringComparer.Ordinal)
                 .ToList()));
@@ -476,7 +246,6 @@ internal static partial class ObjectDropManager
 
             GameObject? baseItemPrefab = pickableSnapshot?.ItemPrefab;
             int baseAmount = Math.Max(1, pickableSnapshot?.Amount ?? 1);
-            bool hasUnconditionalBaseOverride = false;
             HashSet<string> seen = new(StringComparer.Ordinal);
 
             foreach (PrefabConfigurationEntry entry in entries ?? Enumerable.Empty<PrefabConfigurationEntry>())
@@ -487,23 +256,27 @@ internal static partial class ObjectDropManager
                     continue;
                 }
 
-                GameObject? overridePrefab = ResolveItemPrefab(definition.Drop!.Item, $"{prefabName}/pickable.drop");
-                if (overridePrefab == null)
+                PickableDropDefinition drop = definition.Drop!;
+                if (!string.IsNullOrWhiteSpace(drop.Item))
                 {
-                    continue;
+                    GameObject? overridePrefab = ResolveItemPrefab(drop.Item, $"{prefabName}/pickable.drop");
+                    if (overridePrefab == null)
+                    {
+                        continue;
+                    }
+
+                    baseItemPrefab = overridePrefab;
                 }
 
-                hasUnconditionalBaseOverride = true;
-                baseItemPrefab = overridePrefab;
-                baseAmount = Math.Max(1, definition.Drop.Amount ?? 1);
+                if (drop.Amount.HasValue)
+                {
+                    baseAmount = Math.Max(1, drop.Amount.Value);
+                }
             }
 
             if (baseItemPrefab != null)
             {
-                if (!hasUnconditionalBaseOverride || baseItemPrefab != null)
-                {
-                    AddUniqueVneiRow(results, seen, new VneiRecipeResult(baseItemPrefab.name, 1, 1, 1f, baseAmount, baseAmount, 1f));
-                }
+                AddUniqueVneiRow(results, seen, new VneiRecipeResult(baseItemPrefab.name, 1, 1, 1f, baseAmount, baseAmount, 1f));
             }
 
             foreach (PrefabConfigurationEntry entry in entries ?? Enumerable.Empty<PrefabConfigurationEntry>())
@@ -514,13 +287,21 @@ internal static partial class ObjectDropManager
                     continue;
                 }
 
-                GameObject? overridePrefab = ResolveItemPrefab(definition.Drop!.Item, $"{prefabName}/pickable.drop");
+                PickableDropDefinition drop = definition.Drop!;
+                GameObject? overridePrefab = baseItemPrefab;
+                if (!string.IsNullOrWhiteSpace(drop.Item))
+                {
+                    overridePrefab = ResolveItemPrefab(drop.Item, $"{prefabName}/pickable.drop");
+                }
+
                 if (overridePrefab == null)
                 {
                     continue;
                 }
 
-                int amount = Math.Max(1, definition.Drop.Amount ?? 1);
+                int amount = drop.Amount.HasValue
+                    ? Math.Max(1, drop.Amount.Value)
+                    : baseAmount;
                 AddUniqueVneiRow(results, seen, new VneiRecipeResult(overridePrefab.name, 1, 1, 1f, amount, amount, 1f));
             }
 

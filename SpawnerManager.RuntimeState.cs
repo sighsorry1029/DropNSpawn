@@ -69,7 +69,7 @@ internal static partial class SpawnerManager
 
         public void RemoveRuntimeSignature(SpawnArea? spawnArea)
         {
-            if (spawnArea == null)
+            if (ReferenceEquals(spawnArea, null))
             {
                 return;
             }
@@ -79,7 +79,7 @@ internal static partial class SpawnerManager
 
         public void RemoveRuntimeSignature(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner == null)
+            if (ReferenceEquals(creatureSpawner, null))
             {
                 return;
             }
@@ -111,7 +111,7 @@ internal static partial class SpawnerManager
 
         public void RemoveLocalRuntimeState(SpawnArea? spawnArea)
         {
-            if (spawnArea == null)
+            if (ReferenceEquals(spawnArea, null))
             {
                 return;
             }
@@ -121,7 +121,7 @@ internal static partial class SpawnerManager
 
         public void RemoveLocalRuntimeState(CreatureSpawner? creatureSpawner)
         {
-            if (creatureSpawner == null)
+            if (ReferenceEquals(creatureSpawner, null))
             {
                 return;
             }

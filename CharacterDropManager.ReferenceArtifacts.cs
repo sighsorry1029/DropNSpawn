@@ -32,11 +32,6 @@ internal static partial class CharacterDropManager
         return PrefabOutputSections.SerializeReferenceSections(sections, Serializer);
     }
 
-    private static string SerializeReferenceEntries(IEnumerable<CharacterDropReferenceEntry> entries)
-    {
-        return ReferenceRefreshSupport.SerializeReferenceSections(entries, entry => entry.Prefab, Serializer);
-    }
-
     internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
     {
         string content;

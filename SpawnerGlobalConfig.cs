@@ -10,11 +10,13 @@ internal static class SpawnerGlobalConfig
     internal const int MinZeroCreatureSpawnerRespawnTimeMinutes = 0;
     internal const int MaxZeroCreatureSpawnerRespawnTimeMinutes = 60;
 
-    private static ConfigEntry<int> _defaultSpawnAreaMaxTotalSpawns = null!;
-    private static ConfigEntry<int> _defaultZeroCreatureSpawnerRespawnTimeMinutes = null!;
+    private static ConfigEntry<int>? _defaultSpawnAreaMaxTotalSpawns;
+    private static ConfigEntry<int>? _defaultZeroCreatureSpawnerRespawnTimeMinutes;
 
     internal static void Bind(DropNSpawnPlugin plugin)
     {
+        Dispose();
+
         _defaultSpawnAreaMaxTotalSpawns = plugin.BindConfigEntry(
             "1 - General",
             "Default SpawnArea Max Total Spawns",
@@ -35,6 +37,17 @@ internal static class SpawnerGlobalConfig
             synchronizedSetting: true,
             configManagerOrder: 440);
         _defaultZeroCreatureSpawnerRespawnTimeMinutes.SettingChanged += HandleCreatureSpawnerRespawnSettingChanged;
+    }
+
+    internal static void Dispose()
+    {
+        if (_defaultZeroCreatureSpawnerRespawnTimeMinutes != null)
+        {
+            _defaultZeroCreatureSpawnerRespawnTimeMinutes.SettingChanged -= HandleCreatureSpawnerRespawnSettingChanged;
+        }
+
+        _defaultSpawnAreaMaxTotalSpawns = null;
+        _defaultZeroCreatureSpawnerRespawnTimeMinutes = null;
     }
 
     internal static int GetDefaultSpawnAreaMaxTotalSpawns()
