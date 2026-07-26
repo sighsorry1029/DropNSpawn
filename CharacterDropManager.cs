@@ -309,7 +309,7 @@ internal static partial class CharacterDropManager
         }
     }
 
-    internal static bool ProcessPendingSnapshotBuildStep(float deadline)
+    internal static bool ProcessPendingSnapshotBuildStep(double deadline)
     {
         lock (Sync)
         {

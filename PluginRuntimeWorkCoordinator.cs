@@ -11,7 +11,7 @@ namespace DropNSpawn;
 internal sealed class PluginRuntimeWorkCoordinator
 {
     private const float GameDataRefreshDebounceSeconds = 0.1f;
-    private const float RuntimeWorkFrameBudgetSeconds = 0.001f;
+    private const double RuntimeWorkFrameBudgetSeconds = 0.001d;
     private const int WorkLaneCount = 3;
 
     private readonly DropNSpawnPlugin _host;
@@ -50,9 +50,9 @@ internal sealed class PluginRuntimeWorkCoordinator
             return;
         }
 
-        float deadline = Time.realtimeSinceStartup + RuntimeWorkFrameBudgetSeconds;
+        double deadline = Time.realtimeSinceStartupAsDouble + RuntimeWorkFrameBudgetSeconds;
         int idlePasses = 0;
-        while (Time.realtimeSinceStartup < deadline && idlePasses < 5)
+        while (Time.realtimeSinceStartupAsDouble < deadline && idlePasses < 5)
         {
             bool processed = ProcessNextPendingWorkLane(deadline);
             idlePasses = processed ? 0 : idlePasses + 1;
@@ -130,7 +130,7 @@ internal sealed class PluginRuntimeWorkCoordinator
         }
     }
 
-    private bool ProcessNextPendingWorkLane(float deadline)
+    private bool ProcessNextPendingWorkLane(double deadline)
     {
         for (int offset = 0; offset < WorkLaneCount; offset++)
         {
@@ -150,7 +150,7 @@ internal sealed class PluginRuntimeWorkCoordinator
         return false;
     }
 
-    private bool ProcessNextPendingSnapshotBuildStep(float deadline)
+    private bool ProcessNextPendingSnapshotBuildStep(double deadline)
     {
         for (int offset = 0; offset < DomainRegistry.SnapshotBuildDomains.Length; offset++)
         {
@@ -180,7 +180,7 @@ internal sealed class PluginRuntimeWorkCoordinator
         };
     }
 
-    private bool ProcessPendingWork(int lane, float deadline)
+    private bool ProcessPendingWork(int lane, double deadline)
     {
         return lane switch
         {
@@ -190,7 +190,7 @@ internal sealed class PluginRuntimeWorkCoordinator
         };
     }
 
-    private bool ProcessNextQueuedReconcileStep(float deadline)
+    private bool ProcessNextQueuedReconcileStep(double deadline)
     {
         for (int offset = 0; offset < DomainRegistry.ReconcileDomains.Length; offset++)
         {

@@ -437,7 +437,7 @@ internal static partial class NetworkPayloadSyncSupport
         }
     }
 
-    internal static bool ProcessPendingWork(float deadline)
+    internal static bool ProcessPendingWork(double deadline)
     {
         PreparedOutboundChunk? preparedChunk = null;
         Action? mainThreadAction = null;
@@ -468,7 +468,7 @@ internal static partial class NetworkPayloadSyncSupport
                 startedRequest = true;
             }
             else if (ZRoutedRpc.instance != null &&
-                     Time.realtimeSinceStartup < deadline &&
+                     Time.realtimeSinceStartupAsDouble < deadline &&
                      TryPrepareOutboundChunkForSendLocked(out preparedChunk))
             {
             }

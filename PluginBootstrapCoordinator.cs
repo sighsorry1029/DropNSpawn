@@ -145,6 +145,7 @@ internal sealed class PluginBootstrapCoordinator
     {
         Assembly assembly = Assembly.GetExecutingAssembly();
         _host.HarmonyInstance.PatchAll(assembly);
+        EspSpawnSystemCompatibility.Initialize(_host.HarmonyInstance);
         VneiCompatibility.Initialize(_host.HarmonyInstance);
         _host.ReloadCoordinator!.InitializeWatchers();
     }

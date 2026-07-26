@@ -13,7 +13,7 @@ namespace DropNSpawn;
 internal static class VneiCompatibility
 {
     private const string VneiPluginGuid = "com.maxsch.valheim.vnei";
-    private const float RefreshFrameBudgetSeconds = 0.0015f;
+    private const double RefreshFrameBudgetSeconds = 0.0015d;
     private const int MaxRefreshJobsPerFrame = 8;
 
     private enum ManagedRecipeKind
@@ -325,7 +325,7 @@ internal static class VneiCompatibility
 
         if (!shouldStartCoroutine && DropNSpawnPlugin.Instance == null)
         {
-            ProcessQueuedRefreshes(int.MaxValue, float.PositiveInfinity);
+            ProcessQueuedRefreshes(int.MaxValue, double.PositiveInfinity);
         }
     }
 
@@ -336,7 +336,7 @@ internal static class VneiCompatibility
         {
             if (CanRefresh())
             {
-                ProcessQueuedRefreshes(MaxRefreshJobsPerFrame, Time.realtimeSinceStartup + RefreshFrameBudgetSeconds);
+                ProcessQueuedRefreshes(MaxRefreshJobsPerFrame, Time.realtimeSinceStartupAsDouble + RefreshFrameBudgetSeconds);
             }
 
             lock (RefreshSync)
@@ -352,7 +352,7 @@ internal static class VneiCompatibility
         }
     }
 
-    private static bool ProcessQueuedRefreshes(int maxJobs, float deadline)
+    private static bool ProcessQueuedRefreshes(int maxJobs, double deadline)
     {
         if (!CanRefresh())
         {
@@ -362,7 +362,7 @@ internal static class VneiCompatibility
         int processedJobs = 0;
         HashSet<object>? affectedItems = null;
         while (processedJobs < maxJobs &&
-               Time.realtimeSinceStartup < deadline &&
+               Time.realtimeSinceStartupAsDouble < deadline &&
                TryDequeueRefreshWorkItem(out ManagedRecipeKey workItem))
         {
             affectedItems ??= new HashSet<object>();

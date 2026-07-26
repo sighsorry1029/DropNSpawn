@@ -117,7 +117,7 @@ internal static class CharacterDropRuntime
     }
 
     internal static bool ProcessPendingSnapshotBuildStep(
-        float deadline,
+        double deadline,
         Func<GameObject, CharacterDropSnapshot?> captureSnapshot,
         Action<string, int, int> onCompleted)
     {
@@ -153,7 +153,7 @@ internal static class CharacterDropRuntime
         }
 
         if (buildState.NextIndex >= buildState.Prefabs.Count &&
-            Time.realtimeSinceStartup <= deadline)
+            Time.realtimeSinceStartupAsDouble <= deadline)
         {
             CompletePendingSnapshotBuild(buildState, onCompleted);
         }

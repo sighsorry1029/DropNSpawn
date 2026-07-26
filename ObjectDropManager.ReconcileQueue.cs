@@ -154,7 +154,7 @@ internal static partial class ObjectDropManager
         return ReconcileQueueState.HasPendingWork();
     }
 
-    internal static bool ProcessQueuedReconcileStep(float deadline)
+    internal static bool ProcessQueuedReconcileStep(double deadline)
     {
         lock (Sync)
         {
@@ -162,23 +162,23 @@ internal static partial class ObjectDropManager
         }
     }
 
-    private static bool TryProcessQueuedReconcileWorkLocked(float deadline)
+    private static bool TryProcessQueuedReconcileWorkLocked(double deadline)
     {
         return TryProcessNextQueuedReconcileItemLocked(deadline, highPriorityOnly: false);
     }
 
     private static void DrainQueuedHighPriorityReconcilesLocked()
     {
-        while (TryProcessNextQueuedReconcileItemLocked(float.MaxValue, highPriorityOnly: true))
+        while (TryProcessNextQueuedReconcileItemLocked(double.MaxValue, highPriorityOnly: true))
         {
         }
     }
 
-    private static bool TryProcessNextQueuedReconcileItemLocked(float deadline, bool highPriorityOnly)
+    private static bool TryProcessNextQueuedReconcileItemLocked(double deadline, bool highPriorityOnly)
     {
         while (ReconcileQueueState.HasPendingGroups(highPriorityOnly))
         {
-            if (!highPriorityOnly && Time.realtimeSinceStartup >= deadline)
+            if (!highPriorityOnly && Time.realtimeSinceStartupAsDouble >= deadline)
             {
                 return false;
             }

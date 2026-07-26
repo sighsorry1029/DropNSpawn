@@ -1,3 +1,9 @@
+## 1.3.5
+
+- Fixed a float-precision bug that could stop queued runtime work after about nine hours of uninterrupted uptime, preventing server-sync manifest publication, client payload application, and SpawnSystem live table updates.
+- Extended the double-precision frame deadline to object and spawner reconciliation, object and character snapshot work, SpawnSystem and ESP refresh work, and VNEI refreshes.
+- Added an ESP 1.37 SpawnSystem hover guard and cleared stale marker references during marker replacement to avoid invalid ZNetView/ZDO reads.
+
 ## 1.3.4
 
 - Hardened correctness across hot reloads, temporary object overrides, delayed spawner activation, and synchronized payload worker shutdown.

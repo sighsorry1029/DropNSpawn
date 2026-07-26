@@ -38,9 +38,9 @@ internal sealed class DomainModuleOptions<TEntry>
     internal Func<TEntry, string>? KeySelector { get; set; }
     internal Action? ApplyPayloadAction { get; set; }
     internal Func<bool>? HasPendingSnapshotBuildWork { get; set; }
-    internal Func<float, bool>? ProcessPendingSnapshotBuildStep { get; set; }
+    internal Func<double, bool>? ProcessPendingSnapshotBuildStep { get; set; }
     internal Func<bool>? HasPendingReconcileWork { get; set; }
-    internal Func<float, bool>? ProcessPendingReconcileStep { get; set; }
+    internal Func<double, bool>? ProcessPendingReconcileStep { get; set; }
     internal Action? BeforeClientManifestChanged { get; set; }
     internal Action? OnClientAuthorityCutover { get; set; }
 }
@@ -119,9 +119,9 @@ internal sealed class DomainModuleDefinition<TEntry> : DomainRegistration
         Action<string> onGameDataReady,
         Func<bool> handleExpandWorldDataReady,
         Func<bool>? hasPendingSnapshotBuildWork,
-        Func<float, bool>? processPendingSnapshotBuildStep,
+        Func<double, bool>? processPendingSnapshotBuildStep,
         Func<bool>? hasPendingReconcileWork,
-        Func<float, bool>? processPendingReconcileStep,
+        Func<double, bool>? processPendingReconcileStep,
         Action? beforeClientManifestChanged,
         Action? onClientAuthorityCutover)
     {

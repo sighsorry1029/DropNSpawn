@@ -95,7 +95,7 @@ internal static partial class SpawnerManager
                ReconcileQueue.HasPendingWork();
     }
 
-    internal static bool ProcessQueuedReconcileStep(float deadline)
+    internal static bool ProcessQueuedReconcileStep(double deadline)
     {
         lock (Sync)
         {
@@ -103,9 +103,9 @@ internal static partial class SpawnerManager
         }
     }
 
-    private static bool TryProcessQueuedReconcileWorkLocked(float deadline)
+    private static bool TryProcessQueuedReconcileWorkLocked(double deadline)
     {
-        if (Time.realtimeSinceStartup >= deadline)
+        if (Time.realtimeSinceStartupAsDouble >= deadline)
         {
             return false;
         }

@@ -585,7 +585,7 @@ internal static partial class ObjectDropManager
         }
     }
 
-    internal static bool ProcessPendingSnapshotBuildStep(float deadline)
+    internal static bool ProcessPendingSnapshotBuildStep(double deadline)
     {
         PendingSnapshotBuildState? buildState;
         GameObject? prefab = null;
@@ -629,7 +629,7 @@ internal static partial class ObjectDropManager
             }
 
             if (buildState.NextIndex >= buildState.Prefabs.Count &&
-                Time.realtimeSinceStartup <= deadline)
+                Time.realtimeSinceStartupAsDouble <= deadline)
             {
                 CompletePendingSnapshotBuildLocked(buildState);
             }

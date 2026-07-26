@@ -463,7 +463,7 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    internal static bool ProcessQueuedReconcileStep(float deadline)
+    internal static bool ProcessQueuedReconcileStep(double deadline)
     {
         lock (Sync)
         {
@@ -471,9 +471,9 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    private static bool TryProcessQueuedReconcileWorkLocked(float deadline)
+    private static bool TryProcessQueuedReconcileWorkLocked(double deadline)
     {
-        if (Time.realtimeSinceStartup >= deadline)
+        if (Time.realtimeSinceStartupAsDouble >= deadline)
         {
             return false;
         }
@@ -1618,7 +1618,7 @@ internal static partial class SpawnSystemManager
         return true;
     }
 
-    private static bool TryProcessPendingCompiledTableBuild(float deadline)
+    private static bool TryProcessPendingCompiledTableBuild(double deadline)
     {
         if (BuildPipelineState.PendingCompiledTableBuild == null)
         {
@@ -1641,7 +1641,7 @@ internal static partial class SpawnSystemManager
             int perStepLimit = buildState.EagerClientSyncBuild ? int.MaxValue : FinalizedPreparedEntriesPerStep;
             while (buildState.NextFinalizeIndex < buildState.Models.Count &&
                    processedEntries < perStepLimit &&
-                   (buildState.EagerClientSyncBuild || Time.realtimeSinceStartup < deadline))
+                   (buildState.EagerClientSyncBuild || Time.realtimeSinceStartupAsDouble < deadline))
             {
                 PreparedSpawnSystemModel model = buildState.Models[buildState.NextFinalizeIndex++];
                 if (TryFinalizePreparedSpawnSystemModelLocked(model, buildState.GameDataSignature, out PreparedSpawnSystemEntry? finalizedEntry))
@@ -1676,7 +1676,7 @@ internal static partial class SpawnSystemManager
                 int perStepLimit = buildState.EagerClientSyncBuild ? int.MaxValue : CompiledEntryBuildsPerStep;
                 while (buildState.NextCompiledEntryIndex < buildState.FinalizedEntries.Count &&
                        processedEntries < perStepLimit &&
-                       (buildState.EagerClientSyncBuild || Time.realtimeSinceStartup < deadline))
+                       (buildState.EagerClientSyncBuild || Time.realtimeSinceStartupAsDouble < deadline))
                 {
                     PreparedSpawnSystemEntry finalizedEntry = buildState.FinalizedEntries[buildState.NextCompiledEntryIndex++];
                     SpawnSystem.SpawnData liveEntry = finalizedEntry.Data.Clone();

@@ -554,7 +554,7 @@ internal static partial class SpawnerManager
         _ = ProvenanceRegistry.TryQueueRootProvenanceScan(rootTransform, locationPrefab, _reconcileQueueEpoch);
     }
 
-    private static bool ProcessQueuedLocationRootProvenanceStep(float deadline)
+    private static bool ProcessQueuedLocationRootProvenanceStep(double deadline)
     {
         while (ProvenanceRegistry.TryPeekPendingRootScan(out PendingLocationRootProvenanceScan pendingScan))
         {
@@ -578,7 +578,7 @@ internal static partial class SpawnerManager
             int processedNodes = 0;
             while (pendingScan.TraversalStack.Count > 0)
             {
-                if ((processedNodes & 15) == 0 && Time.realtimeSinceStartup >= deadline)
+                if ((processedNodes & 15) == 0 && Time.realtimeSinceStartupAsDouble >= deadline)
                 {
                     return processedNodes > 0;
                 }

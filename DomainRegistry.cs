@@ -15,9 +15,9 @@ internal abstract class DomainDescriptor
         Action<string> onGameDataReady,
         Func<bool> handleExpandWorldDataReady,
         Func<bool>? hasPendingSnapshotBuildWork = null,
-        Func<float, bool>? processPendingSnapshotBuildStep = null,
+        Func<double, bool>? processPendingSnapshotBuildStep = null,
         Func<bool>? hasPendingReconcileWork = null,
-        Func<float, bool>? processPendingReconcileStep = null,
+        Func<double, bool>? processPendingReconcileStep = null,
         Action? beforeClientManifestChanged = null,
         Action? onClientAuthorityCutover = null)
     {
@@ -46,9 +46,9 @@ internal abstract class DomainDescriptor
     internal Action<string> OnGameDataReady { get; }
     internal Func<bool> HandleExpandWorldDataReady { get; }
     internal Func<bool>? HasPendingSnapshotBuildWork { get; }
-    internal Func<float, bool>? ProcessPendingSnapshotBuildStep { get; }
+    internal Func<double, bool>? ProcessPendingSnapshotBuildStep { get; }
     internal Func<bool>? HasPendingReconcileWork { get; }
-    internal Func<float, bool>? ProcessPendingReconcileStep { get; }
+    internal Func<double, bool>? ProcessPendingReconcileStep { get; }
     internal Action? BeforeClientManifestChanged { get; }
     internal Action? OnClientAuthorityCutover { get; }
 
@@ -67,9 +67,9 @@ internal sealed class DomainDescriptor<TEntry> : DomainDescriptor
         Action<string> onGameDataReady,
         Func<bool> handleExpandWorldDataReady,
         Func<bool>? hasPendingSnapshotBuildWork = null,
-        Func<float, bool>? processPendingSnapshotBuildStep = null,
+        Func<double, bool>? processPendingSnapshotBuildStep = null,
         Func<bool>? hasPendingReconcileWork = null,
-        Func<float, bool>? processPendingReconcileStep = null,
+        Func<double, bool>? processPendingReconcileStep = null,
         Action? beforeClientManifestChanged = null,
         Action? onClientAuthorityCutover = null)
         : base(

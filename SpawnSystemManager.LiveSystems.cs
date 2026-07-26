@@ -215,11 +215,11 @@ internal static partial class SpawnSystemManager
         }
     }
 
-    private static bool TryProcessPendingLiveSystemAttach(float deadline)
+    private static bool TryProcessPendingLiveSystemAttach(double deadline)
     {
         while (PendingLiveSystemAttaches.Count > 0)
         {
-            if (Time.realtimeSinceStartup >= deadline)
+            if (Time.realtimeSinceStartupAsDouble >= deadline)
             {
                 return false;
             }
