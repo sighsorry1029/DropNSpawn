@@ -22,6 +22,7 @@ internal static partial class SpawnSystemManager
     private const int FinalizedPreparedEntriesPerStep = 1;
     private const int CompiledEntryBuildsPerStep = 8;
     private const string ReferenceAutoUpdateStateKey = "spawnsystem";
+    private const string SpawnIntervalMultiplierHeaderKey = "spawnIntervalMultiplier";
     internal static readonly DomainModuleDefinition<CanonicalSpawnSystemEntry> Module =
         new(new DomainModuleOptions<CanonicalSpawnSystemEntry>
         {
@@ -682,7 +683,7 @@ internal static partial class SpawnSystemManager
             ParseConfiguration,
             (configuration, path, _) => CloneAndNormalizeConfigurationEntries(configuration, path),
             FormatYamlExceptionLocation,
-            "Spawnsystem authoritative YAML must start with a root list like '- prefab: Fox'.");
+            "Spawnsystem authoritative YAML must use a root list with an optional first '- spawnIntervalMultiplier: 2.0' header followed by entries like '- prefab: Fox'.");
     }
 
     private static bool CanStrictlyValidateLocalConfigurationNow(IEnumerable<SpawnSystemConfigurationEntry> configuration)
@@ -887,13 +888,50 @@ internal static partial class SpawnSystemManager
                 "Spawnsystem authoritative YAML root must be a sequence.");
         }
 
-        foreach (YamlNode node in sequence.Children)
+        float spawnIntervalMultiplier = 1f;
+        YamlMappingNode? multiplierHeader = null;
+        for (int index = 0; index < sequence.Children.Count; index++)
         {
+            YamlNode node = sequence.Children[index];
             if (node is not YamlMappingNode mappingNode)
             {
                 result.Warnings.Add(
                     $"Skipped spawnsystem YAML node at {FormatYamlNodeLocation(sourcePath, node.Start)}. Expected a list item object like '- prefab: Fox' but found {DescribeYamlNode(node)}.");
                 continue;
+            }
+
+            if (TryGetSpawnIntervalMultiplierHeaderValue(mappingNode, out YamlNode? multiplierValue))
+            {
+                if (index != 0)
+                {
+                    throw new YamlException(
+                        mappingNode.Start,
+                        mappingNode.End,
+                        $"'{SpawnIntervalMultiplierHeaderKey}' must be the first item in a spawnsystem override file.");
+                }
+
+                if (mappingNode.Children.Count != 1)
+                {
+                    throw new YamlException(
+                        mappingNode.Start,
+                        mappingNode.End,
+                        $"The '{SpawnIntervalMultiplierHeaderKey}' header cannot contain prefab or other entry fields.");
+                }
+
+                spawnIntervalMultiplier = ParseSpawnIntervalMultiplier(multiplierValue!);
+                multiplierHeader = mappingNode;
+                continue;
+            }
+
+            if (index == 0 &&
+                mappingNode.Children.Count == 1 &&
+                mappingNode.Children.First().Key is YamlScalarNode firstKey &&
+                !IsSpawnSystemEntryTopLevelKey(firstKey.Value))
+            {
+                throw new YamlException(
+                    mappingNode.Start,
+                    mappingNode.End,
+                    $"Unrecognized first spawnsystem list item '{firstKey.Value}'. Use '- {SpawnIntervalMultiplierHeaderKey}: 2.0' or start with a prefab entry.");
             }
 
             try
@@ -912,7 +950,103 @@ internal static partial class SpawnSystemManager
             }
         }
 
+        if (multiplierHeader != null && spawnIntervalMultiplier != 1f)
+        {
+            MaterializeSpawnIntervalMultiplier(
+                result.Configuration,
+                spawnIntervalMultiplier,
+                multiplierHeader,
+                sourcePath);
+        }
+
         return result;
+    }
+
+    private static bool TryGetSpawnIntervalMultiplierHeaderValue(
+        YamlMappingNode mappingNode,
+        out YamlNode? valueNode)
+    {
+        foreach (KeyValuePair<YamlNode, YamlNode> child in mappingNode.Children)
+        {
+            if (child.Key is YamlScalarNode scalar &&
+                string.Equals(scalar.Value, SpawnIntervalMultiplierHeaderKey, StringComparison.OrdinalIgnoreCase))
+            {
+                valueNode = child.Value;
+                return true;
+            }
+        }
+
+        valueNode = null;
+        return false;
+    }
+
+    private static bool IsSpawnSystemEntryTopLevelKey(string? key)
+    {
+        return string.Equals(key, "prefab", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(key, "enabled", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(key, "spawnSystem", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static float ParseSpawnIntervalMultiplier(YamlNode valueNode)
+    {
+        float? multiplier;
+        try
+        {
+            multiplier = Deserializer.Deserialize<float?>(SerializeYamlNode(valueNode));
+        }
+        catch (Exception ex)
+        {
+            throw new YamlException(
+                valueNode.Start,
+                valueNode.End,
+                $"'{SpawnIntervalMultiplierHeaderKey}' must be a finite number greater than zero. {FormatEntryParseFailure(ex)}");
+        }
+
+        if (!multiplier.HasValue ||
+            float.IsNaN(multiplier.Value) ||
+            float.IsInfinity(multiplier.Value) ||
+            multiplier.Value <= 0f)
+        {
+            throw new YamlException(
+                valueNode.Start,
+                valueNode.End,
+                $"'{SpawnIntervalMultiplierHeaderKey}' must be a finite number greater than zero.");
+        }
+
+        return multiplier.Value;
+    }
+
+    private static void MaterializeSpawnIntervalMultiplier(
+        IEnumerable<SpawnSystemConfigurationEntry> configuration,
+        float multiplier,
+        YamlMappingNode header,
+        string? sourcePath)
+    {
+        float defaultSpawnInterval = new SpawnSystem.SpawnData().m_spawnInterval;
+        foreach (SpawnSystemConfigurationEntry entry in configuration)
+        {
+            float configuredSpawnInterval = entry.SpawnSystem?.SpawnInterval ?? defaultSpawnInterval;
+            float scaledSpawnInterval = configuredSpawnInterval * multiplier;
+            if (float.IsNaN(scaledSpawnInterval) || float.IsInfinity(scaledSpawnInterval))
+            {
+                string entryName = entry.Prefab ?? entry.SpawnSystem?.Name ?? "(unnamed)";
+                string entryLocation = string.IsNullOrWhiteSpace(sourcePath)
+                    ? "inline YAML"
+                    : Path.GetFileName(sourcePath);
+                if (entry.SourceLine is int sourceLine && sourceLine > 0)
+                {
+                    entryLocation = $"{entryLocation}:{sourceLine.ToString(CultureInfo.InvariantCulture)}";
+                }
+
+                throw new YamlException(
+                    header.Start,
+                    header.End,
+                    $"'{SpawnIntervalMultiplierHeaderKey}' produced a non-finite spawn interval for entry '{entryName}' at {entryLocation}.");
+            }
+
+            entry.SpawnSystem ??= new SpawnSystemSpawnDefinition();
+            entry.SpawnSystem.SpawnInterval = Math.Max(0.01f, scaledSpawnInterval);
+        }
     }
 
     private static string SerializeYamlNode(YamlNode node)

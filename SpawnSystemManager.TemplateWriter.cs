@@ -92,6 +92,10 @@ internal static partial class SpawnSystemManager
             AppendTemplateComment(builder, line);
         }
         AppendTemplateBlankLine(builder);
+        AppendTemplateComment(builder, "Optional file header: '- spawnIntervalMultiplier: 2.0' must be the first list item and scales only this file's SpawnSystem intervals.");
+        AppendTemplateComment(builder, "The multiplier must be greater than zero. 0.5 halves intervals (more frequent checks); 2.0 doubles intervals (less frequent checks).");
+        AppendTemplateComment(builder, "- spawnIntervalMultiplier: 1.0");
+        builder.AppendLine();
 
         bool wroteSection = false;
         List<SpawnSystemConfigurationEntry> entries = BuildTemplateReferenceEntries(snapshot);

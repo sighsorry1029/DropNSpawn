@@ -6,6 +6,9 @@ internal static partial class ExampleContentWriter
 # Safe here as a .sample.yml file. Copy rows into DNS_spawnsystem.yml one by one.
 # IMPORTANT: spawnsystem overrides replace the live world spawn table with the rows you load.
 # Every loaded entry becomes its own native SpawnSystem row.
+# Optional first item for this file only:
+# - spawnIntervalMultiplier: 2.0
+# The multiplier must be greater than zero. 0.5 makes checks more frequent; 2.0 makes them less frequent.
 
 - prefab: Boar
   enabled: true

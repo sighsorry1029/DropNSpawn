@@ -58,6 +58,18 @@ The vertical lines in the spawner image are world `SpawnSystem` checks.
   ![](https://i.ibb.co/wZ4BfJF1/spawnsystem.png)
 - Above image explains how Valheim world spawning works.
 
+Each loaded SpawnSystem override file can independently scale the intervals of all rows in that file by putting an optional header first:
+
+```yaml
+- spawnIntervalMultiplier: 2.0
+
+- prefab: Deer
+  spawnSystem:
+    spawnInterval: 36
+```
+
+The example produces an effective interval of `72` seconds. The header is not a SpawnSystem row and does not change the order of the prefab rows. The multiplier must be a finite number greater than zero; omitting it means `1.0`. A value of `0.5` halves intervals and makes checks more frequent, while `2.0` doubles intervals and makes checks less frequent. Rows without an explicit `spawnInterval` scale the native `4` second default. Invalid headers reject the reload and keep the previous authoritative configuration. Event spawns in `DNS_events.yml` are not affected.
+
 ## Workflow
 
 1. Open `BepInEx/config/DropNSpawn/`.

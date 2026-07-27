@@ -1,6 +1,7 @@
 ## 1.3.6
 
 - Fixed `MultiplePerPlayer` event scheduling on dedicated servers by restoring the periodic current-event broadcast, keeping clients synchronized so event creature spawners can activate.
+- Added an optional per-file `spawnIntervalMultiplier` header for SpawnSystem override YAML, scaling explicit and native-default intervals before synchronized live application without changing prefab row order.
 
 ## 1.3.5
 
