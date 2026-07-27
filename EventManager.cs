@@ -791,6 +791,14 @@ internal static class EventManager
 
         CheckGlobalEventsPerPlayer(eventSystem, dt);
         CheckStandaloneEventsPerPlayer(eventSystem, dt);
+
+        eventSystem.m_sendTimer += dt;
+        if (eventSystem.m_sendTimer > 2f)
+        {
+            eventSystem.m_sendTimer = 0f;
+            eventSystem.SendCurrentRandomEvent();
+        }
+
         return true;
     }
 

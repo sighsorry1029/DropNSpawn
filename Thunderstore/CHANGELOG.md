@@ -1,3 +1,7 @@
+## 1.3.6
+
+- Fixed `MultiplePerPlayer` event scheduling on dedicated servers by restoring the periodic current-event broadcast, keeping clients synchronized so event creature spawners can activate.
+
 ## 1.3.5
 
 - Fixed a float-precision bug that could stop queued runtime work after about nine hours of uninterrupted uptime, preventing server-sync manifest publication, client payload application, and SpawnSystem live table updates.
