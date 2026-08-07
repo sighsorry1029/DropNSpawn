@@ -1,3 +1,7 @@
+## 1.3.7
+
+- Fixed custom-handled and stacked character drops being snapped to the highest solid or terrain surface; they now use vanilla spherical placement around the character or ragdoll origin, preserving indoor, dungeon, structure, and airborne heights.
+
 ## 1.3.6
 
 - Fixed `MultiplePerPlayer` event scheduling on dedicated servers by restoring the periodic current-event broadcast, keeping clients synchronized so event creature spawners can activate.

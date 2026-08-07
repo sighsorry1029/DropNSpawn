@@ -107,7 +107,6 @@ internal static partial class CharacterDropManager
     private static int _cachedFrameGameDataSignatureFrame = -1;
     private static int _cachedFrameGameDataSignatureValue;
     private const string MockPrefabPrefix = "JVLmock_";
-    private const float ConfiguredDropGroundOffset = 0.2f;
     private const int MaxCachedRuntimeDropResolutionsPerPrefab = 32;
 
     private static string ReferenceConfigurationPath => Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, $"{PluginSettingsFacade.GetYamlDomainFilePrefix("character")}.reference.yml");
@@ -2396,31 +2395,9 @@ internal static partial class CharacterDropManager
 
     private static Vector3 ResolveConfiguredDropSpawnPoint(Vector3 centerPos, float dropArea)
     {
-        Vector2 planarOffset = UnityEngine.Random.insideUnitCircle * dropArea;
-        Vector3 spawnPoint = centerPos + new Vector3(planarOffset.x, 0f, planarOffset.y);
-        if (TrySnapConfiguredDropSpawnPointToGround(ref spawnPoint))
-        {
-            return spawnPoint;
-        }
-
-        return spawnPoint;
-    }
-
-    private static bool TrySnapConfiguredDropSpawnPointToGround(ref Vector3 point)
-    {
-        if (ZoneSystem.instance != null && ZoneSystem.instance.GetSolidHeight(point, out float solidHeight))
-        {
-            point.y = solidHeight + ConfiguredDropGroundOffset;
-            return true;
-        }
-
-        if (WorldGenerator.instance != null)
-        {
-            point.y = WorldGenerator.instance.GetHeight(point.x, point.z) + ConfiguredDropGroundOffset;
-            return true;
-        }
-
-        return false;
+        // Match CharacterDrop.DropItems: the character or ragdoll origin already
+        // contains the correct world, dungeon, structure, or airborne height.
+        return centerPos + UnityEngine.Random.insideUnitSphere * dropArea;
     }
 
     private static int RollConfiguredDropAmount(GameObject prefab, int amountMin, int amountMax)
