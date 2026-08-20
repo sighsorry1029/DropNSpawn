@@ -113,7 +113,7 @@ internal static partial class CharacterDropManager
                 continue;
             }
 
-            characterDrop.m_drops = staticDrops;
+            characterDrop.m_drops = CloneDrops(staticDrops);
         }
     }
 
@@ -141,7 +141,7 @@ internal static partial class CharacterDropManager
                 continue;
             }
 
-            characterDrop.m_drops = snapshot.BuiltDrops;
+            characterDrop.m_drops = CloneDrops(snapshot.BuiltDrops);
             if (!desiredState.DomainEnabled ||
                 !desiredState.CompiledState.StaticBuiltDropsByPrefab.TryGetValue(prefabName, out List<CharacterDrop.Drop>? staticDrops) ||
                 staticDrops.Count == 0)
@@ -149,7 +149,7 @@ internal static partial class CharacterDropManager
                 continue;
             }
 
-            characterDrop.m_drops = staticDrops;
+            characterDrop.m_drops = CloneDrops(staticDrops);
         }
     }
 }

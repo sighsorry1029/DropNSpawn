@@ -1026,7 +1026,7 @@ internal static partial class CharacterDropManager
         }
 
         List<CharacterDrop.Drop> previous = characterDrop.m_drops;
-        characterDrop.m_drops = resolution.OverrideDrops;
+        characterDrop.m_drops = CloneDrops(resolution.OverrideDrops);
         return previous;
     }
 
@@ -1540,7 +1540,7 @@ internal static partial class CharacterDropManager
                 continue;
             }
 
-            characterDrop.m_drops = snapshot.BuiltDrops;
+            characterDrop.m_drops = CloneDrops(snapshot.BuiltDrops);
         }
     }
 
@@ -1553,7 +1553,7 @@ internal static partial class CharacterDropManager
 
         if (snapshot.Prefab.TryGetComponent(out CharacterDrop characterDrop))
         {
-            characterDrop.m_drops = snapshot.BuiltDrops;
+            characterDrop.m_drops = CloneDrops(snapshot.BuiltDrops);
         }
     }
 
@@ -1609,7 +1609,7 @@ internal static partial class CharacterDropManager
             return;
         }
 
-        characterDrop.m_drops = snapshot.BuiltDrops;
+        characterDrop.m_drops = CloneDrops(snapshot.BuiltDrops);
         if (!domainEnabled)
         {
             return;
@@ -1622,7 +1622,7 @@ internal static partial class CharacterDropManager
             return;
         }
 
-        characterDrop.m_drops = staticDrops;
+        characterDrop.m_drops = CloneDrops(staticDrops);
     }
 
     internal static void TrackCharacterDropInstance(CharacterDrop? characterDrop)

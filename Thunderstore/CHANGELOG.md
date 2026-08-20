@@ -1,3 +1,7 @@
+## 1.3.8
+
+- Deep-cloned static, snapshot, and conditional character-drop templates when assigning them to prefabs and live creatures, preventing in-place changes by other drop modifiers from leaking across same-prefab deaths or corrupting cached drop state.
+
 ## 1.3.7
 
 - Fixed custom-handled and stacked character drops being snapped to the highest solid or terrain surface; they now use vanilla spherical placement around the character or ragdoll origin, preserving indoor, dungeon, structure, and airborne heights.
