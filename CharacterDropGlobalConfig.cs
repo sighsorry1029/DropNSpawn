@@ -20,10 +20,13 @@ internal static class CharacterDropGlobalConfig
 
     private static readonly object DropInStackBlacklistLock = new();
     private static readonly object TrophyLevelMultiplierBlacklistLock = new();
+    private static readonly object PlayerAlignedKillerBlacklistLock = new();
     private static string _dropInStackBlacklistRaw = "";
     private static string _trophyLevelMultiplierBlacklistRaw = "";
+    private static string _playerAlignedKillerBlacklistRaw = "";
     private static HashSet<string> _dropInStackBlacklist = new(StringComparer.OrdinalIgnoreCase);
     private static HashSet<string> _trophyLevelMultiplierBlacklist = new(StringComparer.OrdinalIgnoreCase);
+    private static HashSet<string> _playerAlignedKillerBlacklist = new(StringComparer.OrdinalIgnoreCase);
     private static bool? _isCreatureLevelControlLoaded;
 
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _monsterInstantLootDrop = null!;
@@ -36,9 +39,27 @@ internal static class CharacterDropGlobalConfig
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _globalTrophyLevelMultiplier = null!;
     private static ConfigEntry<string> _trophyLevelMultiplierBlacklistEntry = null!;
     private static ConfigEntry<float> _onePerPlayerNearbyRange = null!;
+    private static ConfigEntry<DropNSpawnPlugin.Toggle> _requirePlayerAlignedKiller = null!;
+    private static ConfigEntry<string> _playerAlignedKillerBlacklistEntry = null!;
 
     internal static void Bind(DropNSpawnPlugin plugin)
     {
+        _requirePlayerAlignedKiller = plugin.BindConfigEntry(
+            "2 - Character",
+            "require player-aligned killer for character drops",
+            DropNSpawnPlugin.Toggle.Off,
+            "If on, a non-player CharacterDrop is allowed only when the lethal source is a Player, a tamed character, or a character in the Players or PlayerSpawned faction. Hostile, environmental, self, unknown, and mixed player-aligned/hostile damage sources are denied. Applies to vanilla and YAML-driven CharacterDrop independently of Enable Character Overrides. Prefabs in player-aligned killer character drop blacklist are exempt.",
+            synchronizedSetting: true,
+            configManagerOrder: 600);
+        _requirePlayerAlignedKiller.SettingChanged += (_, _) =>
+            CharacterDropKillerFilter.NotifyConfigurationChanged();
+        _playerAlignedKillerBlacklistEntry = plugin.BindConfigEntry(
+            "2 - Character",
+            "player-aligned killer character drop blacklist",
+            "",
+            "Comma, semicolon, or newline separated victim prefab names that are exempt from the player-aligned killer requirement and keep their normal CharacterDrop regardless of the death source. Example: Blob,Deathsquito",
+            synchronizedSetting: true,
+            configManagerOrder: 590);
         _onePerPlayerNearbyRange = plugin.BindConfigEntry(
             "2 - Character",
             "OnePerPlayer drop check range",
@@ -120,6 +141,31 @@ internal static class CharacterDropGlobalConfig
     internal static bool IsGlobalDropInStackEnabled()
     {
         return _globalDropInStack?.Value == DropNSpawnPlugin.Toggle.On;
+    }
+
+    internal static bool IsPlayerAlignedKillerRequired()
+    {
+        return _requirePlayerAlignedKiller?.Value == DropNSpawnPlugin.Toggle.On;
+    }
+
+    internal static bool IsPlayerAlignedKillerRequirementBlacklisted(string? prefabName)
+    {
+        if (prefabName == null)
+        {
+            return false;
+        }
+
+        string normalizedPrefabName = prefabName.Trim();
+        if (normalizedPrefabName.Length == 0)
+        {
+            return false;
+        }
+
+        lock (PlayerAlignedKillerBlacklistLock)
+        {
+            EnsurePlayerAlignedKillerBlacklistCache();
+            return _playerAlignedKillerBlacklist.Contains(normalizedPrefabName);
+        }
     }
 
     internal static bool IsMonsterInstantLootDropEnabled()
@@ -217,6 +263,18 @@ internal static class CharacterDropGlobalConfig
 
         _trophyLevelMultiplierBlacklistRaw = raw;
         _trophyLevelMultiplierBlacklist = ParseNameSet(raw);
+    }
+
+    private static void EnsurePlayerAlignedKillerBlacklistCache()
+    {
+        string raw = _playerAlignedKillerBlacklistEntry?.Value ?? "";
+        if (string.Equals(_playerAlignedKillerBlacklistRaw, raw, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _playerAlignedKillerBlacklistRaw = raw;
+        _playerAlignedKillerBlacklist = ParseNameSet(raw);
     }
 
     private static HashSet<string> ParseNameSet(string raw)

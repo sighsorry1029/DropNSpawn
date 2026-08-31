@@ -551,6 +551,7 @@
         <Compile Include="PluginBoundSettings.cs"/>
         <Compile Include="PluginSettingsFacade.cs"/>
         <Compile Include="CharacterDropGlobalConfig.cs"/>
+        <Compile Include="CharacterDropKillerFilter.cs"/>
         <Compile Include="EventGlobalConfig.cs"/>
         <Compile Include="SpawnerGlobalConfig.cs"/>
         <Compile Include="EspSpawnSystemCompatibility.cs"/>

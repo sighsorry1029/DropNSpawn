@@ -79,6 +79,12 @@ internal static class PluginSettingsFacade
     internal static bool IsCharacterDropInStackBlacklisted(string? prefabName) =>
         CharacterDropGlobalConfig.IsDropInStackBlacklisted(prefabName);
 
+    internal static bool IsPlayerAlignedKillerRequiredForCharacterDrops() =>
+        CharacterDropGlobalConfig.IsPlayerAlignedKillerRequired();
+
+    internal static bool IsPlayerAlignedKillerRequirementBlacklisted(string? prefabName) =>
+        CharacterDropGlobalConfig.IsPlayerAlignedKillerRequirementBlacklisted(prefabName);
+
     internal static bool IsEligibleOverrideConfigurationPath(string? path)
     {
         if (string.IsNullOrWhiteSpace(path))

@@ -1,3 +1,8 @@
+## 1.3.9
+
+- Added disabled-by-default synced `require player-aligned killer for character drops` and victim-prefab blacklist settings. When enabled, vanilla and YAML-driven non-player `CharacterDrop` loot requires a lethal source from a Player, tamed character, or the `Players` / `PlayerSpawned` factions.
+- Preserved player-aligned poison, fire, and spirit kill credit with low-overhead attribution across ragdoll and direct custom-drop paths; hostile, environmental, self, unknown, and mixed player-aligned/hostile lethal sources are suppressed.
+
 ## 1.3.8
 
 - Deep-cloned static, snapshot, and conditional character-drop templates when assigning them to prefabs and live creatures, preventing in-place changes by other drop modifiers from leaking across same-prefab deaths or corrupting cached drop state.

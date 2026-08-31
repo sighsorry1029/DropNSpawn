@@ -62,6 +62,8 @@ internal static class CharacterDropGenerateDropListPatch
         {
             __instance.m_drops = __state.PreviousDrops;
         }
+
+        CharacterDropKillerFilter.SuppressScopedGeneratedDrops(__instance, __result);
     }
 
     private static Exception? Finalizer(CharacterDrop __instance, State __state, Exception? __exception)
@@ -119,6 +121,8 @@ internal static class CharacterOnDestroyCharacterDropPatch
 {
     private static void Postfix(Character __instance)
     {
+        CharacterDropKillerFilter.ForgetCharacter(__instance);
+
         if (__instance != null && __instance.TryGetComponent(out CharacterDrop characterDrop))
         {
             CharacterDropManager.UntrackCharacterDropInstance(characterDrop);
@@ -131,6 +135,11 @@ internal static class CharacterDropOnDeathPatch
 {
     private static bool Prefix(CharacterDrop __instance)
     {
+        if (CharacterDropKillerFilter.ShouldSuppressDeathCallback(__instance))
+        {
+            return false;
+        }
+
         if (!PluginSettingsFacade.IsCharacterDomainEnabled())
         {
             return true;
