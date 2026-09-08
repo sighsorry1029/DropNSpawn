@@ -125,8 +125,4 @@ internal static class SpawnSystemSpawnPatch
         SpawnSystemCustomDataSupport.SpawnObjects(critter, spawnPoint);
     }
 
-    private static Exception? Finalizer(SpawnSystem.SpawnData critter, bool __state, Exception? __exception)
-    {
-        return __exception;
-    }
 }

@@ -1,3 +1,11 @@
+## 1.3.10
+
+- Fixed explicit character `drops: []` being ignored. Omitted/null lists still preserve existing drops; matching rules still combine their valid rows, and invalid-only lists do not clear loot.
+- Released event metadata and custom spawn payloads when their owning events/rows are no longer referenced, while retaining data for live clones.
+- Added VNEI callback/coroutine cleanup and refresh failure recovery without discarding queued work on temporary indexing-readiness failures.
+- Reduced redundant configuration/drop cloning and location reference scans, removed unreachable branches and forwarding methods, and moved related preparation/application code into existing files.
+- Kept package generation out of Debug builds and retained ordinary Release ZIP packaging. Added managed regression checks and a separate gameplay validation guide.
+
 ## 1.3.9
 
 - Added disabled-by-default synced `require player-aligned killer for character drops` and victim-prefab blacklist settings. When enabled, vanilla and YAML-driven non-player `CharacterDrop` loot requires a lethal source from a Player, tamed character, or the `Players` / `PlayerSpawned` factions.

@@ -8,9 +8,9 @@ namespace DropNSpawn;
 
 internal static partial class ObjectDropManager
 {
-    private static List<PrefabOwnerSection<PrefabConfigurationEntry>> BuildConfigurationTemplate()
+    private static List<PrefabOwnerSection<PrefabConfigurationEntry>> BuildConfigurationTemplate(
+        Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
-        Dictionary<string, LocationReferenceBucket> locationBuckets = BuildLocationReferenceBuckets();
         List<PrefabOwnerSection<PrefabConfigurationEntry>> sections = PrefabOutputSections.BuildSections(
             SnapshotState.Snapshots.Select(BuildConfigurationEntry),
             entry => entry.Prefab,
@@ -24,9 +24,9 @@ internal static partial class ObjectDropManager
         return sections;
     }
 
-    private static List<PrefabReferenceEntry> BuildReferenceEntries()
+    private static List<PrefabReferenceEntry> BuildReferenceEntries(Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
-        List<PrefabReferenceEntry> entries = BuildConfigurationTemplate()
+        List<PrefabReferenceEntry> entries = BuildConfigurationTemplate(locationBuckets)
             .SelectMany(section => section.Entries)
             .Select(entry => new PrefabReferenceEntry
             {
@@ -45,7 +45,7 @@ internal static partial class ObjectDropManager
             .ToList();
 
         HashSet<string> existingPrefabs = ReferenceRefreshSupport.ToNormalizedKeySet(entries.Select(entry => entry.Prefab));
-        foreach (PrefabReferenceEntry entry in BuildSupplementalLocationReferenceEntries(existingPrefabs))
+        foreach (PrefabReferenceEntry entry in BuildSupplementalLocationReferenceEntries(existingPrefabs, locationBuckets))
         {
             entries.Add(entry);
         }
@@ -53,14 +53,15 @@ internal static partial class ObjectDropManager
         return entries;
     }
 
-    private static string BuildReferenceConfigurationTemplate()
+    private static string BuildReferenceConfigurationTemplate(Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
-        return SerializeReferenceEntries(BuildReferenceEntries());
+        return SerializeReferenceEntries(BuildReferenceEntries(locationBuckets), locationBuckets);
     }
 
-    private static string SerializeReferenceEntries(IEnumerable<PrefabReferenceEntry> entries)
+    private static string SerializeReferenceEntries(
+        IEnumerable<PrefabReferenceEntry> entries,
+        Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
-        Dictionary<string, LocationReferenceBucket> locationBuckets = BuildLocationReferenceBuckets();
         List<PrefabOwnerSection<PrefabReferenceEntry>> sections = PrefabOutputSections.BuildSections(
             entries,
             entry => entry.Prefab,
@@ -111,8 +112,9 @@ internal static partial class ObjectDropManager
             }
 
             CaptureSnapshotsIfNeeded();
-            referenceContent = BuildReferenceConfigurationTemplate();
-            locationReferenceContent = BuildLocationReferenceConfigurationTemplate();
+            Dictionary<string, LocationReferenceBucket> locationBuckets = BuildLocationReferenceBuckets();
+            referenceContent = BuildReferenceConfigurationTemplate(locationBuckets);
+            locationReferenceContent = BuildLocationReferenceConfigurationTemplate(locationBuckets);
             sourceSignature = ComputeReferenceSourceSignature();
             logMessage = $"Updated object reference configurations at {ReferenceConfigurationPath} and {LocationReferenceConfigurationPath}.";
         }
@@ -128,15 +130,15 @@ internal static partial class ObjectDropManager
         GeneratedArtifactWriter.WriteText(ReferenceConfigurationPath, content, logMessage);
     }
 
-    private static string BuildLocationReferenceConfigurationTemplate()
+    private static string BuildLocationReferenceConfigurationTemplate(Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
-        List<ObjectLocationReferenceEntry> entries = BuildLocationReferenceEntries();
-        return SerializeLocationReferenceEntries(entries);
+        List<ObjectLocationReferenceEntry> entries = BuildLocationReferenceEntries(locationBuckets);
+        return SerializeLocationReferenceEntries(entries, locationBuckets);
     }
 
-    private static List<ObjectLocationReferenceEntry> BuildLocationReferenceEntries()
+    private static List<ObjectLocationReferenceEntry> BuildLocationReferenceEntries(Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
-        return BuildLocationReferenceBuckets()
+        return locationBuckets
             .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
             .Select(pair => new ObjectLocationReferenceEntry
             {
@@ -147,9 +149,10 @@ internal static partial class ObjectDropManager
             .ToList();
     }
 
-    private static string SerializeLocationReferenceEntries(IEnumerable<ObjectLocationReferenceEntry> entries)
+    private static string SerializeLocationReferenceEntries(
+        IEnumerable<ObjectLocationReferenceEntry> entries,
+        Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
-        Dictionary<string, LocationReferenceBucket> locationBuckets = BuildLocationReferenceBuckets();
         List<PrefabOwnerSection<ObjectLocationReferenceEntry>> sections = PrefabOutputSections.BuildSections(
             entries,
             entry => entry.Prefab,

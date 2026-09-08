@@ -676,17 +676,18 @@ internal static partial class ObjectDropManager
         }
 
         CaptureSnapshotsIfNeeded();
+        Dictionary<string, LocationReferenceBucket> locationBuckets = BuildLocationReferenceBuckets();
         if (shouldWritePrimary)
         {
             WriteReferenceConfigurationFile(
-                BuildReferenceConfigurationTemplate(),
+                BuildReferenceConfigurationTemplate(locationBuckets),
                 $"{ReferenceArtifactLifecycle.FormatAction(primaryUpdateKind)} object reference configuration at {ReferenceConfigurationPath}.");
             ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature);
         }
 
         if (shouldWriteLocation)
         {
-            WriteLocationReferenceConfigurationFile(BuildLocationReferenceConfigurationTemplate());
+            WriteLocationReferenceConfigurationFile(BuildLocationReferenceConfigurationTemplate(locationBuckets));
             DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
                 $"{ReferenceArtifactLifecycle.FormatAction(locationUpdateKind)} object location reference configuration at {LocationReferenceConfigurationPath}.");
             ReferenceArtifactLifecycle.RecordUpdate(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, currentSourceSignature);
@@ -805,19 +806,17 @@ internal static partial class ObjectDropManager
         Volatile.Write(ref _synchronizedPayloadReady, false);
     }
 
-    private static List<PrefabConfigurationEntry> CloneAndNormalizeConfigurationEntries(
-        List<PrefabConfigurationEntry>? configuration,
+    private static List<PrefabConfigurationEntry> NormalizeOwnedConfigurationEntries(
+        List<PrefabConfigurationEntry> configuration,
         string sourceName)
     {
-        List<PrefabConfigurationEntry> normalizedConfiguration =
-            NetworkPayloadSyncSupport.CloneEntries(Descriptor, configuration);
-        foreach (PrefabConfigurationEntry entry in normalizedConfiguration)
+        foreach (PrefabConfigurationEntry entry in configuration)
         {
             NormalizeEntry(entry);
             entry.SourcePath = string.IsNullOrWhiteSpace(entry.SourcePath) ? sourceName : entry.SourcePath;
         }
 
-        return normalizedConfiguration;
+        return configuration;
     }
 
     private static List<PrefabConfigurationEntry> PrepareLocalConfigurationEntries(
@@ -826,7 +825,7 @@ internal static partial class ObjectDropManager
         List<string> warnings)
     {
         List<PrefabConfigurationEntry> normalizedConfiguration =
-            CloneAndNormalizeConfigurationEntries(configuration, sourceName);
+            NormalizeOwnedConfigurationEntries(NetworkPayloadSyncSupport.CloneEntries(Descriptor, configuration), sourceName);
         List<PrefabConfigurationEntry> acceptedEntries = new();
         foreach (PrefabConfigurationEntry entry in normalizedConfiguration)
         {
@@ -895,7 +894,8 @@ internal static partial class ObjectDropManager
     {
         using InvalidEntryDiagnostics.SuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(sourceName);
         SyncedObjectConfigurationState state = new();
-        foreach (PrefabConfigurationEntry entry in CloneAndNormalizeConfigurationEntries(configuration, sourceName))
+        // Local preparation and the transport reader each supply an owned clone.
+        foreach (PrefabConfigurationEntry entry in NormalizeOwnedConfigurationEntries(configuration, sourceName))
         {
             if (string.IsNullOrWhiteSpace(entry.Prefab))
             {
@@ -1358,32 +1358,10 @@ internal static partial class ObjectDropManager
         return definition != null && HasDropTableOverride(definition.ExtraDrops);
     }
 
-    private static bool IsEventOnlyDropTableFastPathKind(LiveObjectComponentKind componentKind)
+    private static bool RequiresLiveReconcile(DamageableDropTableDefinition? definition)
     {
-        return componentKind == LiveObjectComponentKind.DropOnDestroyed ||
-               componentKind == LiveObjectComponentKind.MineRock ||
-               componentKind == LiveObjectComponentKind.MineRock5 ||
-               componentKind == LiveObjectComponentKind.TreeBase ||
-               componentKind == LiveObjectComponentKind.TreeLog ||
-               componentKind == LiveObjectComponentKind.Container;
-    }
-
-    private static bool UsesLiveDropTableReconcile(LiveObjectComponentKind componentKind)
-    {
-        return !IsEventOnlyDropTableFastPathKind(componentKind);
-    }
-
-    private static bool RequiresLiveReconcile(DropTableDefinition? definition, LiveObjectComponentKind componentKind)
-    {
-        return definition != null && !IsEventOnlyDropTableFastPathKind(componentKind);
-    }
-
-    private static bool RequiresLiveReconcile(DamageableDropTableDefinition? definition, LiveObjectComponentKind componentKind)
-    {
-        return definition != null &&
-               (HasDamageableHealthOverride(definition) ||
-                HasDamageableMinToolTierOverride(definition) ||
-                (!IsEventOnlyDropTableFastPathKind(componentKind) && HasDropTableOverride(definition)));
+        // Resource drop tables are resolved only by their drop-event patches.
+        return HasDamageableHealthOverride(definition) || HasDamageableMinToolTierOverride(definition);
     }
 
     private static bool RequiresLiveReconcile(PrefabConfigurationEntry entry, DestructibleDefinition? definition)
@@ -1804,9 +1782,11 @@ internal static partial class ObjectDropManager
         return hash;
     }
 
-    private static IEnumerable<PrefabReferenceEntry> BuildSupplementalLocationReferenceEntries(HashSet<string> existingPrefabs)
+    private static IEnumerable<PrefabReferenceEntry> BuildSupplementalLocationReferenceEntries(
+        HashSet<string> existingPrefabs,
+        Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
-        foreach ((string prefabName, LocationReferenceBucket bucket) in BuildLocationReferenceBuckets()
+        foreach ((string prefabName, LocationReferenceBucket bucket) in locationBuckets
                      .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
         {
             string normalizedPrefabName = ReferenceRefreshSupport.NormalizeKey(prefabName);
@@ -2759,8 +2739,7 @@ internal static partial class ObjectDropManager
             return;
         }
 
-        if ((includeEventOnlyKinds || (UsesLiveDropTableReconcile(LiveObjectComponentKind.DropOnDestroyed) &&
-                                       RequiresLiveReconcileForPrefab(snapshot.Prefab.name, LiveObjectComponentKind.DropOnDestroyed))) &&
+        if (includeEventOnlyKinds &&
             gameObject.TryGetComponent(out DropOnDestroyed dropOnDestroyed) &&
             TryBuildEffectiveDropTable(
                 gameObject,
@@ -2776,8 +2755,7 @@ internal static partial class ObjectDropManager
             dropOnDestroyed.m_dropWhenDestroyed = dropOnDestroyedTable!;
         }
 
-        if ((includeEventOnlyKinds || (UsesLiveDropTableReconcile(LiveObjectComponentKind.MineRock) &&
-                                       RequiresLiveReconcileForPrefab(snapshot.Prefab.name, LiveObjectComponentKind.MineRock))) &&
+        if (includeEventOnlyKinds &&
             gameObject.TryGetComponent(out MineRock mineRock) &&
             TryBuildEffectiveDropTable(
                 gameObject,
@@ -2793,8 +2771,7 @@ internal static partial class ObjectDropManager
             mineRock.m_dropItems = mineRockTable!;
         }
 
-        if ((includeEventOnlyKinds || (UsesLiveDropTableReconcile(LiveObjectComponentKind.MineRock5) &&
-                                       RequiresLiveReconcileForPrefab(snapshot.Prefab.name, LiveObjectComponentKind.MineRock5))) &&
+        if (includeEventOnlyKinds &&
             gameObject.TryGetComponent(out MineRock5 mineRock5) &&
             TryBuildEffectiveDropTable(
                 gameObject,
@@ -2810,8 +2787,7 @@ internal static partial class ObjectDropManager
             mineRock5.m_dropItems = mineRock5Table!;
         }
 
-        if ((includeEventOnlyKinds || (UsesLiveDropTableReconcile(LiveObjectComponentKind.Container) &&
-                                       RequiresLiveReconcileForPrefab(snapshot.Prefab.name, LiveObjectComponentKind.Container))) &&
+        if (includeEventOnlyKinds &&
             gameObject.TryGetComponent(out Container container) &&
             TryBuildEffectiveDropTable(
                 gameObject,
@@ -2827,8 +2803,7 @@ internal static partial class ObjectDropManager
             container.m_defaultItems = containerTable!;
         }
 
-        if ((includeEventOnlyKinds || (UsesLiveDropTableReconcile(LiveObjectComponentKind.TreeBase) &&
-                                       RequiresLiveReconcileForPrefab(snapshot.Prefab.name, LiveObjectComponentKind.TreeBase))) &&
+        if (includeEventOnlyKinds &&
             gameObject.TryGetComponent(out TreeBase treeBase) &&
             TryBuildEffectiveDropTable(
                 gameObject,
@@ -2844,8 +2819,7 @@ internal static partial class ObjectDropManager
             treeBase.m_dropWhenDestroyed = treeBaseTable!;
         }
 
-        if ((includeEventOnlyKinds || (UsesLiveDropTableReconcile(LiveObjectComponentKind.TreeLog) &&
-                                       RequiresLiveReconcileForPrefab(snapshot.Prefab.name, LiveObjectComponentKind.TreeLog))) &&
+        if (includeEventOnlyKinds &&
             gameObject.TryGetComponent(out TreeLog treeLog) &&
             TryBuildEffectiveDropTable(
                 gameObject,
@@ -3460,21 +3434,6 @@ internal static partial class ObjectDropManager
                 pickableItem.m_itemPrefab = null;
                 configurationChanged = true;
                 forceRandomRefresh = true;
-            }
-
-            if (definition.RandomItems.Length == 0)
-            {
-                if (pickableItem.m_itemPrefab != null)
-                {
-                    pickableItem.m_itemPrefab = null;
-                    configurationChanged = true;
-                }
-
-                if (pickableItem.m_stack != 1)
-                {
-                    pickableItem.m_stack = 1;
-                    configurationChanged = true;
-                }
             }
         }
         else

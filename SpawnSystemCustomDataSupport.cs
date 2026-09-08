@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using EwdData = ewd::Data;
 using EwdBlueprintObject = ewd::ExpandWorldData.BlueprintObject;
@@ -24,7 +25,9 @@ internal static class SpawnSystemCustomDataSupport
         }
     }
 
-    private static readonly Dictionary<SpawnSystem.SpawnData, PreparedPayload> PayloadsBySpawnData = new();
+    // Templates, attached SpawnSystem rows and event clones own their SpawnData.
+    // Keeping their payload here must not keep discarded rows or event clones alive.
+    private static readonly ConditionalWeakTable<SpawnSystem.SpawnData, PreparedPayload> PayloadsBySpawnData = new();
     private static readonly int HashFaction = "faction".GetStableHashCode();
 
     internal static void ClearCustomData(SpawnSystem system)
@@ -82,14 +85,15 @@ internal static class SpawnSystemCustomDataSupport
         }
         else
         {
-            PayloadsBySpawnData[spawnData] = payload;
+            PayloadsBySpawnData.Remove(spawnData);
+            PayloadsBySpawnData.Add(spawnData, payload);
         }
     }
 
     internal static bool HasPreparedPayload(SpawnSystem.SpawnData? spawnData)
     {
         return spawnData != null &&
-               PayloadsBySpawnData.ContainsKey(spawnData);
+               PayloadsBySpawnData.TryGetValue(spawnData, out _);
     }
 
     internal static void CopyPreparedPayload(SpawnSystem.SpawnData? source, SpawnSystem.SpawnData? target)
@@ -101,7 +105,8 @@ internal static class SpawnSystemCustomDataSupport
 
         if (PayloadsBySpawnData.TryGetValue(source, out PreparedPayload? payload))
         {
-            PayloadsBySpawnData[target] = payload;
+            PayloadsBySpawnData.Remove(target);
+            PayloadsBySpawnData.Add(target, payload);
         }
         else
         {

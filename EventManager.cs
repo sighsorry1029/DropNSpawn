@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using UnityEngine;
 using YamlDotNet.Serialization;
@@ -53,7 +54,9 @@ internal static class EventManager
     private static float? BaselineEventChance;
     private static float? BaselineEventIntervalMinutes;
     private static readonly List<SpawnSystem.SpawnData> AppliedSpawnData = new();
-    private static readonly Dictionary<RandomEvent, EventRuntimeMetadata> EventMetadata = new();
+    // A clone may belong to Valheim or another mod and need not pass through our
+    // multiple-event stop path. Metadata must not extend that clone's lifetime.
+    private static ConditionalWeakTable<RandomEvent, EventRuntimeMetadata> EventMetadata = new();
     private static readonly List<RandomEvent> MultipleActiveEvents = new();
     private static MethodInfo? ExpandWorldCommandRunMethod;
     private static bool ExpandWorldCommandRunMethodLookedUp;
@@ -174,7 +177,7 @@ internal static class EventManager
         lock (Sync)
         {
             ClearAppliedPayloadsLocked();
-            EventMetadata.Clear();
+            EventMetadata = new ConditionalWeakTable<RandomEvent, EventRuntimeMetadata>();
             MultipleActiveEvents.Clear();
             if (RandEventSystem.instance != null && BaselineEvents != null)
             {
@@ -244,7 +247,7 @@ internal static class EventManager
             BaselineEventChance = null;
             BaselineEventIntervalMinutes = null;
             ClearAppliedPayloadsLocked();
-            EventMetadata.Clear();
+            EventMetadata = new ConditionalWeakTable<RandomEvent, EventRuntimeMetadata>();
             MultipleActiveEvents.Clear();
         }
     }
@@ -258,7 +261,8 @@ internal static class EventManager
 
         if (EventMetadata.TryGetValue(source, out EventRuntimeMetadata metadata))
         {
-            EventMetadata[clone] = CloneMetadata(metadata);
+            EventMetadata.Remove(clone);
+            EventMetadata.Add(clone, CloneMetadata(metadata));
         }
 
         if (source.m_spawn == null || clone.m_spawn == null)
@@ -431,9 +435,10 @@ internal static class EventManager
 
     private static List<EventDefinition> BuildSyncedConfigurationState(List<EventDefinition> definitions, string sourceName)
     {
-        List<EventDefinition> configuration = NetworkPayloadSyncSupport.CloneEntries(Descriptor, definitions);
-        NormalizeDefinitions(configuration);
-        return configuration;
+        // Local parsing produces fresh entries and TryGetSyncedEntries returns a
+        // detached deep clone. The build hook owns this list in either path.
+        NormalizeDefinitions(definitions);
+        return definitions;
     }
 
     private static void CommitConfigurationState(List<EventDefinition> configuration, string payloadToken)
@@ -684,15 +689,23 @@ internal static class EventManager
             forcedEvent.Update(true, true, true, dt);
         }
 
-        List<RandomEvent> stoppedEvents = MultipleActiveEvents
-            .Where(activeEvent =>
+        List<RandomEvent>? stoppedEvents = null;
+        foreach (RandomEvent activeEvent in MultipleActiveEvents)
+        {
+            bool anyPlayerInArea = eventSystem.IsAnyPlayerInEventArea(activeEvent);
+            if (activeEvent.Update(true, true, anyPlayerInArea, dt))
             {
-                bool anyPlayerInArea = eventSystem.IsAnyPlayerInEventArea(activeEvent);
-                return activeEvent.Update(true, true, anyPlayerInArea, dt);
-            })
-            .ToList();
+                stoppedEvents ??= new List<RandomEvent>();
+                stoppedEvents.Add(activeEvent);
+            }
+        }
 
-        StopMultipleEventsLocked(stoppedEvents, callOnStop: true);
+        // Keep this list local: OnStop commands can re-enter event handling.
+        // As before, update every event before calling OnStop in list order.
+        if (stoppedEvents != null)
+        {
+            StopMultipleEventsLocked(stoppedEvents, callOnStop: true);
+        }
         SelectLocalMultipleEvent(eventSystem);
         return true;
     }
@@ -762,9 +775,7 @@ internal static class EventManager
                 continue;
             }
 
-            RandomEvent nearestEvent = MultipleActiveEvents
-                .OrderBy(activeEvent => Utils.DistanceXZ(activeEvent.m_pos, peer.m_refPos))
-                .First();
+            RandomEvent nearestEvent = FindNearestMultipleEvent(peer.m_refPos)!;
             ZRoutedRpc.instance.InvokeRoutedRPC(
                 peer.m_uid,
                 "SetEvent",
@@ -818,9 +829,7 @@ internal static class EventManager
         }
 
         Vector3 playerPosition = Player.m_localPlayer.transform.position;
-        RandomEvent? nearestEvent = MultipleActiveEvents
-            .OrderBy(activeEvent => Utils.DistanceXZ(activeEvent.m_pos, playerPosition))
-            .FirstOrDefault();
+        RandomEvent? nearestEvent = FindNearestMultipleEvent(playerPosition);
 
         eventSystem.m_randomEvent = nearestEvent;
         if (nearestEvent != null && eventSystem.IsInsideRandomEventArea(nearestEvent, playerPosition))
@@ -830,6 +839,25 @@ internal static class EventManager
         }
 
         eventSystem.SetActiveEvent(null, false);
+    }
+
+    private static RandomEvent? FindNearestMultipleEvent(Vector3 position)
+    {
+        RandomEvent? nearestEvent = null;
+        float nearestDistance = 0f;
+        foreach (RandomEvent activeEvent in MultipleActiveEvents)
+        {
+            float distance = Utils.DistanceXZ(activeEvent.m_pos, position);
+            // CompareTo matches OrderBy's float ordering, including NaN. Strict
+            // comparison keeps the first entry when distances are equal.
+            if (nearestEvent == null || distance.CompareTo(nearestDistance) < 0)
+            {
+                nearestEvent = activeEvent;
+                nearestDistance = distance;
+            }
+        }
+
+        return nearestEvent;
     }
 
     private static void CheckGlobalEventsPerPlayer(RandEventSystem eventSystem, float dt)
@@ -994,7 +1022,7 @@ internal static class EventManager
         }
 
         ClearAppliedPayloadsLocked();
-        EventMetadata.Clear();
+        EventMetadata = new ConditionalWeakTable<RandomEvent, EventRuntimeMetadata>();
 
         List<RandomEvent> events = CloneEvents(BaselineEvents);
         HashSet<RandomEvent> explicitDurationEvents = new();
@@ -1084,7 +1112,8 @@ internal static class EventManager
 
             metadata.PlayerBase = ClonePlayerBaseCondition(defaultCondition);
             ev.m_nearBaseOnly = defaultCondition.IsNearOnly;
-            EventMetadata[ev] = metadata;
+            EventMetadata.Remove(ev);
+            EventMetadata.Add(ev, metadata);
         }
     }
 
@@ -1151,7 +1180,8 @@ internal static class EventManager
         ApplyForces(target, definition);
         if (metadata.HasValues())
         {
-            EventMetadata[target] = metadata;
+            EventMetadata.Remove(target);
+            EventMetadata.Add(target, metadata);
         }
 
         if (definition.Spawns != null)

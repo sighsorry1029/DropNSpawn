@@ -104,6 +104,11 @@ internal static class VneiCompatibility
     private static readonly RingBufferQueue<ManagedRecipeKey> PendingRefreshWorkItems = new();
     private static readonly HashSet<ManagedRecipeKey> PendingRefreshWorkSet = new();
     private static Coroutine? _pendingRefreshCoroutine;
+    private static DropNSpawnPlugin? _refreshCoroutineHost;
+    private static int _refreshGeneration;
+    private static bool _compatibilityFailureLogged;
+    private static EventInfo? _indexingItemRecipesEvent;
+    private static readonly Action<GameObject> IndexingItemRecipesHandler = HandleIndexingItemRecipes;
 
     internal static void Initialize(Harmony harmony)
     {
@@ -112,7 +117,23 @@ internal static class VneiCompatibility
             return;
         }
 
-        _initialized = true;
+        try
+        {
+            if (TryDetachIndexingEvent())
+            {
+                InitializeCore(harmony);
+            }
+        }
+        catch (Exception ex)
+        {
+            _available = false;
+            TryDetachIndexingEvent();
+            LogCompatibilityFailureOnce($"VNEI compatibility initialization failed: {ex.Message}");
+        }
+    }
+
+    private static void InitializeCore(Harmony harmony)
+    {
         if (!Chainloader.PluginInfos.ContainsKey(VneiPluginGuid))
         {
             return;
@@ -125,7 +146,7 @@ internal static class VneiCompatibility
         _partType = AccessTools.TypeByName("VNEI.Logic.Part");
         if (_recipeInfoType == null || _indexingType == null || _amountType == null || _itemType == null || _partType == null)
         {
-            DropNSpawnPlugin.DropNSpawnLogger.LogWarning("VNEI detected, but one or more compatibility types could not be resolved.");
+            LogCompatibilityFailureOnce("VNEI detected, but one or more compatibility types could not be resolved.");
             return;
         }
 
@@ -176,7 +197,7 @@ internal static class VneiCompatibility
 
         if (!_available)
         {
-            DropNSpawnPlugin.DropNSpawnLogger.LogWarning("VNEI detected, but one or more compatibility members could not be resolved.");
+            LogCompatibilityFailureOnce("VNEI detected, but one or more compatibility members could not be resolved.");
             return;
         }
 
@@ -190,10 +211,79 @@ internal static class VneiCompatibility
         EventInfo? onIndexingItemRecipes = _indexingType.GetEvent("OnIndexingItemRecipes", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static);
         if (onIndexingItemRecipes != null)
         {
-            onIndexingItemRecipes.AddEventHandler(null, new Action<GameObject>(HandleIndexingItemRecipes));
+            _indexingItemRecipesEvent = onIndexingItemRecipes;
+            onIndexingItemRecipes.AddEventHandler(null, IndexingItemRecipesHandler);
         }
 
+        _initialized = true;
+        _compatibilityFailureLogged = false;
         DropNSpawnPlugin.DropNSpawnLogger.LogInfo("VNEI compatibility enabled.");
+    }
+
+    internal static void Shutdown(DropNSpawnPlugin host)
+    {
+        _available = false;
+        _initialized = false;
+        Coroutine? coroutine;
+        DropNSpawnPlugin? coroutineHost;
+        lock (RefreshSync)
+        {
+            _refreshGeneration++;
+            coroutine = _pendingRefreshCoroutine;
+            coroutineHost = _refreshCoroutineHost ?? host;
+            _pendingRefreshCoroutine = null;
+            _refreshCoroutineHost = null;
+            PendingRefreshWorkItems.Clear();
+            PendingRefreshWorkSet.Clear();
+        }
+
+        if (coroutine != null && coroutineHost != null)
+        {
+            try
+            {
+                coroutineHost.StopCoroutine(coroutine);
+            }
+            catch (Exception ex)
+            {
+                LogCompatibilityFailureOnce($"Failed to stop VNEI compatibility refresh: {ex.Message}");
+            }
+        }
+
+        TryDetachIndexingEvent();
+        ManagedRecipesByKey.Clear();
+    }
+
+    private static bool TryDetachIndexingEvent()
+    {
+        if (_indexingItemRecipesEvent == null)
+        {
+            return true;
+        }
+
+        try
+        {
+            _indexingItemRecipesEvent.RemoveEventHandler(null, IndexingItemRecipesHandler);
+            _indexingItemRecipesEvent = null;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Keep the event handle so a later shutdown/initialization can retry
+            // removal instead of adding the same subscription a second time.
+            LogCompatibilityFailureOnce($"Failed to detach VNEI indexing callback: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static void LogCompatibilityFailureOnce(string message)
+    {
+        if (_compatibilityFailureLogged)
+        {
+            return;
+        }
+
+        _compatibilityFailureLogged = true;
+        DropNSpawnPlugin.DropNSpawnLogger.LogWarning(message);
     }
 
     internal static void RefreshCharacterPrefabs(IEnumerable<string> prefabNames)
@@ -222,8 +312,9 @@ internal static class VneiCompatibility
         {
             return _hasIndexedMethod != null && (bool)(_hasIndexedMethod.Invoke(null, Array.Empty<object>()) ?? false);
         }
-        catch
+        catch (Exception ex)
         {
+            LogCompatibilityFailureOnce($"VNEI indexing readiness check failed: {ex.Message}");
             return false;
         }
     }
@@ -319,7 +410,17 @@ internal static class VneiCompatibility
                 PendingRefreshWorkItems.Count > 0)
             {
                 shouldStartCoroutine = true;
-                _pendingRefreshCoroutine = DropNSpawnPlugin.Instance.StartCoroutine(ProcessQueuedRefreshesCoroutine());
+                _refreshCoroutineHost = DropNSpawnPlugin.Instance;
+                try
+                {
+                    _pendingRefreshCoroutine = _refreshCoroutineHost.StartCoroutine(ProcessQueuedRefreshesCoroutine(_refreshGeneration));
+                }
+                catch (Exception ex)
+                {
+                    _pendingRefreshCoroutine = null;
+                    _refreshCoroutineHost = null;
+                    LogCompatibilityFailureOnce($"Failed to start VNEI compatibility refresh: {ex.Message}");
+                }
             }
         }
 
@@ -329,26 +430,39 @@ internal static class VneiCompatibility
         }
     }
 
-    private static IEnumerator ProcessQueuedRefreshesCoroutine()
+    private static IEnumerator ProcessQueuedRefreshesCoroutine(int generation)
     {
-        yield return null;
-        while (true)
+        try
         {
-            if (CanRefresh())
+            yield return null;
+            while (_available && generation == _refreshGeneration)
             {
-                ProcessQueuedRefreshes(MaxRefreshJobsPerFrame, Time.realtimeSinceStartupAsDouble + RefreshFrameBudgetSeconds);
-            }
+                if (CanRefresh())
+                {
+                    ProcessQueuedRefreshes(MaxRefreshJobsPerFrame, Time.realtimeSinceStartupAsDouble + RefreshFrameBudgetSeconds);
+                }
 
+                lock (RefreshSync)
+                {
+                    if (PendingRefreshWorkItems.Count == 0)
+                    {
+                        yield break;
+                    }
+                }
+
+                yield return null;
+            }
+        }
+        finally
+        {
             lock (RefreshSync)
             {
-                if (PendingRefreshWorkItems.Count == 0)
+                if (generation == _refreshGeneration)
                 {
                     _pendingRefreshCoroutine = null;
-                    yield break;
+                    _refreshCoroutineHost = null;
                 }
             }
-
-            yield return null;
         }
     }
 
@@ -366,13 +480,29 @@ internal static class VneiCompatibility
                TryDequeueRefreshWorkItem(out ManagedRecipeKey workItem))
         {
             affectedItems ??= new HashSet<object>();
-            ProcessQueuedRefreshWorkItem(workItem, affectedItems);
+            try
+            {
+                ProcessQueuedRefreshWorkItem(workItem, affectedItems);
+            }
+            catch (Exception ex)
+            {
+                // The dequeued job is not retried indefinitely. Other jobs in
+                // the batch still get a chance to refresh.
+                LogCompatibilityFailureOnce($"VNEI refresh failed for '{workItem.PrefabName}' ({workItem.Kind}): {ex.Message}");
+            }
             processedJobs++;
         }
 
         if (affectedItems != null && affectedItems.Count > 0)
         {
-            UpdateKnownForItems(affectedItems);
+            try
+            {
+                UpdateKnownForItems(affectedItems);
+            }
+            catch (Exception ex)
+            {
+                LogCompatibilityFailureOnce($"VNEI known-item refresh failed: {ex.Message}");
+            }
         }
 
         return processedJobs > 0;
@@ -435,6 +565,12 @@ internal static class VneiCompatibility
         ConstructorInfo? constructor = AccessTools.Constructor(_recipeInfoType, argumentTypes);
         MethodInfo? postfix = AccessTools.Method(typeof(VneiCompatibility), postfixName);
         if (constructor == null || postfix == null)
+        {
+            return;
+        }
+
+        if (Harmony.GetPatchInfo(constructor)?.Postfixes.Any(patch =>
+                patch.owner == harmony.Id && patch.PatchMethod == postfix) == true)
         {
             return;
         }
@@ -575,6 +711,11 @@ internal static class VneiCompatibility
 
     private static void HandleIndexingItemRecipes(GameObject prefab)
     {
+        if (!_available)
+        {
+            return;
+        }
+
         try
         {
             TryAddMissingContainerRecipe(prefab);
@@ -583,7 +724,7 @@ internal static class VneiCompatibility
         }
         catch (Exception ex)
         {
-            DropNSpawnPlugin.DropNSpawnLogger.LogWarning($"VNEI compatibility failed while indexing '{prefab?.name}': {ex.Message}");
+            LogCompatibilityFailureOnce($"VNEI compatibility failed while indexing '{prefab?.name}': {ex.Message}");
         }
     }
 

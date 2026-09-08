@@ -104,7 +104,6 @@ internal static partial class CharacterDropManager
         foreach (string prefabName in prefabNames)
         {
             if (!desiredState.CompiledState.StaticBuiltDropsByPrefab.TryGetValue(prefabName, out List<CharacterDrop.Drop>? staticDrops) ||
-                staticDrops.Count == 0 ||
                 !CharacterDropRuntime.TryGetSnapshot(prefabName, out CharacterDropSnapshot? snapshot) ||
                 snapshot == null ||
                 snapshot.Prefab == null ||
@@ -141,15 +140,22 @@ internal static partial class CharacterDropManager
                 continue;
             }
 
-            characterDrop.m_drops = CloneDrops(snapshot.BuiltDrops);
-            if (!desiredState.DomainEnabled ||
-                !desiredState.CompiledState.StaticBuiltDropsByPrefab.TryGetValue(prefabName, out List<CharacterDrop.Drop>? staticDrops) ||
-                staticDrops.Count == 0)
-            {
-                continue;
-            }
-
-            characterDrop.m_drops = CloneDrops(staticDrops);
+            ApplyOwnedCharacterDrops(characterDrop, snapshot, prefabName, desiredState.DomainEnabled, desiredState.CompiledState);
         }
+    }
+
+    private static void ApplyOwnedCharacterDrops(
+        CharacterDrop characterDrop,
+        CharacterDropSnapshot snapshot,
+        string prefabName,
+        bool domainEnabled,
+        CharacterCompiledState compiledState)
+    {
+        List<CharacterDrop.Drop> source = domainEnabled &&
+                                          compiledState.StaticBuiltDropsByPrefab.TryGetValue(prefabName, out List<CharacterDrop.Drop>? staticDrops)
+            ? staticDrops
+            : snapshot.BuiltDrops;
+        // Component lists and their mutable rows must never share a cached template.
+        characterDrop.m_drops = CloneDrops(source);
     }
 }

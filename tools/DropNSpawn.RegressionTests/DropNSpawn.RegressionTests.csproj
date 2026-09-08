@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Test host only: the game's HarmonyX 2.9 targets Unity's Mono runtime, not CoreCLR. -->
+    <PackageReference Include="HarmonyX" Version="2.16.0" />
+  </ItemGroup>
+</Project>

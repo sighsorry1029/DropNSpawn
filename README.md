@@ -26,6 +26,8 @@ RuneStone global pins and Vegvisir rewards live in the standalone `UsefulRunesto
 - drop creature loot in one stack when configured
 - `onePerPlayer` can count nearby living players within the configured range
 
+Omitting `characterDrop.drops` (or setting it to `null`) leaves the existing drops unchanged. An explicit `drops: []` replaces them with an empty list when that rule matches. Matching rules still merge their valid drop rows; a nonempty list containing only invalid items does not clear existing drops.
+
 ## Object
 ![](https://i.ibb.co/yFhNTP60/objectdrop.png)
 
@@ -180,6 +182,10 @@ If another mod fully owns the same system, disable the overlapping DropNSpawn do
 - `ESP` for spawners, spawn points, and object info
 - `XRayVision` for object components
 - `Infinity Hammer` for placing and removing test objects
+
+## Building and validation
+
+See [the development guide](docs/development.md) for build prerequisites, regression checks, and the gameplay verification matrix. For routine work, use `dotnet build DropNSpawn.csproj -c Debug -p:DeployToGame=true` to build, merge, and update the local game DLL. Ordinary Release builds create Thunderstore/Nexus ZIPs and can trigger automatic uploads from registered watch folders; run them only for an explicitly requested release.
 
 ## GitHub
 https://github.com/sighsorry1029/DropNSpawn

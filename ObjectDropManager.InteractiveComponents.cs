@@ -6,14 +6,6 @@ internal static partial class ObjectDropManager
 {
     private static void RestoreInteractiveComponents(GameObject gameObject, PrefabSnapshot snapshot, PrefabConfigurationEntry entry, bool updateRuntimeState)
     {
-        if (UsesLiveDropTableReconcile(LiveObjectComponentKind.Container) &&
-            HasDropTableOverride(entry.Container) &&
-            gameObject.TryGetComponent(out Container container) &&
-            snapshot.Container != null)
-        {
-            container.m_defaultItems = CloneDropTable(snapshot.Container);
-        }
-
         if (HasPickableOverride(entry.Pickable) && gameObject.TryGetComponent(out Pickable pickable) && snapshot.Pickable != null)
         {
             pickable.m_itemPrefab = snapshot.Pickable.ItemPrefab;

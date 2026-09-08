@@ -127,6 +127,22 @@ internal sealed class PluginBootstrapCoordinator
         PluginManifestCoordinator.AttachRuntimeDomainHandlers();
     }
 
+    internal static void DetachReloadAndManifestHandlers(DropNSpawnPlugin host)
+    {
+        if (host.ReloadCoordinator is PluginReloadCoordinator reloadCoordinator)
+        {
+            DropNSpawnPlugin.ConfigSync.SourceOfTruthChanged -= reloadCoordinator.HandleSourceOfTruthChanged;
+            PluginBoundSettings.EnableObjectOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableCharacterOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableSpawnerOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableSpawnSystemOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.EnableEventOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
+            PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes?.SettingChanged -= HandleSpawnSystemGlobalFilterSettingChanged;
+        }
+
+        PluginManifestCoordinator.DetachRuntimeDomainHandlers();
+    }
+
     internal static void HandleSpawnSystemGlobalFilterSettingChanged(object? sender, EventArgs e)
     {
         SpawnSystemManager.ReloadConfiguration();

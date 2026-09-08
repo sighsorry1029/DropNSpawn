@@ -53,7 +53,7 @@ internal sealed class DomainModuleDefinition<TEntry> : DomainRegistration
 {
     internal DomainModuleDefinition(DomainModuleOptions<TEntry> options)
         : this(
-            CreateDescriptor(
+            new DomainDescriptor<TEntry>(
                 options.DomainKey,
                 options.ReloadDomain,
                 options.ManifestSettingKey,
@@ -108,39 +108,6 @@ internal sealed class DomainModuleDefinition<TEntry> : DomainRegistration
 
     internal DomainDescriptor<TEntry> DescriptorTyped { get; }
     internal DomainTransportMetadata<TEntry> TransportMetadataTyped { get; }
-
-    private static DomainDescriptor<TEntry> CreateDescriptor(
-        string domainKey,
-        DropNSpawnPlugin.ReloadDomain reloadDomain,
-        string manifestSettingKey,
-        int manifestPriority,
-        Func<string, bool> shouldReloadForPath,
-        Action reload,
-        Action<string> onGameDataReady,
-        Func<bool> handleExpandWorldDataReady,
-        Func<bool>? hasPendingSnapshotBuildWork,
-        Func<double, bool>? processPendingSnapshotBuildStep,
-        Func<bool>? hasPendingReconcileWork,
-        Func<double, bool>? processPendingReconcileStep,
-        Action? beforeClientManifestChanged,
-        Action? onClientAuthorityCutover)
-    {
-        return new DomainDescriptor<TEntry>(
-            domainKey,
-            reloadDomain,
-            manifestSettingKey,
-            manifestPriority,
-            shouldReloadForPath,
-            reload,
-            onGameDataReady,
-            handleExpandWorldDataReady,
-            hasPendingSnapshotBuildWork,
-            processPendingSnapshotBuildStep,
-            hasPendingReconcileWork,
-            processPendingReconcileStep,
-            beforeClientManifestChanged,
-            onClientAuthorityCutover);
-    }
 
     private static T Require<T>(T? value, string name) where T : class
     {

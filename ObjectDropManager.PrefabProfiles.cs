@@ -303,30 +303,25 @@ internal static partial class ObjectDropManager
     {
         LiveObjectComponentKind kinds = LiveObjectComponentKind.None;
 
-        if (RequiresLiveReconcile(entry.DropOnDestroyed, LiveObjectComponentKind.DropOnDestroyed))
-        {
-            kinds |= LiveObjectComponentKind.DropOnDestroyed;
-        }
-
-        if (RequiresLiveReconcile(entry.MineRock, LiveObjectComponentKind.MineRock) &&
+        if (RequiresLiveReconcile(entry.MineRock) &&
             !CanUseLazyDamageableScalarFastPath(entry, LiveObjectComponentKind.MineRock))
         {
             kinds |= LiveObjectComponentKind.MineRock;
         }
 
-        if (RequiresLiveReconcile(entry.MineRock5, LiveObjectComponentKind.MineRock5) &&
+        if (RequiresLiveReconcile(entry.MineRock5) &&
             !CanUseLazyDamageableScalarFastPath(entry, LiveObjectComponentKind.MineRock5))
         {
             kinds |= LiveObjectComponentKind.MineRock5;
         }
 
-        if (RequiresLiveReconcile(entry.TreeBase, LiveObjectComponentKind.TreeBase) &&
+        if (RequiresLiveReconcile(entry.TreeBase) &&
             !CanUseLazyDamageableScalarFastPath(entry, LiveObjectComponentKind.TreeBase))
         {
             kinds |= LiveObjectComponentKind.TreeBase;
         }
 
-        if (RequiresLiveReconcile(entry.TreeLog, LiveObjectComponentKind.TreeLog) &&
+        if (RequiresLiveReconcile(entry.TreeLog) &&
             !CanUseLazyDamageableScalarFastPath(entry, LiveObjectComponentKind.TreeLog))
         {
             kinds |= LiveObjectComponentKind.TreeLog;

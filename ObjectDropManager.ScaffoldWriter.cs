@@ -11,7 +11,7 @@ internal static partial class ObjectDropManager
         StringBuilder builder = new();
         bool wroteAny = false;
 
-        foreach (PrefabOwnerSection<PrefabConfigurationEntry> section in BuildConfigurationTemplate())
+        foreach (PrefabOwnerSection<PrefabConfigurationEntry> section in BuildConfigurationTemplate(BuildLocationReferenceBuckets()))
         {
             foreach (PrefabConfigurationEntry entry in section.Entries)
             {

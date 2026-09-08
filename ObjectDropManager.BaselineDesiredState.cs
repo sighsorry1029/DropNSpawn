@@ -17,10 +17,10 @@ internal static partial class ObjectDropManager
             BaselineDesiredStateCapabilities.LiveApply |
             BaselineDesiredStateCapabilities.StaticRollback;
 
-        public override void Validate(ObjectDesiredState desiredState) => ValidateObjectDesiredState(desiredState);
-        public override void RestoreStaticBaseline(ObjectDesiredState desiredState) => RestoreObjectStaticBaseline(desiredState);
-        public override void ApplyDesiredStateToStaticBaseline(ObjectDesiredState desiredState) => ApplyObjectDesiredStateToStaticBaseline(desiredState);
-        public override void ApplyDesiredStateToLive(ObjectDesiredState desiredState) => ApplyObjectDesiredStateToLive(desiredState);
+        public override void Validate(ObjectDesiredState desiredState) => ValidateConfiguredPrefabs();
+        public override void RestoreStaticBaseline(ObjectDesiredState desiredState) => RestoreSnapshots(desiredState.DirtyPrefabs);
+        public override void ApplyDesiredStateToStaticBaseline(ObjectDesiredState desiredState) => ApplyDesiredStateToPrefabs(desiredState);
+        public override void ApplyDesiredStateToLive(ObjectDesiredState desiredState) => ApplyDesiredStateToLiveObjects(desiredState);
         public override void Commit(ObjectDesiredState desiredState) => RecordAppliedState(desiredState.GameDataSignature, desiredState.DomainEnabled, desiredState.CurrentEntrySignatures);
 
         public override void HandleFailure(ObjectDesiredState desiredState, bool liveStageFailed)
@@ -96,25 +96,5 @@ internal static partial class ObjectDropManager
                               (domainEnabled &&
                                FilterPrefabsRequiringLiveReconcile(currentEntrySignatures.Keys).Count > 0)
         };
-    }
-
-    private static void RestoreObjectStaticBaseline(ObjectDesiredState desiredState)
-    {
-        RestoreSnapshots(desiredState.DirtyPrefabs);
-    }
-
-    private static void ValidateObjectDesiredState(ObjectDesiredState desiredState)
-    {
-        ValidateConfiguredPrefabs();
-    }
-
-    private static void ApplyObjectDesiredStateToStaticBaseline(ObjectDesiredState desiredState)
-    {
-        ApplyDesiredStateToPrefabs(desiredState);
-    }
-
-    private static void ApplyObjectDesiredStateToLive(ObjectDesiredState desiredState)
-    {
-        ApplyDesiredStateToLiveObjects(desiredState);
     }
 }

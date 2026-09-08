@@ -74,7 +74,7 @@ internal static partial class CharacterDropManager
 
     private static bool HasVneiRelevantDrops(CharacterDropPrefabEntry entry)
     {
-        return entry?.CharacterDrop?.Drops?.Count > 0;
+        return entry?.CharacterDrop?.Drops != null;
     }
 
     private static void AddVneiSnapshotDrop(List<VneiRecipeResult> results, HashSet<string> seen, CharacterDropItemSnapshot drop)

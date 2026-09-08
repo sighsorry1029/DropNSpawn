@@ -54,7 +54,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
 
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
-    internal const string ModVersion = "1.3.9";
+    internal const string ModVersion = "1.3.10";
     internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
     private static string ConfigFileName = $"{ModGUID}.cfg";
@@ -96,31 +96,25 @@ public class DropNSpawnPlugin : BaseUnityPlugin
             Instance = null;
         }
 
-        SaveWithRespectToConfigSet();
-        if (_configSync != null && _reloadCoordinator != null)
+        try
         {
-            _configSync.SourceOfTruthChanged -= _reloadCoordinator.HandleSourceOfTruthChanged;
+            SaveWithRespectToConfigSet();
         }
-        if (_reloadCoordinator != null)
+        finally
         {
-            PluginBoundSettings.EnableObjectOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableCharacterOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableSpawnerOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableSpawnSystemOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableEventOverrides?.SettingChanged -= _reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes?.SettingChanged -= PluginBootstrapCoordinator.HandleSpawnSystemGlobalFilterSettingChanged;
-        }
-        PluginManifestCoordinator.DetachRuntimeDomainHandlers();
-        _runtimeWorkCoordinator?.Dispose();
-        _runtimeWorkCoordinator = null;
-        _reloadCoordinator?.Dispose();
-        _reloadCoordinator = null;
-        CharacterDropManager.ResetWorldRuntimeState();
-        SpawnerGlobalConfig.Dispose();
-        PluginBoundSettings.Clear();
+            PluginBootstrapCoordinator.DetachReloadAndManifestHandlers(this);
+            VneiCompatibility.Shutdown(this);
+            _runtimeWorkCoordinator?.Dispose();
+            _runtimeWorkCoordinator = null;
+            _reloadCoordinator?.Dispose();
+            _reloadCoordinator = null;
+            CharacterDropManager.ResetWorldRuntimeState();
+            SpawnerGlobalConfig.Dispose();
+            PluginBoundSettings.Clear();
 
-        EventManager.Dispose();
-        NetworkPayloadSyncSupport.Shutdown();
+            EventManager.Dispose();
+            NetworkPayloadSyncSupport.Shutdown();
+        }
     }
 
     private static void EnsureServerSyncInitialized()

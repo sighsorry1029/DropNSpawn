@@ -710,4 +710,296 @@ internal static partial class NetworkPayloadSyncSupport
 
         return transport.Serializer(mergedEntries);
     }
+
+    private static bool TryGetPublishedTransferArtifactLocked<TEntry>(
+        DomainTransport<TEntry> transport,
+        string targetHash,
+        string? baseHash,
+        out TransferArtifact? artifact)
+    {
+        artifact = null;
+        string cacheKey = BuildTransferArtifactCacheKey(targetHash, baseHash);
+        if (!transport.PublishedTransferArtifacts.TryGetValue(cacheKey, out artifact) || artifact == null)
+        {
+            return false;
+        }
+
+        LinkedListNode<string>? artifactNode = artifact.LruNode;
+        TouchLruNodeLocked(transport.PublishedTransferArtifactLru, cacheKey, ref artifactNode);
+        artifact.LruNode = artifactNode;
+        return true;
+    }
+
+    private static void StoreTransferArtifactLocked<TEntry>(DomainTransport<TEntry> transport, TransferArtifact artifact)
+    {
+        if (artifact == null || artifact.CacheKey.Length == 0)
+        {
+            return;
+        }
+
+        if (transport.PublishedTransferArtifacts.TryGetValue(artifact.CacheKey, out TransferArtifact? existingArtifact) && existingArtifact != null)
+        {
+            RemoveTransferArtifactLocked(transport, existingArtifact);
+        }
+
+        transport.PublishedTransferArtifacts[artifact.CacheKey] = artifact;
+        AdjustPublishedTransferArtifactBytesLocked(transport, artifact.EstimatedBytes);
+        LinkedListNode<string>? artifactNode = artifact.LruNode;
+        TouchLruNodeLocked(transport.PublishedTransferArtifactLru, artifact.CacheKey, ref artifactNode);
+        artifact.LruNode = artifactNode;
+    }
+
+    private static TransferArtifact? EnsureFullTransferArtifactLocked<TEntry>(DomainTransport<TEntry> transport, string targetHash)
+    {
+        if (transport.PublishedCompressedBytes == null ||
+            transport.PublishedPayloadManifest.IsEmpty ||
+            !string.Equals(transport.PublishedPayloadManifest.Hash, targetHash, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (TryGetPublishedTransferArtifactLocked(transport, targetHash, "", out TransferArtifact? cachedArtifact))
+        {
+            return cachedArtifact;
+        }
+
+        TransferArtifact artifact = new()
+        {
+            CacheKey = BuildTransferArtifactCacheKey(targetHash, ""),
+            TransferKind = FullTransferKind,
+            BaseHash = "",
+            TargetHash = targetHash,
+            CompressedBytes = transport.PublishedCompressedBytes,
+            ChunkSizeBytes = transport.ChunkSizeBytes,
+            ChunkCount = Math.Max(1, (int)Math.Ceiling(transport.PublishedCompressedBytes.Length / (double)transport.ChunkSizeBytes))
+        };
+        artifact.EstimatedBytes = EstimateTransferArtifactBytes(artifact);
+        StoreTransferArtifactLocked(transport, artifact);
+        return artifact;
+    }
+
+    private static void QueueTransferArtifactBuildIfNeededLocked<TEntry>(
+        DomainTransport<TEntry> transport,
+        string targetHash,
+        string? baseHash)
+    {
+        if (!transport.EnableArtifactPrewarm)
+        {
+            return;
+        }
+
+        string normalizedBaseHash = NormalizeBaseHash(baseHash);
+        if (normalizedBaseHash.Length == 0 ||
+            transport.PublishedCompressedBytes == null ||
+            transport.PublishedPayloadManifest.IsEmpty ||
+            !string.Equals(transport.PublishedPayloadManifest.Hash, targetHash, StringComparison.Ordinal) ||
+            !transport.PublishedPayloadHistory.TryGetValue(normalizedBaseHash, out PublishedPayloadHistoryEntry<TEntry>? basePayloadEntry) ||
+            basePayloadEntry == null ||
+            basePayloadEntry.PayloadBytes == null ||
+            basePayloadEntry.PayloadBytes.Length == 0)
+        {
+            return;
+        }
+
+        if (TryGetPublishedTransferArtifactLocked(transport, targetHash, normalizedBaseHash, out _))
+        {
+            return;
+        }
+
+        string cacheKey = BuildTransferArtifactCacheKey(targetHash, normalizedBaseHash);
+        if (!transport.PendingArtifactBuildKeys.Add(cacheKey))
+        {
+            return;
+        }
+
+        byte[] fullCompressedPayloadBytes = transport.PublishedCompressedBytes;
+        byte[] targetPayloadBytes = transport.PublishedPayloadBytes ?? Array.Empty<byte>();
+        PayloadEntryIndex<TEntry>? targetPayloadIndex = transport.PublishedPayloadIndex;
+        byte[] basePayloadBytes = basePayloadEntry.PayloadBytes;
+        PayloadEntryIndex<TEntry>? basePayloadIndex = basePayloadEntry.PayloadIndex;
+        int roleEpoch = _networkRoleEpoch;
+
+        LinkedListNode<string>? payloadHistoryNode = basePayloadEntry.LruNode;
+        TouchLruNodeLocked(transport.PublishedPayloadHistoryLru, normalizedBaseHash, ref payloadHistoryNode);
+        basePayloadEntry.LruNode = payloadHistoryNode;
+
+        void QueuePendingArtifactBuildCleanup()
+        {
+            QueueMainThreadPayloadCommitLocked(() =>
+            {
+                lock (Sync)
+                {
+                    transport.PendingArtifactBuildKeys.Remove(cacheKey);
+                }
+            }, roleEpoch);
+        }
+
+        QueueDeltaArtifactPrewarmJobLocked(() =>
+        {
+            try
+            {
+                if (!IsCurrentRoleEpoch(roleEpoch))
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                if (!TryEnsurePayloadIndex(
+                        transport,
+                        targetHash,
+                        targetPayloadBytes,
+                        targetPayloadIndex,
+                        out PayloadEntryIndex<TEntry>? resolvedTargetPayloadIndex) ||
+                    resolvedTargetPayloadIndex == null)
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                if (!IsCurrentRoleEpoch(roleEpoch))
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                if (!TryEnsurePayloadIndex(
+                        transport,
+                        normalizedBaseHash,
+                        basePayloadBytes,
+                        basePayloadIndex,
+                        out PayloadEntryIndex<TEntry>? resolvedBasePayloadIndex) ||
+                    resolvedBasePayloadIndex == null)
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                if (!IsCurrentRoleEpoch(roleEpoch))
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                if (!TryBuildDeltaPayloadBytes(
+                        transport,
+                        normalizedBaseHash,
+                        targetHash,
+                        resolvedBasePayloadIndex,
+                        resolvedTargetPayloadIndex,
+                        out byte[] deltaPayloadBytes))
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                if (!IsCurrentRoleEpoch(roleEpoch))
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                byte[] compressedDeltaPayloadBytes = CompressBytes(deltaPayloadBytes);
+                if (!IsCurrentRoleEpoch(roleEpoch))
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                if (compressedDeltaPayloadBytes.Length >= fullCompressedPayloadBytes.Length * DefaultMaxDeltaCompressedSizeRatio)
+                {
+                    QueuePendingArtifactBuildCleanup();
+                    return;
+                }
+
+                TransferArtifact artifact = new()
+                {
+                    CacheKey = cacheKey,
+                    TransferKind = DeltaTransferKind,
+                    BaseHash = normalizedBaseHash,
+                    TargetHash = targetHash,
+                    CompressedBytes = compressedDeltaPayloadBytes,
+                    ChunkSizeBytes = transport.ChunkSizeBytes,
+                    ChunkCount = Math.Max(1, (int)Math.Ceiling(compressedDeltaPayloadBytes.Length / (double)transport.ChunkSizeBytes))
+                };
+                artifact.EstimatedBytes = EstimateTransferArtifactBytes(artifact);
+
+                QueueMainThreadPayloadCommitLocked(() =>
+                {
+                    lock (Sync)
+                    {
+                        transport.PendingArtifactBuildKeys.Remove(cacheKey);
+                        if (roleEpoch != _networkRoleEpoch ||
+                            transport.PublishedPayloadManifest.IsEmpty ||
+                            !string.Equals(transport.PublishedPayloadManifest.Hash, targetHash, StringComparison.Ordinal) ||
+                            transport.PublishedTransferArtifacts.ContainsKey(cacheKey))
+                        {
+                            return;
+                        }
+
+                        if (transport.PublishedPayloadIndex == null)
+                        {
+                            transport.PublishedPayloadIndex = resolvedTargetPayloadIndex;
+                        }
+
+                        RememberPublishedPayloadLocked(
+                            transport,
+                            normalizedBaseHash,
+                            basePayloadBytes,
+                            resolvedBasePayloadIndex);
+                        StoreTransferArtifactLocked(transport, artifact);
+                        TrimTransportCachesLocked(transport);
+                        TrimAllPublishedCachesLocked();
+                    }
+                }, roleEpoch);
+            }
+            catch
+            {
+                QueuePendingArtifactBuildCleanup();
+            }
+        }, roleEpoch);
+    }
+
+
+    private static void EnqueuePublishedPayloadChunksLocked<TEntry>(DomainTransport<TEntry> transport, long sender, string requestedHash, string? baseHash, long requestId)
+    {
+        TransferArtifact? artifact = GetOrCreateTransferArtifactLocked(transport, requestedHash, baseHash);
+        if (artifact == null)
+        {
+            return;
+        }
+
+        if (artifact.ChunkCount <= 0)
+        {
+            return;
+        }
+
+        UpsertOutboundTransferLocked(transport.DomainKey, sender, requestedHash, requestId, artifact);
+    }
+
+    private static TransferArtifact? GetOrCreateTransferArtifactLocked<TEntry>(DomainTransport<TEntry> transport, string requestedHash, string? baseHash)
+    {
+        if (transport.PublishedCompressedBytes == null ||
+            transport.PublishedPayloadManifest.IsEmpty ||
+            !string.Equals(transport.PublishedPayloadManifest.Hash, requestedHash, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        string normalizedBaseHash = string.IsNullOrWhiteSpace(baseHash) ? "" : (baseHash ?? "").Trim();
+        if (TryGetPublishedTransferArtifactLocked(transport, requestedHash, normalizedBaseHash, out TransferArtifact? cachedArtifact))
+        {
+            return cachedArtifact;
+        }
+
+        TransferArtifact? fullArtifact = EnsureFullTransferArtifactLocked(transport, requestedHash);
+        if (normalizedBaseHash.Length > 0 && transport.EnableArtifactPrewarm)
+        {
+            QueueTransferArtifactBuildIfNeededLocked(transport, requestedHash, normalizedBaseHash);
+        }
+
+        TrimTransportCachesLocked(transport);
+        TrimAllPublishedCachesLocked();
+        return fullArtifact;
+    }
+
 }

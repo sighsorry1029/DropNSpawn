@@ -34,23 +34,8 @@ internal static partial class ObjectDropManager
             }
         }
 
-        if (UsesLiveDropTableReconcile(LiveObjectComponentKind.DropOnDestroyed) &&
-            HasDropTableOverride(entry.DropOnDestroyed) &&
-            gameObject.TryGetComponent(out DropOnDestroyed dropOnDestroyed) &&
-            snapshot.DropOnDestroyed != null)
-        {
-            dropOnDestroyed.m_dropWhenDestroyed = CloneDropTable(snapshot.DropOnDestroyed);
-        }
-
         if (HasDamageableOverride(entry.MineRock) && gameObject.TryGetComponent(out MineRock mineRock))
         {
-            if (UsesLiveDropTableReconcile(LiveObjectComponentKind.MineRock) &&
-                HasDropTableOverride(entry.MineRock) &&
-                snapshot.MineRock != null)
-            {
-                mineRock.m_dropItems = CloneDropTable(snapshot.MineRock);
-            }
-
             if (HasDamageableHealthOverride(entry.MineRock) && snapshot.Health?.MineRock is float mineRockHealth)
             {
                 ApplyMineRockHealth(mineRock, mineRockHealth, updateRuntimeState);
@@ -64,13 +49,6 @@ internal static partial class ObjectDropManager
 
         if (HasDamageableOverride(entry.MineRock5) && gameObject.TryGetComponent(out MineRock5 mineRock5))
         {
-            if (UsesLiveDropTableReconcile(LiveObjectComponentKind.MineRock5) &&
-                HasDropTableOverride(entry.MineRock5) &&
-                snapshot.MineRock5 != null)
-            {
-                mineRock5.m_dropItems = CloneDropTable(snapshot.MineRock5);
-            }
-
             if (HasDamageableHealthOverride(entry.MineRock5) && snapshot.Health?.MineRock5 is float mineRock5Health)
             {
                 ApplyMineRock5Health(mineRock5, mineRock5Health, updateRuntimeState);
@@ -84,13 +62,6 @@ internal static partial class ObjectDropManager
 
         if (HasDamageableOverride(entry.TreeBase) && gameObject.TryGetComponent(out TreeBase treeBase))
         {
-            if (UsesLiveDropTableReconcile(LiveObjectComponentKind.TreeBase) &&
-                HasDropTableOverride(entry.TreeBase) &&
-                snapshot.TreeBase != null)
-            {
-                treeBase.m_dropWhenDestroyed = CloneDropTable(snapshot.TreeBase);
-            }
-
             if (HasDamageableHealthOverride(entry.TreeBase) && snapshot.Health?.TreeBase is float treeBaseHealth)
             {
                 ApplyTreeBaseHealth(treeBase, treeBaseHealth, updateRuntimeState);
@@ -104,13 +75,6 @@ internal static partial class ObjectDropManager
 
         if (HasDamageableOverride(entry.TreeLog) && gameObject.TryGetComponent(out TreeLog treeLog))
         {
-            if (UsesLiveDropTableReconcile(LiveObjectComponentKind.TreeLog) &&
-                HasDropTableOverride(entry.TreeLog) &&
-                snapshot.TreeLog != null)
-            {
-                treeLog.m_dropWhenDestroyed = CloneDropTable(snapshot.TreeLog);
-            }
-
             if (HasDamageableHealthOverride(entry.TreeLog) && snapshot.Health?.TreeLog is float treeLogHealth)
             {
                 ApplyTreeLogHealth(treeLog, treeLogHealth, updateRuntimeState);

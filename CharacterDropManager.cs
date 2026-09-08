@@ -420,19 +420,17 @@ internal static partial class CharacterDropManager
         }
     }
 
-    private static List<CharacterDropPrefabEntry> CloneAndNormalizeConfigurationEntries(
-        List<CharacterDropPrefabEntry>? configuration,
+    private static List<CharacterDropPrefabEntry> NormalizeOwnedConfigurationEntries(
+        List<CharacterDropPrefabEntry> configuration,
         string sourceName)
     {
-        List<CharacterDropPrefabEntry> normalizedConfiguration =
-            NetworkPayloadSyncSupport.CloneEntries(Descriptor, configuration);
-        foreach (CharacterDropPrefabEntry entry in normalizedConfiguration)
+        foreach (CharacterDropPrefabEntry entry in configuration)
         {
             NormalizeEntry(entry);
             entry.SourcePath = string.IsNullOrWhiteSpace(entry.SourcePath) ? sourceName : entry.SourcePath;
         }
 
-        return normalizedConfiguration;
+        return configuration;
     }
 
     private static List<CharacterDropPrefabEntry> PrepareLocalConfigurationEntries(
@@ -441,7 +439,7 @@ internal static partial class CharacterDropManager
         List<string> warnings)
     {
         List<CharacterDropPrefabEntry> normalizedConfiguration =
-            CloneAndNormalizeConfigurationEntries(configuration, sourceName);
+            NormalizeOwnedConfigurationEntries(NetworkPayloadSyncSupport.CloneEntries(Descriptor, configuration), sourceName);
         List<CharacterDropPrefabEntry> acceptedEntries = new();
         foreach (CharacterDropPrefabEntry entry in normalizedConfiguration)
         {
@@ -529,7 +527,8 @@ internal static partial class CharacterDropManager
     {
         using InvalidEntryDiagnostics.SuppressionScope _ = BeginInvalidEntryWarningSuppressionForSyncedClientBuild(sourceName);
         CharacterConfigurationState state = new();
-        foreach (CharacterDropPrefabEntry entry in CloneAndNormalizeConfigurationEntries(configuration, sourceName))
+        // Local preparation and the transport reader each supply an owned clone.
+        foreach (CharacterDropPrefabEntry entry in NormalizeOwnedConfigurationEntries(configuration, sourceName))
         {
             if (string.IsNullOrWhiteSpace(entry.Prefab))
             {
@@ -747,9 +746,8 @@ internal static partial class CharacterDropManager
     private static void NormalizeEntry(CharacterDropPrefabEntry entry)
     {
         entry.Prefab = (entry.Prefab ?? "").Trim();
-        if (entry.CharacterDrop != null)
+        if (entry.CharacterDrop?.Drops != null)
         {
-            entry.CharacterDrop.Drops ??= new List<CharacterDropEntryDefinition>();
             foreach (CharacterDropEntryDefinition drop in entry.CharacterDrop.Drops)
             {
                 drop.Item = (drop.Item ?? "").Trim();
@@ -1153,6 +1151,7 @@ internal static partial class CharacterDropManager
         foreach ((string prefabName, List<CharacterDropPrefabEntry> entries) in RuntimeState.ActiveEntriesByPrefab)
         {
             SortedDictionary<string, CompiledCharacterDropDefinition> staticDefinitions = new(StringComparer.Ordinal);
+            bool hasStaticOverride = false;
             List<CompiledCharacterDropRule> runtimeRules = new();
             CharacterRuntimeDropCacheState runtimeDropCacheState = new();
             HashSet<string>? requiredGlobalKeys = null;
@@ -1165,7 +1164,8 @@ internal static partial class CharacterDropManager
                 }
 
                 CompiledCharacterDropRule compiledRule = CompileCharacterDropRule(entry);
-                if (compiledRule.Drops.Count == 0)
+                bool hasExplicitEmptyDrops = entry.CharacterDrop.Drops is { Count: 0 };
+                if (compiledRule.Drops.Count == 0 && !hasExplicitEmptyDrops)
                 {
                     continue;
                 }
@@ -1173,12 +1173,18 @@ internal static partial class CharacterDropManager
                 // Character-specific predicates like level/state/faction must be
                 // evaluated against the live character, not folded into prefab static drops.
                 bool requiresRuntimeEvaluation = DropConditionEvaluator.HasCharacterConditions(entry.Conditions);
-                CompiledCharacterDropRule? runtimeRule = null;
+                // Empty lists participate in the existing union of matching rules:
+                // they suppress baseline drops without erasing another rule's rows.
+                CompiledCharacterDropRule? runtimeRule = hasExplicitEmptyDrops && requiresRuntimeEvaluation
+                    ? compiledRule
+                    : null;
+                hasStaticOverride |= hasExplicitEmptyDrops && !requiresRuntimeEvaluation;
                 foreach (CompiledCharacterDropDefinition compiledDefinition in compiledRule.Drops)
                 {
                     if (!requiresRuntimeEvaluation && !RequiresRuntimeCharacterDropHandling(compiledDefinition))
                     {
                         staticDefinitions.TryAdd(compiledDefinition.Fingerprint, compiledDefinition);
+                        hasStaticOverride = true;
                         continue;
                     }
 
@@ -1189,7 +1195,7 @@ internal static partial class CharacterDropManager
                     runtimeRule.Drops.Add(compiledDefinition);
                 }
 
-                if (runtimeRule != null && runtimeRule.Drops.Count > 0)
+                if (runtimeRule != null)
                 {
                     runtimeRules.Add(runtimeRule);
                     ConditionsDefinition? conditions = entry.Conditions;
@@ -1215,7 +1221,7 @@ internal static partial class CharacterDropManager
                 state.RuntimeDropCachesByPrefab[prefabName] = runtimeDropCacheState;
             }
 
-            if (staticDefinitions.Count > 0)
+            if (hasStaticOverride)
             {
                 List<CompiledCharacterDropDefinition> compiledStaticDefinitions = staticDefinitions.Values.ToList();
                 state.StaticDropsByPrefab[prefabName] = compiledStaticDefinitions;
@@ -1609,20 +1615,12 @@ internal static partial class CharacterDropManager
             return;
         }
 
-        characterDrop.m_drops = CloneDrops(snapshot.BuiltDrops);
-        if (!domainEnabled)
+        if (domainEnabled)
         {
-            return;
+            EnsureCompiledState();
         }
 
-        EnsureCompiledState();
-        if (!_compiledState.StaticBuiltDropsByPrefab.TryGetValue(prefabName, out List<CharacterDrop.Drop>? staticDrops) ||
-            staticDrops.Count == 0)
-        {
-            return;
-        }
-
-        characterDrop.m_drops = CloneDrops(staticDrops);
+        ApplyOwnedCharacterDrops(characterDrop, snapshot, prefabName, domainEnabled, _compiledState);
     }
 
     internal static void TrackCharacterDropInstance(CharacterDrop? characterDrop)
