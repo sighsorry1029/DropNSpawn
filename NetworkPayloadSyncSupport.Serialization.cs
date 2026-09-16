@@ -39,6 +39,7 @@ internal static partial class NetworkPayloadSyncSupport
         WriteStringList(package, definition.Objects);
         WriteNullableString(package, definition.Data);
         WriteNullableString(package, definition.Faction);
+        WriteNullableString(package, definition.RequiredPersistentEvent);
     }
 
     private static SpawnSystemSpawnDefinition ReadSpawnSystemSpawnDefinition(ZPackage package)
@@ -76,7 +77,8 @@ internal static partial class NetworkPayloadSyncSupport
             Fields = ReadStringDictionary(package),
             Objects = ReadStringList(package),
             Data = ReadNullableString(package),
-            Faction = ReadNullableString(package)
+            Faction = ReadNullableString(package),
+            RequiredPersistentEvent = ReadNullableString(package)
         };
     }
 }

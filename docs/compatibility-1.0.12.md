@@ -1,0 +1,39 @@
+# Valheim 1.0.12 / Expand World Data 1.71 compatibility
+
+DropNSpawn 1.3.11, 2026-09-17, based on 1.3.10 (`926fcdc`). Update server and clients to 1.3.11 together: the SpawnSystem and Event transport schemas changed, and the minimum required peer mod version follows the new plugin version. Existing YAML remains valid.
+
+## Changes and contracts
+
+| Area | Evidence and change |
+| --- | --- |
+| Original game access | Removed publicized references for assembly_valheim, assembly_utils and assembly_guiutils. Private/protected event, killer-credit, ragdoll, localization and prefab-dictionary access now uses cached Harmony delegates/field refs or patch field injection. Reflection searches are not added to per-frame updates. Unity messages retain their original string names. |
+| Locations | ZoneSystem.GetZone now returns Vector2s; internal location/reconciliation keys follow it. SpawnLocation's Harmony overload includes the new final bool parameter. EWD ordering and prefix/postfix/finalizer context remain intact. |
+| Event environment | Pass WorldGenerator.GetBiomeSector to EnvMan.GetAvailableEnvironments so AltBiome environment additions/blocks are preserved. Restore Unity random state in a finally block. Native event methods remain responsible for their original behavior. |
+| Spawn conditions | New native SpawnData.m_requiredPersistentEvent was missing from manual reference/config conversion. The optional requiredPersistentEvent field now flows through normalization, application, export/scaffolds, event rows, clone, signatures and serialization. Omitted/null leaves the target value; empty string clears it. A new full-replacement row starts from native defaults, as before. |
+| Network schema | SpawnSystem DTO 3 → 4; Event DTO 2 → 3 because both carry spawn definitions. Different DTO versions are rejected before reading rows. Object, Character and Spawner fixture bytes/signatures are unchanged. Existing YAML, RPC names, authority checks, saved ZDO keys and public APIs remain. Existing generated YAML cannot retroactively recover conditions it previously omitted; regenerate references/scaffolds when adopting new native rows. |
+| Native spawning | DNS still replaces only m_spawnLists. New AltBiome.m_spawn lists, persistent-event evaluation, biome spawn blocks, ZDO-based population counts and biome level-up multipliers run through original game code. AltBiome lists are not folded into DNS replacement/reference output. Existing DNS whole-update readiness guards and extended global-key scope still wrap UpdateSpawning. |
+| SpawnArea ownership | Native Awake now resolves GetComponentInParent<ZNetView>. Total-count storage/destruction and persisted location lookup follow the same parent ownership. Owner/valid guards and ZDO keys remain. Destruction uses the owning network object's Destructible, retaining its drop pipeline. Shared-parent/multiple-SpawnArea prefabs need gameplay checks because existing count keys are per ZDO. |
+| Character items | New cheated provenance is passed from CharacterDrop.DropItems and CharacterDrop.m_cheated through loose/custom/stacked paths to ItemDrop.OnCreateNew. Stack persistence occurs after initialization. Instant ragdoll loot calls the original SpawnLoot and retains owner checks and the zero-drops marker. Amount/chance policies are unchanged. |
+| EWD | Vendor/reference and minimum dependency are 1.71/1.71.0. DataEntry, DataHelper.Init/Get/Merge, Spawn.BPO and biome lookup contracts resolve. Readiness uses the existing ConfigSync source-of-truth/initial-sync fallback; no requirement for the absent DataManager.IsReady property was introduced. Field processing owns a preparation-time component list and skips missing Unity components instead of borrowing ZNetView's private shared scratch list. |
+| ServerSync | Pinned the reviewed original-game build, with provenance and hashes in Libs/README.md. It remains merged with the mod. No shared plugin installation, upstream auto-update or repeat IL patch. |
+
+## Evidence and scope
+
+Baseline is Valheim 0.221.12, not only 1.0.7. Original client/server snapshots and their existing ILSpy 9.1.0.7988 / CSharp12_0 / Mono.Cecil 0.11.6 extraction were reused. No original binaries were modified/publicized. Global comparison evidence is at `C:\Users\blizz\.codex\references\valheim\comparisons\0.221.12--1.0.12-dropnspawn-20260917`.
+
+| Target | Steam build | Original assembly_valheim SHA-256 |
+| --- | --- | --- |
+| Previous client 0.221.12 | 21981559 | `3B26C8512778F6E0664B5AF2A26F3C30993A00F584C1E76D9123A742B67E2004` |
+| Current client 1.0.12 | 25253764 | `27A766A8D23A7BD8B6A54FB9AD0452A96C305FB3629B39C40527C09A1C393A84` |
+| Current dedicated server 1.0.12 | 25253791 | `F4EC6D8FC07054058F5E98040B3C1C65BDF0B061FD2ED27087EF48F29586B737` |
+
+The installed client's original assembly hash matches the target snapshot. The EWD source commit and official package are pinned in Libs/README.md. Direct compiled member references, Harmony targets/injection/state, reflection contracts and the original SpawnArea transpiler input were checked against both current client and server originals. Relevant game source/IL changes were inspected for character/ragdoll loot, spawn systems, locations and events. Existing resources/YAML and optional integrations were retained; this is not a full asset extraction, all-mod audit or universal version guarantee.
+
+## Verification
+
+- **Build:** Debug with DeployToGame=true and CodeGenMode=Verify, original game references, final ILRepack and local DLL copy; zero compiler warnings/errors. Version 1.3.11 was subsequently built with `dotnet build DropNSpawn.csproj -c Release -p:CodeGenMode=Verify`, also with zero warnings/errors. Thunderstore and Nexus ZIP contents, manifest dependencies/version, changelog/README copies and packaged DLL hashes were verified against the final Release output (assembly 1.3.11.0, SHA-256 `A29179E9C7CCD6A0D57209F1D0DD45E2C1368542C75FC3E685DE9AEC3CE69C32`).
+- **Automated managed checks:** the final 1.3.11 Release DLL passed 1,057 assertions against each of the client and dedicated-server originals, including 421 direct game/EWD member resolutions, 114 static Harmony patch methods and one executed transpiler. Previous-release fixtures compare unchanged domains; changed domains verify version rejection. Counts include individual assertions, not gameplay scenarios.
+- **Game Mono isolation:** the final 1.3.11 Release DLL passed 14 checks against each of the client and server originals using installed Mono 6.13 and Harmony 2.9 in a disposable child process: cached nonpublic accesses, actual detour visibility and original managed item initialization. No publicized substitutes or copied implementation algorithms. An attempted Localizer static-constructor check could not resolve Unity native calls while installing scene hooks; that lifecycle is outside this harness. Its private access/patch targets are checked statically and actual scene initialization remains unverified.
+- **Not executed:** Unity scenes, plugin Awake/PatchAll as a complete install, full EWD/ServerSync startup, real host/client/dedicated connections, crossplay, actual deaths/loot/pickup, native terrain/weather, optional-mod combinations, or frame profiling. Automated checks do not establish those results.
+
+Before releasing, use a disposable world with EWD >= 1.71 and BepInExPack 5.4.2350. Validate domain reload and restore; persistent-event gated spawns; AltBiome weather/spawns; ordinary/cheated deaths and instant/stacked loot; parent-owned SpawnArea cap, ownership transfer, destruction drops and location restore; admin/non-admin connection/rejoin/full/delta synchronization; duplicate/late message handling; shutdown event cleanup. Test client, host and dedicated server, then the actual optional-mod profile. Count created/collected items during concurrent actions to detect loss or duplication. Commands and broader scenarios are in development.md.

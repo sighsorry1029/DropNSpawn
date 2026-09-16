@@ -51,6 +51,7 @@ internal static partial class ConfigurationEntryCloneSupport
             TimeOfDay = CloneTimeOfDay(source.TimeOfDay),
             RequiredEnvironments = CloneStringList(source.RequiredEnvironments),
             RequiredGlobalKey = source.RequiredGlobalKey,
+            RequiredPersistentEvent = source.RequiredPersistentEvent,
             InLava = source.InLava,
             InForest = source.InForest,
             InsidePlayerBase = source.InsidePlayerBase,

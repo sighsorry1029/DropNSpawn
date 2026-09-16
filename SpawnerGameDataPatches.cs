@@ -15,7 +15,8 @@ namespace DropNSpawn;
     typeof(Vector3),
     typeof(Quaternion),
     typeof(ZoneSystem.SpawnMode),
-    typeof(List<GameObject>)
+    typeof(List<GameObject>),
+    typeof(bool)
 })]
 [HarmonyAfter("expand_world_data")]
 internal static class ZoneSystemSpawnLocationContextPatch
@@ -117,7 +118,7 @@ internal static class DungeonGeneratorSpawnContextPatch
     }
 }
 
-[HarmonyPatch(typeof(SpawnArea), nameof(SpawnArea.Awake))]
+[HarmonyPatch(typeof(SpawnArea), "Awake")]
 internal static class SpawnAreaAwakePatch
 {
     private static void Postfix(SpawnArea __instance)
@@ -238,7 +239,7 @@ internal static class SpawnAreaSpawnOnePatch
     }
 }
 
-[HarmonyPatch(typeof(CreatureSpawner), nameof(CreatureSpawner.Awake))]
+[HarmonyPatch(typeof(CreatureSpawner), "Awake")]
 internal static class CreatureSpawnerAwakePatch
 {
     private static void Postfix(CreatureSpawner __instance)
@@ -305,7 +306,7 @@ internal static class CreatureSpawnerSpawnPatch
     }
 }
 
-[HarmonyPatch(typeof(BaseAI), nameof(BaseAI.Awake))]
+[HarmonyPatch(typeof(BaseAI), "Awake")]
 internal static class BaseAIAwakeFactionPatch
 {
     private static void Postfix(BaseAI __instance)

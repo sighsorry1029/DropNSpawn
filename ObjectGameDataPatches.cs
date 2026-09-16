@@ -16,7 +16,7 @@ internal readonly struct TemporaryFieldOverrideState<T> where T : class
     internal T? Previous { get; }
 }
 
-[HarmonyPatch(typeof(Piece), nameof(Piece.Awake))]
+[HarmonyPatch(typeof(Piece), "Awake")]
 internal static class PieceAwakePatch
 {
     private static void Postfix(Piece __instance)
@@ -62,7 +62,7 @@ internal static class ZNetViewOnDestroyPatch
     }
 }
 
-[HarmonyPatch(typeof(Destructible), nameof(Destructible.Awake))]
+[HarmonyPatch(typeof(Destructible), "Awake")]
 internal static class DestructibleAwakePatch
 {
     private static void Postfix(Destructible __instance)
@@ -144,7 +144,7 @@ internal static class DestructibleDestroyPatch
     }
 }
 
-[HarmonyPatch(typeof(DropOnDestroyed), nameof(DropOnDestroyed.Awake))]
+[HarmonyPatch(typeof(DropOnDestroyed), "Awake")]
 internal static class DropOnDestroyedAwakePatch
 {
     private static void Postfix(DropOnDestroyed __instance)
@@ -153,7 +153,7 @@ internal static class DropOnDestroyedAwakePatch
     }
 }
 
-[HarmonyPatch(typeof(Container), nameof(Container.Awake))]
+[HarmonyPatch(typeof(Container), "Awake")]
 internal static class ContainerAwakePatch
 {
     private static void Postfix(Container __instance)
@@ -162,7 +162,7 @@ internal static class ContainerAwakePatch
     }
 }
 
-[HarmonyPatch(typeof(Pickable), nameof(Pickable.Awake))]
+[HarmonyPatch(typeof(Pickable), "Awake")]
 internal static class PickableAwakePatch
 {
     private static void Postfix(Pickable __instance)
@@ -177,7 +177,7 @@ internal static class PickableAwakePatch
     }
 }
 
-[HarmonyPatch(typeof(PickableItem), nameof(PickableItem.Awake))]
+[HarmonyPatch(typeof(PickableItem), "Awake")]
 internal static class PickableItemAwakePatch
 {
     private static void Postfix(PickableItem __instance)
@@ -192,7 +192,7 @@ internal static class PickableItemAwakePatch
     }
 }
 
-[HarmonyPatch(typeof(Fish), nameof(Fish.Awake))]
+[HarmonyPatch(typeof(Fish), "Awake")]
 internal static class FishAwakePatch
 {
     private static void Postfix(Fish __instance)
@@ -390,7 +390,7 @@ internal static class MineRock5DamagePatch
     }
 }
 
-[HarmonyPatch(typeof(MineRock5), nameof(MineRock5.Awake))]
+[HarmonyPatch(typeof(MineRock5), "Awake")]
 internal static class MineRock5AwakePatch
 {
     private static void Postfix(MineRock5 __instance)
@@ -445,7 +445,7 @@ internal static class TreeBaseDamagePatch
     }
 }
 
-[HarmonyPatch(typeof(TreeBase), nameof(TreeBase.Awake))]
+[HarmonyPatch(typeof(TreeBase), "Awake")]
 internal static class TreeBaseAwakePatch
 {
     private static void Postfix(TreeBase __instance)
@@ -513,7 +513,7 @@ internal static class TreeLogDamagePatch
     }
 }
 
-[HarmonyPatch(typeof(TreeLog), nameof(TreeLog.Awake))]
+[HarmonyPatch(typeof(TreeLog), "Awake")]
 internal static class TreeLogAwakePatch
 {
     private static void Postfix(TreeLog __instance)

@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace DropNSpawn;
 
-[HarmonyPatch(typeof(SpawnSystem), nameof(SpawnSystem.Awake))]
+[HarmonyPatch(typeof(SpawnSystem), "Awake")]
 [HarmonyPriority(Priority.Last)]
 internal static class SpawnSystemAwakePatch
 {

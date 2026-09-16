@@ -2,7 +2,7 @@ using HarmonyLib;
 
 namespace DropNSpawn;
 
-[HarmonyPatch(typeof(ZNetScene), nameof(ZNetScene.Awake))]
+[HarmonyPatch(typeof(ZNetScene), "Awake")]
 internal static class ZNetSceneAwakePatch
 {
     private static void Postfix()
@@ -11,7 +11,7 @@ internal static class ZNetSceneAwakePatch
     }
 }
 
-[HarmonyPatch(typeof(ObjectDB), nameof(ObjectDB.Awake))]
+[HarmonyPatch(typeof(ObjectDB), "Awake")]
 internal static class ObjectDBAwakePatch
 {
     private static void Postfix()
@@ -38,7 +38,7 @@ internal static class ZNetShutdownPatch
     }
 }
 
-[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
+[HarmonyPatch(typeof(ZoneSystem), "Start")]
 internal static class ZoneSystemStartPatch
 {
     private static void Postfix()

@@ -18,6 +18,10 @@ namespace LocalizationManager;
 [PublicAPI]
 public class Localizer
 {
+    private static readonly Action<Localization, string, string> AddWord = AccessTools.MethodDelegate<Action<Localization, string, string>>(
+        AccessTools.Method(typeof(Localization), "AddWord", new[] { typeof(string), typeof(string) }));
+    private static readonly AccessTools.FieldRef<Localization, Dictionary<string, string>> Translations =
+        AccessTools.FieldRefAccess<Localization, Dictionary<string, string>>("m_translations");
     private static readonly Dictionary<string, Dictionary<string, Func<string>>> PlaceholderProcessors = new();
 
     private static readonly Dictionary<string, Dictionary<string, string>> loadedTexts = new();
@@ -63,7 +67,7 @@ public class Localizer
             text = textProcessors.Aggregate(text, (current, kv) => current.Replace("{" + kv.Key + "}", kv.Value()));
         }
 
-        localization.AddWord(key, text);
+        AddWord(localization, key, text);
     }
 
     public static void AddPlaceholder<T>(string key, string placeholder, ConfigEntry<T> config, Func<T, string>? convertConfigValue = null) where T : notnull
@@ -95,10 +99,10 @@ public class Localizer
             if (reference.TryGetTarget(out Localization localization))
             {
                 Dictionary<string, string> texts = loadedTexts[localizationLanguage.GetOrCreateValue(localization)];
-                if (!localization.m_translations.ContainsKey(key))
+                if (!Translations(localization).ContainsKey(key))
                 {
                     texts[key] = text;
-                    localization.AddWord(key, text);
+                    AddWord(localization, key, text);
                 }
             }
             else
@@ -196,8 +200,8 @@ public class Localizer
     {
         Harmony harmony = new("org.bepinex.helpers.LocalizationManager");
         harmony.Patch(AccessTools.DeclaredMethod(typeof(Localization), nameof(Localization.SetupLanguage)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Localizer), nameof(LoadLocalization))));
-        harmony.Patch(AccessTools.DeclaredMethod(typeof(FejdStartup), nameof(FejdStartup.SetupGui)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Localizer), nameof(LoadLocalizationLater))));
-        harmony.Patch(AccessTools.DeclaredMethod(typeof(FejdStartup), nameof(FejdStartup.Start)), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Localizer), nameof(SafeCallLocalizeComplete))));
+        harmony.Patch(AccessTools.DeclaredMethod(typeof(FejdStartup), "SetupGui"), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Localizer), nameof(LoadLocalizationLater))));
+        harmony.Patch(AccessTools.DeclaredMethod(typeof(FejdStartup), "Start"), postfix: new HarmonyMethod(AccessTools.DeclaredMethod(typeof(Localizer), nameof(SafeCallLocalizeComplete))));
     }
 
     private static byte[]? LoadTranslationFromAssembly(string language)

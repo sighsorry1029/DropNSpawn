@@ -1,6 +1,8 @@
 # DropNSpawn
 
 Configure object and creature drops, object loot, spawners, and world spawning. Add stacked drops, level-scaled trophies, VNEI support, and location-scoped spawner rules.
+
+Version 1.3.11 targets Valheim **1.0.12**, Expand World Data **1.71.0 or later**, and BepInExPack Valheim **5.4.2350**. See [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.12.md) for verified scope and multiplayer upgrade requirements.
 ## Domains
 
 | Domain | What it controls |
@@ -10,7 +12,7 @@ Configure object and creature drops, object loot, spawners, and world spawning. 
 | `spawner` | `SpawnArea` and `CreatureSpawner` tables, intervals, caps, level ranges, and location-scoped spawner rules |
 | `spawnsystem` | World `SpawnSystem` rows, biome rules, time-of-day rules, global-key gates, and extended spawn data |
 
-`spawnsystem` is a full replacement domain: the loaded rows become the live world spawn table. Keep every spawn row you still want.
+`spawnsystem` is a full replacement domain for `SpawnSystem.m_spawnLists`: keep every row you still want in that table. Valheim 1.0.12's separate AltBiome spawn lists continue through the game's native path. `spawnSystem.requiredPersistentEvent` preserves a row's native persistent-event requirement; use the event's internal name, or `''` for no requirement.
 
 ## Location
 DropNSpawn no longer owns a user-editable `DNS_location.yml` domain. Boss altar, altar `ItemStand`, same-boss duplicate blocking, boss despawn, and boss-tamed pressure rules live in the standalone `BossRules` mod. DropNSpawn keeps internal location lookup helpers for object and spawner `locations:` selectors.

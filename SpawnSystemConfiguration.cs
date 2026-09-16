@@ -142,4 +142,7 @@ internal class SpawnSystemSpawnDefinition
 
     [YamlMember(Order = 30)]
     public string? Faction { get; set; }
+
+    [YamlMember(Order = 31)]
+    public string? RequiredPersistentEvent { get; set; }
 }

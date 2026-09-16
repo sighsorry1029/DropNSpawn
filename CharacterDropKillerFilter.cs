@@ -8,6 +8,14 @@ namespace DropNSpawn;
 
 internal static class CharacterDropKillerFilter
 {
+    private static readonly AccessTools.FieldRef<SE_Poison, float> PoisonDamageLeft = AccessTools.FieldRefAccess<SE_Poison, float>("m_damageLeft");
+    private static readonly AccessTools.FieldRef<SE_Burning, float> FireDamageLeft = AccessTools.FieldRefAccess<SE_Burning, float>("m_fireDamageLeft");
+    private static readonly AccessTools.FieldRef<SE_Burning, float> SpiritDamageLeft = AccessTools.FieldRefAccess<SE_Burning, float>("m_spiritDamageLeft");
+    private static readonly AccessTools.FieldRef<SE_Burning, float> FireDamagePerHit = AccessTools.FieldRefAccess<SE_Burning, float>("m_fireDamagePerHit");
+    private static readonly AccessTools.FieldRef<SE_Burning, float> SpiritDamagePerHit = AccessTools.FieldRefAccess<SE_Burning, float>("m_spiritDamagePerHit");
+    private static readonly AccessTools.FieldRef<Character, HitData> LastHit = AccessTools.FieldRefAccess<Character, HitData>("m_lastHit");
+    private static readonly AccessTools.FieldRef<Character, ZNetView> NetView = AccessTools.FieldRefAccess<Character, ZNetView>("m_nview");
+
     internal enum Attribution
     {
         Unknown,
@@ -159,7 +167,7 @@ internal static class CharacterDropKillerFilter
                status != null &&
                status.m_character != null &&
                !status.m_character.IsPlayer() &&
-               damage >= status.m_damageLeft;
+               damage >= PoisonDamageLeft(status);
     }
 
     internal static void RecordPoisonSource(SE_Poison status, bool accepted)
@@ -186,7 +194,7 @@ internal static class CharacterDropKillerFilter
                status != null &&
                status.m_character != null &&
                !status.m_character.IsPlayer() &&
-               status.m_fireDamageLeft <= 0f;
+               FireDamageLeft(status) <= 0f;
     }
 
     internal static bool IsSpiritPoolEmpty(SE_Burning status)
@@ -195,7 +203,7 @@ internal static class CharacterDropKillerFilter
                status != null &&
                status.m_character != null &&
                !status.m_character.IsPlayer() &&
-               status.m_spiritDamageLeft <= 0f;
+               SpiritDamageLeft(status) <= 0f;
     }
 
     internal static void RecordFireSource(SE_Burning status, bool poolWasEmpty, bool accepted)
@@ -269,8 +277,8 @@ internal static class CharacterDropKillerFilter
             }
         }
 
-        bool hasFire = status != null && status.m_fireDamagePerHit > 0f;
-        bool hasSpirit = status != null && status.m_spiritDamagePerHit > 0f;
+        bool hasFire = status != null && FireDamagePerHit(status) > 0f;
+        bool hasSpirit = status != null && SpiritDamagePerHit(status) > 0f;
         _currentDelayedDamageTick = new DelayedDamageTickContext
         {
             Target = target,
@@ -307,7 +315,7 @@ internal static class CharacterDropKillerFilter
             hit == null ||
             !ReferenceEquals(state.Target, target) ||
             target.GetHealth() > 0f ||
-            !ReferenceEquals(target.m_lastHit, hit))
+            !ReferenceEquals(LastHit(target), hit))
         {
             return;
         }
@@ -474,7 +482,7 @@ internal static class CharacterDropKillerFilter
 
     private static bool IsRemoteOwned(Character character)
     {
-        ZNetView? nview = character.m_nview;
+        ZNetView? nview = NetView(character);
         return nview != null && nview.IsValid() && !nview.IsOwner();
     }
 

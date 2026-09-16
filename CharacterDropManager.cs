@@ -791,7 +791,7 @@ internal static partial class CharacterDropManager
         return drops?.Any(drop => (drop.AmountLimit.HasValue && drop.AmountLimit.Value >= 0) || drop.DropInStack) == true;
     }
 
-    internal static void ApplyGlobalDropInStack(ref List<KeyValuePair<GameObject, int>> drops, Vector3 centerPos, float dropArea)
+    internal static void ApplyGlobalDropInStack(ref List<KeyValuePair<GameObject, int>> drops, Vector3 centerPos, float dropArea, bool cheated)
     {
         if (!PluginSettingsFacade.IsGlobalCharacterDropInStackEnabled() || drops.Count == 0)
         {
@@ -808,7 +808,7 @@ internal static partial class CharacterDropManager
                 continue;
             }
 
-            SpawnStackedDrops(drop.Key, drop.Value, centerPos, dropArea);
+            SpawnStackedDrops(drop.Key, drop.Value, centerPos, dropArea, cheated);
             changed = true;
         }
 
@@ -1060,7 +1060,7 @@ internal static partial class CharacterDropManager
         }
 
         Vector3 centerPos = character.GetCenterPoint() + characterDrop.transform.TransformVector(characterDrop.m_spawnOffset);
-        DropConfiguredItems(drops, centerPos, 0.5f);
+        DropConfiguredItems(drops, centerPos, 0.5f, characterDrop.m_cheated);
         return true;
     }
 
@@ -2219,7 +2219,7 @@ internal static partial class CharacterDropManager
         return SceneProximityQueries.CountPlayersInRangeXZ(point, range, livingPlayersOnly: true);
     }
 
-    private static void DropConfiguredItems(List<ResolvedConfiguredDrop> drops, Vector3 centerPos, float dropArea)
+    private static void DropConfiguredItems(List<ResolvedConfiguredDrop> drops, Vector3 centerPos, float dropArea, bool cheated)
     {
         List<KeyValuePair<GameObject, int>> normalDrops = new();
         foreach (ResolvedConfiguredDrop drop in drops)
@@ -2230,12 +2230,12 @@ internal static partial class CharacterDropManager
                 continue;
             }
 
-            SpawnStackedDrops(drop.Prefab, drop.Amount, centerPos, dropArea);
+            SpawnStackedDrops(drop.Prefab, drop.Amount, centerPos, dropArea, cheated);
         }
 
         if (normalDrops.Count > 0)
         {
-            SpawnConfiguredLooseDrops(normalDrops, centerPos, dropArea);
+            SpawnConfiguredLooseDrops(normalDrops, centerPos, dropArea, cheated);
         }
     }
 
@@ -2317,7 +2317,7 @@ internal static partial class CharacterDropManager
         return explicitDropInStack || (PluginSettingsFacade.IsGlobalCharacterDropInStackEnabled() && amount > 1);
     }
 
-    private static void SpawnStackedDrops(GameObject prefab, int amount, Vector3 centerPos, float dropArea)
+    private static void SpawnStackedDrops(GameObject prefab, int amount, Vector3 centerPos, float dropArea, bool cheated)
     {
         if (amount <= 0 || !prefab.TryGetComponent(out ItemDrop itemDrop))
         {
@@ -2329,21 +2329,21 @@ internal static partial class CharacterDropManager
         while (remaining > 0)
         {
             int stackSize = Math.Min(remaining, maxStackSize);
-            SpawnStackedItem(prefab, stackSize, centerPos, dropArea);
+            SpawnStackedItem(prefab, stackSize, centerPos, dropArea, cheated);
             remaining -= stackSize;
         }
     }
 
-    private static void SpawnStackedItem(GameObject prefab, int stackSize, Vector3 centerPos, float dropArea)
+    private static void SpawnStackedItem(GameObject prefab, int stackSize, Vector3 centerPos, float dropArea, bool cheated)
     {
         Quaternion rotation = Quaternion.Euler(0f, UnityEngine.Random.Range(0, 360), 0f);
         Vector3 spawnPoint = ResolveConfiguredDropSpawnPoint(centerPos, dropArea);
         GameObject spawned = UnityEngine.Object.Instantiate(prefab, spawnPoint, rotation);
         if (spawned.TryGetComponent(out ItemDrop itemDrop))
         {
-            ItemDrop.OnCreateNew(itemDrop);
+            // Set provenance before SetStack persists the item to its ZDO.
+            ItemDrop.OnCreateNew(itemDrop, cheated);
             itemDrop.SetStack(stackSize);
-            itemDrop.m_itemData.m_worldLevel = (byte)Game.m_worldLevel;
         }
 
         if (spawned.TryGetComponent(out Rigidbody rigidbody))
@@ -2358,25 +2358,25 @@ internal static partial class CharacterDropManager
         }
     }
 
-    private static void SpawnConfiguredLooseDrops(List<KeyValuePair<GameObject, int>> drops, Vector3 centerPos, float dropArea)
+    private static void SpawnConfiguredLooseDrops(List<KeyValuePair<GameObject, int>> drops, Vector3 centerPos, float dropArea, bool cheated)
     {
         foreach (KeyValuePair<GameObject, int> drop in drops)
         {
             for (int i = 0; i < drop.Value; i++)
             {
-                SpawnConfiguredLooseItem(drop.Key, centerPos, dropArea);
+                SpawnConfiguredLooseItem(drop.Key, centerPos, dropArea, cheated);
             }
         }
     }
 
-    private static void SpawnConfiguredLooseItem(GameObject prefab, Vector3 centerPos, float dropArea)
+    private static void SpawnConfiguredLooseItem(GameObject prefab, Vector3 centerPos, float dropArea, bool cheated)
     {
         Quaternion rotation = Quaternion.Euler(0f, UnityEngine.Random.Range(0, 360), 0f);
         Vector3 spawnPoint = ResolveConfiguredDropSpawnPoint(centerPos, dropArea);
         GameObject spawned = UnityEngine.Object.Instantiate(prefab, spawnPoint, rotation);
         if (spawned.TryGetComponent(out ItemDrop itemDrop))
         {
-            itemDrop.m_itemData.m_worldLevel = (byte)Game.m_worldLevel;
+            ItemDrop.OnCreateNew(itemDrop, cheated);
         }
 
         if (spawned.TryGetComponent(out Rigidbody rigidbody))

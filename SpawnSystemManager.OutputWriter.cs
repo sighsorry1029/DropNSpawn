@@ -140,6 +140,7 @@ internal static partial class SpawnSystemManager
             AppendYamlLine(builder, indent, $"timeOfDay: {TimeOfDayFormatting.FormatInlineList(spawn?.TimeOfDay, defaultTimeOfDay)}");
             AppendYamlConditionalInlineListLine(builder, indent, "requiredEnvironments", spawn?.RequiredEnvironments, includeEmptyPlaceholder);
             AppendYamlStringLine(builder, indent, "requiredGlobalKey", spawn?.RequiredGlobalKey ?? defaults.m_requiredGlobalKey);
+            AppendYamlStringLine(builder, indent, "requiredPersistentEvent", spawn?.RequiredPersistentEvent ?? defaults.m_requiredPersistentEvent);
             AppendYamlLine(builder, indent, $"inLava: {FormatYamlNullableBoolOrNull(spawn?.InLava)}");
             AppendYamlLine(builder, indent, $"inForest: {FormatYamlNullableBoolOrNull(spawn?.InForest)}");
             AppendYamlLine(builder, indent, $"insidePlayerBase: {FormatYamlBool(spawn?.InsidePlayerBase ?? defaults.m_insidePlayerBase)}");
@@ -174,6 +175,7 @@ internal static partial class SpawnSystemManager
         AppendYamlOptionalTimeOfDayLine(builder, indent, "timeOfDay", spawn?.TimeOfDay);
         AppendYamlOptionalInlineListLine(builder, indent, "requiredEnvironments", spawn?.RequiredEnvironments);
         AppendYamlOptionalStringLine(builder, indent, "requiredGlobalKey", spawn?.RequiredGlobalKey);
+        AppendYamlOptionalStringLine(builder, indent, "requiredPersistentEvent", spawn?.RequiredPersistentEvent);
         AppendYamlOptionalBoolLine(builder, indent, "inLava", spawn?.InLava);
         AppendYamlOptionalBoolLine(builder, indent, "inForest", spawn?.InForest);
         AppendYamlOptionalBoolLine(builder, indent, "insidePlayerBase", spawn?.InsidePlayerBase);

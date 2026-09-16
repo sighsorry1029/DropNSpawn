@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace DropNSpawn;
 
-[HarmonyPatch(typeof(RandEventSystem), nameof(RandEventSystem.Awake))]
+[HarmonyPatch(typeof(RandEventSystem), "Awake")]
 internal static class RandEventSystemAwakePatch
 {
     private static void Postfix()
@@ -12,7 +12,7 @@ internal static class RandEventSystemAwakePatch
     }
 }
 
-[HarmonyPatch(typeof(RandEventSystem), nameof(RandEventSystem.Start))]
+[HarmonyPatch(typeof(RandEventSystem), "Start")]
 internal static class RandEventSystemStartPatch
 {
     private static void Postfix()
@@ -21,7 +21,7 @@ internal static class RandEventSystemStartPatch
     }
 }
 
-[HarmonyPatch(typeof(ZoneSystem), nameof(ZoneSystem.Start))]
+[HarmonyPatch(typeof(ZoneSystem), "Start")]
 internal static class ZoneSystemStartEventPatch
 {
     [HarmonyPriority(Priority.Last)]

@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
+using HarmonyLib;
 using UnityEngine;
 using YamlDotNet.Serialization;
 using YamlDotNet.Serialization.NamingConventions;
@@ -14,6 +15,31 @@ namespace DropNSpawn;
 
 internal static class EventManager
 {
+    // Original game visibility is retained. Cache accessors once; event updates
+    // must not perform reflection searches or allocate argument arrays per frame.
+    private static class GameAccess
+    {
+        internal static readonly AccessTools.FieldRef<RandEventSystem, RandomEvent> ForcedEvent = AccessTools.FieldRefAccess<RandEventSystem, RandomEvent>("m_forcedEvent");
+        internal static readonly AccessTools.FieldRef<RandEventSystem, RandomEvent?> RandomEvent = AccessTools.FieldRefAccess<RandEventSystem, RandomEvent?>("m_randomEvent");
+        internal static readonly AccessTools.FieldRef<RandEventSystem, float> SendTimer = AccessTools.FieldRefAccess<RandEventSystem, float>("m_sendTimer");
+        internal static readonly AccessTools.FieldRef<RandEventSystem, float> EventTimer = AccessTools.FieldRefAccess<RandEventSystem, float>("m_eventTimer");
+        internal static readonly AccessTools.FieldRef<RandEventSystem, List<KeyValuePair<RandomEvent, Vector3>>> LastPossibleEvents = AccessTools.FieldRefAccess<RandEventSystem, List<KeyValuePair<RandomEvent, Vector3>>>("m_lastPossibleEvents");
+        internal static readonly AccessTools.FieldRef<bool> NeedsRefresh = AccessTools.StaticFieldRefAccess<bool>(AccessTools.Field(typeof(RandEventSystem), "s_randomEventNeedsRefresh"));
+        internal static readonly AccessTools.FieldRef<List<RandEventSystem.PlayerEventData>> PlayerEventDatas = AccessTools.StaticFieldRefAccess<List<RandEventSystem.PlayerEventData>>(AccessTools.Field(typeof(RandEventSystem), "s_playerEventDatas"));
+        internal static readonly Action<RandEventSystem, float> UpdateForcedEvents = AccessTools.MethodDelegate<Action<RandEventSystem, float>>(AccessTools.Method(typeof(RandEventSystem), "UpdateForcedEvents", new[] { typeof(float) }));
+        internal static readonly Action<RandEventSystem, float> UpdateRandomEvent = AccessTools.MethodDelegate<Action<RandEventSystem, float>>(AccessTools.Method(typeof(RandEventSystem), "UpdateRandomEvent", new[] { typeof(float) }));
+        internal static readonly Func<RandEventSystem, RandomEvent, bool> IsAnyPlayerInEventArea = AccessTools.MethodDelegate<Func<RandEventSystem, RandomEvent, bool>>(AccessTools.Method(typeof(RandEventSystem), "IsAnyPlayerInEventArea", new[] { typeof(RandomEvent) }));
+        internal static readonly Action<RandEventSystem> SendCurrentRandomEvent = AccessTools.MethodDelegate<Action<RandEventSystem>>(AccessTools.Method(typeof(RandEventSystem), "SendCurrentRandomEvent", Type.EmptyTypes));
+        internal static readonly Action RefreshPlayerEventData = AccessTools.MethodDelegate<Action>(AccessTools.Method(typeof(RandEventSystem), "RefreshPlayerEventData", Type.EmptyTypes));
+        internal static readonly Action<RandEventSystem, RandomEvent?, bool> SetActiveEvent = AccessTools.MethodDelegate<Action<RandEventSystem, RandomEvent?, bool>>(AccessTools.Method(typeof(RandEventSystem), "SetActiveEvent", new[] { typeof(RandomEvent), typeof(bool) }));
+        internal static readonly Func<RandEventSystem, RandomEvent, Vector3, bool> IsInsideRandomEventArea = AccessTools.MethodDelegate<Func<RandEventSystem, RandomEvent, Vector3, bool>>(AccessTools.Method(typeof(RandEventSystem), "IsInsideRandomEventArea", new[] { typeof(RandomEvent), typeof(Vector3) }));
+        internal static readonly Action<RandEventSystem, RandomEvent?, Vector3> SetRandomEvent = AccessTools.MethodDelegate<Action<RandEventSystem, RandomEvent?, Vector3>>(AccessTools.Method(typeof(RandEventSystem), "SetRandomEvent", new[] { typeof(RandomEvent), typeof(Vector3) }));
+        internal static readonly Func<RandEventSystem, RandomEvent, List<RandEventSystem.PlayerEventData>, bool> HaveGlobalKeys = AccessTools.MethodDelegate<Func<RandEventSystem, RandomEvent, List<RandEventSystem.PlayerEventData>, bool>>(AccessTools.Method(typeof(RandEventSystem), "HaveGlobalKeys", new[] { typeof(RandomEvent), typeof(List<RandEventSystem.PlayerEventData>) }));
+        internal static readonly Func<RandEventSystem, RandomEvent, List<RandEventSystem.PlayerEventData>, List<Vector3>> GetValidEventPoints = AccessTools.MethodDelegate<Func<RandEventSystem, RandomEvent, List<RandEventSystem.PlayerEventData>, List<Vector3>>>(AccessTools.Method(typeof(RandEventSystem), "GetValidEventPoints", new[] { typeof(RandomEvent), typeof(List<RandEventSystem.PlayerEventData>) }));
+        internal static readonly Func<RandEventSystem, string, RandomEvent> GetEvent = AccessTools.MethodDelegate<Func<RandEventSystem, string, RandomEvent>>(AccessTools.Method(typeof(RandEventSystem), "GetEvent", new[] { typeof(string) }));
+        internal static readonly Func<EnvMan, List<EnvEntry>, EnvSetup> SelectWeightedEnvironment = AccessTools.MethodDelegate<Func<EnvMan, List<EnvEntry>, EnvSetup>>(AccessTools.Method(typeof(EnvMan), "SelectWeightedEnvironment", new[] { typeof(List<EnvEntry>) }));
+    }
+
     private const string DomainName = "events";
     private const string ReferenceAutoUpdateStateKey = "events";
     internal static readonly DomainModuleDefinition<EventDefinition> Module =
@@ -28,7 +54,7 @@ internal static class EventManager
             InitializeRuntime = Initialize,
             OnGameDataReady = NotifyGameDataReady,
             HandleExpandWorldDataReady = HandleExpandWorldDataReady,
-            DtoVersion = 2,
+            DtoVersion = 3,
             TransportProfile = DomainTransportProfile.MediumConfig,
             DisplayName = "events",
             CacheDirectoryName = "events",
@@ -680,10 +706,10 @@ internal static class EventManager
         }
 
         float dt = Time.fixedDeltaTime;
-        eventSystem.UpdateForcedEvents(dt);
-        eventSystem.UpdateRandomEvent(dt);
+        GameAccess.UpdateForcedEvents(eventSystem, dt);
+        GameAccess.UpdateRandomEvent(eventSystem, dt);
 
-        RandomEvent forcedEvent = eventSystem.m_forcedEvent;
+        RandomEvent forcedEvent = GameAccess.ForcedEvent(eventSystem);
         if (forcedEvent != null)
         {
             forcedEvent.Update(true, true, true, dt);
@@ -692,7 +718,7 @@ internal static class EventManager
         List<RandomEvent>? stoppedEvents = null;
         foreach (RandomEvent activeEvent in MultipleActiveEvents)
         {
-            bool anyPlayerInArea = eventSystem.IsAnyPlayerInEventArea(activeEvent);
+            bool anyPlayerInArea = GameAccess.IsAnyPlayerInEventArea(eventSystem, activeEvent);
             if (activeEvent.Update(true, true, anyPlayerInArea, dt))
             {
                 stoppedEvents ??= new List<RandomEvent>();
@@ -734,8 +760,8 @@ internal static class EventManager
         clonedEvent.m_pos = pos;
         clonedEvent.OnStart();
         MultipleActiveEvents.Add(clonedEvent);
-        eventSystem.m_randomEvent = clonedEvent;
-        eventSystem.SendCurrentRandomEvent();
+        GameAccess.RandomEvent(eventSystem) = clonedEvent;
+        GameAccess.SendCurrentRandomEvent(eventSystem);
         return true;
     }
 
@@ -746,9 +772,9 @@ internal static class EventManager
             return false;
         }
 
-        if (eventSystem.m_forcedEvent != null)
+        if (GameAccess.ForcedEvent(eventSystem) != null)
         {
-            SendEventToEveryone(eventSystem.m_forcedEvent);
+            SendEventToEveryone(GameAccess.ForcedEvent(eventSystem));
             return true;
         }
 
@@ -795,19 +821,19 @@ internal static class EventManager
             return false;
         }
 
-        if (RandEventSystem.s_randomEventNeedsRefresh)
+        if (GameAccess.NeedsRefresh())
         {
-            RandEventSystem.RefreshPlayerEventData();
+            GameAccess.RefreshPlayerEventData();
         }
 
         CheckGlobalEventsPerPlayer(eventSystem, dt);
         CheckStandaloneEventsPerPlayer(eventSystem, dt);
 
-        eventSystem.m_sendTimer += dt;
-        if (eventSystem.m_sendTimer > 2f)
+        GameAccess.SendTimer(eventSystem) += dt;
+        if (GameAccess.SendTimer(eventSystem) > 2f)
         {
-            eventSystem.m_sendTimer = 0f;
-            eventSystem.SendCurrentRandomEvent();
+            GameAccess.SendTimer(eventSystem) = 0f;
+            GameAccess.SendCurrentRandomEvent(eventSystem);
         }
 
         return true;
@@ -815,30 +841,30 @@ internal static class EventManager
 
     private static void SelectLocalMultipleEvent(RandEventSystem eventSystem)
     {
-        if (eventSystem.m_forcedEvent != null)
+        if (GameAccess.ForcedEvent(eventSystem) != null)
         {
-            eventSystem.SetActiveEvent(eventSystem.m_forcedEvent, false);
+            GameAccess.SetActiveEvent(eventSystem, GameAccess.ForcedEvent(eventSystem), false);
             return;
         }
 
         if (Player.m_localPlayer == null)
         {
-            eventSystem.m_randomEvent = null;
-            eventSystem.SetActiveEvent(null, false);
+            GameAccess.RandomEvent(eventSystem) = null;
+            GameAccess.SetActiveEvent(eventSystem, null, false);
             return;
         }
 
         Vector3 playerPosition = Player.m_localPlayer.transform.position;
         RandomEvent? nearestEvent = FindNearestMultipleEvent(playerPosition);
 
-        eventSystem.m_randomEvent = nearestEvent;
-        if (nearestEvent != null && eventSystem.IsInsideRandomEventArea(nearestEvent, playerPosition))
+        GameAccess.RandomEvent(eventSystem) = nearestEvent;
+        if (nearestEvent != null && GameAccess.IsInsideRandomEventArea(eventSystem, nearestEvent, playerPosition))
         {
-            eventSystem.SetActiveEvent(nearestEvent, false);
+            GameAccess.SetActiveEvent(eventSystem, nearestEvent, false);
             return;
         }
 
-        eventSystem.SetActiveEvent(null, false);
+        GameAccess.SetActiveEvent(eventSystem, null, false);
     }
 
     private static RandomEvent? FindNearestMultipleEvent(Vector3 position)
@@ -862,14 +888,14 @@ internal static class EventManager
 
     private static void CheckGlobalEventsPerPlayer(RandEventSystem eventSystem, float dt)
     {
-        eventSystem.m_eventTimer += dt;
-        if (eventSystem.m_eventTimer <= eventSystem.m_eventIntervalMin * 60f * Game.m_eventRate)
+        GameAccess.EventTimer(eventSystem) += dt;
+        if (GameAccess.EventTimer(eventSystem) <= eventSystem.m_eventIntervalMin * 60f * Game.m_eventRate)
         {
             return;
         }
 
-        eventSystem.m_eventTimer = 0f;
-        foreach (RandEventSystem.PlayerEventData player in RandEventSystem.s_playerEventDatas)
+        GameAccess.EventTimer(eventSystem) = 0f;
+        foreach (RandEventSystem.PlayerEventData player in GameAccess.PlayerEventDatas())
         {
             if (UnityEngine.Random.Range(0f, 100f) > eventSystem.m_eventChance / Game.m_eventRate)
             {
@@ -883,7 +909,7 @@ internal static class EventManager
             }
 
             KeyValuePair<RandomEvent, Vector3> selectedEvent = possibleEvents[UnityEngine.Random.Range(0, possibleEvents.Count)];
-            eventSystem.SetRandomEvent(selectedEvent.Key, selectedEvent.Value);
+            GameAccess.SetRandomEvent(eventSystem, selectedEvent.Key, selectedEvent.Value);
         }
     }
 
@@ -894,7 +920,7 @@ internal static class EventManager
         {
             if (!randomEvent.m_enabled ||
                 randomEvent.m_standaloneInterval <= 0f ||
-                eventSystem.m_activeEvent == randomEvent)
+                eventSystem.GetActiveEvent() == randomEvent)
             {
                 continue;
             }
@@ -908,23 +934,23 @@ internal static class EventManager
             if (randomEvent.m_standaloneChance > 0f)
             {
                 playerEvents ??= new List<RandEventSystem.PlayerEventData>(1);
-                foreach (RandEventSystem.PlayerEventData player in RandEventSystem.s_playerEventDatas)
+                foreach (RandEventSystem.PlayerEventData player in GameAccess.PlayerEventDatas())
                 {
                     playerEvents.Clear();
                     playerEvents.Add(player);
                     if (UnityEngine.Random.Range(0f, 100f) > randomEvent.m_standaloneChance / Game.m_eventRate ||
-                        !eventSystem.HaveGlobalKeys(randomEvent, playerEvents))
+                        !GameAccess.HaveGlobalKeys(eventSystem, randomEvent, playerEvents))
                     {
                         continue;
                     }
 
-                    List<Vector3> validPoints = eventSystem.GetValidEventPoints(randomEvent, playerEvents);
+                    List<Vector3> validPoints = GameAccess.GetValidEventPoints(eventSystem, randomEvent, playerEvents);
                     if (validPoints.Count == 0)
                     {
                         continue;
                     }
 
-                    eventSystem.SetRandomEvent(randomEvent, validPoints[UnityEngine.Random.Range(0, validPoints.Count)]);
+                    GameAccess.SetRandomEvent(eventSystem, randomEvent, validPoints[UnityEngine.Random.Range(0, validPoints.Count)]);
                 }
             }
 
@@ -936,26 +962,26 @@ internal static class EventManager
         RandEventSystem eventSystem,
         RandEventSystem.PlayerEventData player)
     {
-        eventSystem.m_lastPossibleEvents.Clear();
+        GameAccess.LastPossibleEvents(eventSystem).Clear();
         List<RandEventSystem.PlayerEventData> playerEvents = new(1) { player };
         foreach (RandomEvent randomEvent in eventSystem.m_events)
         {
-            if (!randomEvent.m_enabled || !randomEvent.m_random || !eventSystem.HaveGlobalKeys(randomEvent, playerEvents))
+            if (!randomEvent.m_enabled || !randomEvent.m_random || !GameAccess.HaveGlobalKeys(eventSystem, randomEvent, playerEvents))
             {
                 continue;
             }
 
-            List<Vector3> validPoints = eventSystem.GetValidEventPoints(randomEvent, playerEvents);
+            List<Vector3> validPoints = GameAccess.GetValidEventPoints(eventSystem, randomEvent, playerEvents);
             if (validPoints.Count == 0)
             {
                 continue;
             }
 
             Vector3 selectedPoint = validPoints[UnityEngine.Random.Range(0, validPoints.Count)];
-            eventSystem.m_lastPossibleEvents.Add(new KeyValuePair<RandomEvent, Vector3>(randomEvent, selectedPoint));
+            GameAccess.LastPossibleEvents(eventSystem).Add(new KeyValuePair<RandomEvent, Vector3>(randomEvent, selectedPoint));
         }
 
-        return eventSystem.m_lastPossibleEvents;
+        return GameAccess.LastPossibleEvents(eventSystem);
     }
 
     private static void StopAllMultipleEventsLocked(RandEventSystem? eventSystem, bool sendUpdate)
@@ -968,10 +994,10 @@ internal static class EventManager
         StopMultipleEventsLocked(MultipleActiveEvents.ToList(), callOnStop: true);
         if (eventSystem != null)
         {
-            eventSystem.m_randomEvent = null;
+            GameAccess.RandomEvent(eventSystem) = null;
             if (sendUpdate)
             {
-                eventSystem.SendCurrentRandomEvent();
+                GameAccess.SendCurrentRandomEvent(eventSystem);
             }
         }
     }
@@ -1913,6 +1939,7 @@ internal static class EventManager
                 TimeOfDay = TimeOfDayFormatting.FromSpawnFlags(data.m_spawnAtDay, data.m_spawnAtNight),
                 RequiredEnvironments = (data.m_requiredEnvironments ?? new List<string>()).Select(value => value.Trim()).Where(value => value.Length > 0).ToList(),
                 RequiredGlobalKey = NormalizeOptionalString(data.m_requiredGlobalKey),
+                RequiredPersistentEvent = NormalizeOptionalString(data.m_requiredPersistentEvent),
                 InLava = ConvertExclusiveZoneToggle(data.m_inLava, data.m_outsideLava),
                 InForest = ConvertExclusiveZoneToggle(data.m_inForest, data.m_outsideForest),
                 InsidePlayerBase = data.m_insidePlayerBase,
@@ -1999,7 +2026,7 @@ internal static class EventManager
             return false;
         }
 
-        RandomEvent registered = RandEventSystem.instance.GetEvent(ev.m_name);
+        RandomEvent registered = GameAccess.GetEvent(RandEventSystem.instance, ev.m_name);
         return registered != null && EventMetadata.TryGetValue(registered, out metadata);
     }
 
@@ -2015,7 +2042,7 @@ internal static class EventManager
             return false;
         }
 
-        Heightmap.Biome biome = WorldGenerator.instance.GetBiome(point);
+        BiomeSector biome = WorldGenerator.instance.GetBiomeSector(point);
         List<EnvEntry> availableEnvironments = EnvMan.instance.GetAvailableEnvironments(biome);
         if (availableEnvironments == null || availableEnvironments.Count == 0)
         {
@@ -2023,9 +2050,16 @@ internal static class EventManager
         }
 
         UnityEngine.Random.State state = UnityEngine.Random.state;
-        UnityEngine.Random.InitState((int)(ZNet.instance.GetTimeSeconds() / EnvMan.instance.m_environmentDuration));
-        EnvSetup selectedEnvironment = EnvMan.instance.SelectWeightedEnvironment(availableEnvironments);
-        UnityEngine.Random.state = state;
+        EnvSetup selectedEnvironment;
+        try
+        {
+            UnityEngine.Random.InitState((int)(ZNet.instance.GetTimeSeconds() / EnvMan.instance.m_environmentDuration));
+            selectedEnvironment = GameAccess.SelectWeightedEnvironment(EnvMan.instance, availableEnvironments);
+        }
+        finally
+        {
+            UnityEngine.Random.state = state;
+        }
         return selectedEnvironment != null &&
                requiredEnvironments.Contains((selectedEnvironment.m_name ?? "").ToLowerInvariant());
     }
@@ -2037,7 +2071,7 @@ internal static class EventManager
             return true;
         }
 
-        int count = RandEventSystem.s_playerEventDatas
+        int count = GameAccess.PlayerEventDatas()
             .Count(player => Utils.DistanceXZ(point, player.position) <= distance);
         return RangeContains(limit, count, 0, int.MaxValue);
     }
@@ -2452,6 +2486,7 @@ internal static class EventManager
         builder.AppendLine("#         timeOfDay: [day, night]      # [night] # Time of day filter.");
         builder.AppendLine("#         requiredEnvironments: []     # [Rain] # Spawn-entry required environments.");
         builder.AppendLine("#         requiredGlobalKey: ''        # defeated_eikthyr # Required global key for this spawn entry.");
+        builder.AppendLine("#         requiredPersistentEvent: ''  # Internal name of the persistent event required at the spawn center.");
         builder.AppendLine("#         inLava:                      # true # true = only lava, false = outside lava, empty = vanilla both-state default.");
         builder.AppendLine("#         inForest:                    # true # true = only forest, false = outside forest, empty = vanilla both-state default.");
         builder.AppendLine("#         insidePlayerBase: false      # true # Spawn inside player base.");

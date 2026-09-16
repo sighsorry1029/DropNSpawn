@@ -1,3 +1,11 @@
+## 1.3.11 — Valheim 1.0.12 / Expand World Data 1.71
+
+- Updated the Expand World Data dependency to 1.71.0 and the vendored ServerSync to the reviewed `valheim-1.0.7-r1` reference, including its RPC constant and connection-buffer fixes.
+- Switched to original game assembly references and cached Harmony accessors for nonpublic game members. Updated location zone keys, the location-spawn patch signature, and event environment selection for the new biome sectors.
+- Preserved the native persistent-event spawn requirement in YAML, reference/scaffold output, clones, signatures, and network payloads. `spawnSystem.requiredPersistentEvent` accepts the event's internal name; an empty string clears the requirement. SpawnSystem DTO is now 4 and Event DTO is 3; update all peers to 1.3.11 together. Existing YAML remains valid.
+- Preserved the game's `cheated` item provenance in custom and stacked character drops. Matched parent-owned SpawnArea networking for total-spawn caps and persisted location selectors.
+- Added checks against both client and dedicated-server original assemblies, plus isolated tests using the game's Mono runtime and Harmony. Actual gameplay and multiplayer sessions have not been verified.
+
 ## 1.3.10
 
 - Fixed explicit character `drops: []` being ignored. Omitted/null lists still preserve existing drops; matching rules still combine their valid rows, and invalid-only lists do not clear loot.

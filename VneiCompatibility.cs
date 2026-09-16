@@ -100,6 +100,8 @@ internal static class VneiCompatibility
     private static FieldInfo? _partItemField;
     private static FieldInfo? _recipeIsOnBlacklistBackingField;
     private static readonly Dictionary<ManagedRecipeKey, ManagedRecipeBinding> ManagedRecipesByKey = new();
+    private static readonly AccessTools.FieldRef<ZNetScene, Dictionary<int, GameObject>> NamedPrefabs =
+        AccessTools.FieldRefAccess<ZNetScene, Dictionary<int, GameObject>>("m_namedPrefabs");
     private static readonly object RefreshSync = new();
     private static readonly RingBufferQueue<ManagedRecipeKey> PendingRefreshWorkItems = new();
     private static readonly HashSet<ManagedRecipeKey> PendingRefreshWorkSet = new();
@@ -336,7 +338,7 @@ internal static class VneiCompatibility
         }
 
         HashSet<GameObject> prefabs = new(ZNetScene.instance.m_prefabs);
-        prefabs.UnionWith(ZNetScene.instance.m_namedPrefabs.Values);
+        prefabs.UnionWith(NamedPrefabs(ZNetScene.instance).Values);
         foreach (GameObject prefab in prefabs)
         {
             if (prefab == null || expanded.Contains(prefab.name) || !prefab.TryGetComponent(out TreeBase treeBase))

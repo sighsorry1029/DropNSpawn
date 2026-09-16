@@ -9,5 +9,6 @@
   <ItemGroup>
     <!-- Test host only: the game's HarmonyX 2.9 targets Unity's Mono runtime, not CoreCLR. -->
     <PackageReference Include="HarmonyX" Version="2.16.0" />
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
   </ItemGroup>
 </Project>

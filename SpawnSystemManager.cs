@@ -35,7 +35,7 @@ internal static partial class SpawnSystemManager
             InitializeRuntime = Initialize,
             OnGameDataReady = OnGameDataReady,
             HandleExpandWorldDataReady = HandleExpandWorldDataReady,
-            DtoVersion = 3,
+            DtoVersion = 4,
             TransportProfile = DomainTransportProfile.LargeWithArtifacts,
             DisplayName = "spawnsystem",
             CacheDirectoryName = "spawnsystem",
@@ -1890,6 +1890,11 @@ internal static partial class SpawnSystemManager
             data.m_requiredGlobalKey = spawn.RequiredGlobalKey;
         }
 
+        if (spawn?.RequiredPersistentEvent != null)
+        {
+            data.m_requiredPersistentEvent = spawn.RequiredPersistentEvent;
+        }
+
         if (spawn?.RequiredEnvironments != null)
         {
             data.m_requiredEnvironments = spawn.RequiredEnvironments
@@ -2365,6 +2370,8 @@ internal static partial class SpawnSystemManager
         conditions.Biomes = NormalizeOptionalStringList(conditions.Biomes);
         conditions.BiomeAreas = NormalizeOptionalStringList(conditions.BiomeAreas);
         conditions.RequiredGlobalKey = NormalizeOptionalString(conditions.RequiredGlobalKey);
+        // Keep an explicit empty string so a native persistent-event condition can be cleared.
+        conditions.RequiredPersistentEvent = conditions.RequiredPersistentEvent?.Trim();
         conditions.RequiredEnvironments = NormalizeOptionalStringList(conditions.RequiredEnvironments);
         conditions.TimeOfDay?.Normalize();
     }
@@ -2659,6 +2666,7 @@ internal static partial class SpawnSystemManager
                  (spawn.Biomes?.Count ?? 0) > 0 ||
                  (spawn.BiomeAreas?.Count ?? 0) > 0 ||
                  !string.IsNullOrWhiteSpace(spawn.RequiredGlobalKey) ||
+                 spawn.RequiredPersistentEvent != null ||
                  (spawn.RequiredEnvironments?.Count ?? 0) > 0 ||
                  spawn.TimeOfDay != null ||
                  GetAltitudeRange(spawn)?.HasValues() == true ||

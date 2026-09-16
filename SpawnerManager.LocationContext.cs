@@ -386,7 +386,9 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        ZNetView? netView = gameObject.GetComponent<ZNetView>();
+        ZNetView? netView = gameObject.GetComponent<SpawnArea>() != null
+            ? gameObject.GetComponentInParent<ZNetView>()
+            : gameObject.GetComponent<ZNetView>();
         ZDO? zdo = netView?.GetZDO();
         locationPrefab = (zdo?.GetString(DropNSpawnLocationPrefabHash, "") ?? "").Trim();
         return locationPrefab.Length > 0;
@@ -470,7 +472,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        Vector2i zone = ZoneSystem.GetZone(gameObject.transform.position);
+        Vector2s zone = ZoneSystem.GetZone(gameObject.transform.position);
         if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
         {
             return false;
@@ -798,7 +800,10 @@ internal static partial class SpawnerManager
             return;
         }
 
-        ZDO? zdo = component.GetComponent<ZNetView>()?.GetZDO();
+        ZNetView? netView = component is SpawnArea
+            ? component.GetComponentInParent<ZNetView>()
+            : component.GetComponent<ZNetView>();
+        ZDO? zdo = netView?.GetZDO();
         zdo?.Set(DropNSpawnLocationPrefabHash, locationPrefab);
     }
 
@@ -948,7 +953,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        Vector2i zone = ZoneSystem.GetZone(position);
+        Vector2s zone = ZoneSystem.GetZone(position);
         if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
         {
             return false;

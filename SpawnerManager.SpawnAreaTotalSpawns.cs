@@ -125,7 +125,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        ZNetView? netView = spawnArea.GetComponent<ZNetView>();
+        ZNetView? netView = spawnArea.GetComponentInParent<ZNetView>();
         if (netView == null ||
             !netView.IsValid() ||
             !netView.IsOwner())
@@ -133,7 +133,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        Destructible? destructible = spawnArea.GetComponent<Destructible>();
+        Destructible? destructible = netView.GetComponent<Destructible>();
         if (destructible != null)
         {
             destructible.Destroy();
@@ -152,7 +152,8 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        ZNetView? netView = spawnArea.GetComponent<ZNetView>();
+        // Match SpawnArea.Awake in Valheim 1.0.12, including child spawners.
+        ZNetView? netView = spawnArea.GetComponentInParent<ZNetView>();
         if (netView == null || !netView.IsValid())
         {
             return false;

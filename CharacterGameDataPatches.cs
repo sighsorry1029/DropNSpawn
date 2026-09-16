@@ -152,21 +152,24 @@ internal static class CharacterDropOnDeathPatch
 [HarmonyPatch(typeof(CharacterDrop), nameof(CharacterDrop.DropItems))]
 internal static class CharacterDropDropItemsPatch
 {
-    private static void Prefix(ref List<KeyValuePair<GameObject, int>> drops, Vector3 centerPos, float dropArea)
+    private static void Prefix(ref List<KeyValuePair<GameObject, int>> drops, Vector3 centerPos, float dropArea, bool cheated)
     {
         if (!PluginSettingsFacade.IsCharacterDomainEnabled())
         {
             return;
         }
 
-        CharacterDropManager.ApplyGlobalDropInStack(ref drops, centerPos, dropArea);
+        CharacterDropManager.ApplyGlobalDropInStack(ref drops, centerPos, dropArea, cheated);
     }
 }
 
 [HarmonyPatch(typeof(Ragdoll), nameof(Ragdoll.Setup))]
 internal static class RagdollSetupMonsterInstantLootDropPatch
 {
-    private static void Postfix(Ragdoll __instance, CharacterDrop characterDrop)
+    private static readonly System.Action<Ragdoll, Vector3> SpawnLoot =
+        AccessTools.MethodDelegate<System.Action<Ragdoll, Vector3>>(AccessTools.Method(typeof(Ragdoll), "SpawnLoot", new[] { typeof(Vector3) }));
+
+    private static void Postfix(Ragdoll __instance, CharacterDrop characterDrop, ZNetView ___m_nview)
     {
         if (!PluginSettingsFacade.IsMonsterInstantLootDropEnabled())
         {
@@ -178,7 +181,7 @@ internal static class RagdollSetupMonsterInstantLootDropPatch
             return;
         }
 
-        ZNetView netView = __instance.m_nview;
+        ZNetView netView = ___m_nview;
         if (netView == null || !netView.IsValid() || !netView.IsOwner())
         {
             return;
@@ -196,7 +199,7 @@ internal static class RagdollSetupMonsterInstantLootDropPatch
             center = __instance.m_lootSpawnJoint.transform.position;
         }
 
-        __instance.SpawnLoot(center);
+        SpawnLoot(__instance, center);
         zdo.Set(ZDOVars.s_drops, 0);
     }
 }

@@ -106,9 +106,15 @@ internal static class ExpandWorldFieldOverrideSupport
             otherFields[$"m_{key}"] = value;
         }
 
-        prefab.GetComponentsInChildren(ZNetView.m_tempComponents);
-        foreach (Component component in ZNetView.m_tempComponents)
+        // Own this scratch list instead of borrowing ZNetView's private buffer.
+        List<Component> components = new();
+        prefab.GetComponentsInChildren(components);
+        foreach (Component component in components)
         {
+            if (component == null)
+            {
+                continue;
+            }
             Type componentType = component.GetType();
             string componentTypeName = componentType.Name;
             FieldInfo[] fields = componentType.GetFields(BindingFlags.Instance | BindingFlags.Public);
@@ -127,7 +133,6 @@ internal static class ExpandWorldFieldOverrideSupport
             }
         }
 
-        ZNetView.m_tempComponents.Clear();
     }
 
     private static bool TryInsertKnownOverride(EwdData.DataEntry customData, int hash, string value)

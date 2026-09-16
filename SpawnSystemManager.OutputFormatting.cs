@@ -67,6 +67,7 @@ internal static partial class SpawnSystemManager
             Biomes = data.m_biome == defaults.m_biome ? null : ConvertBiomes(data.m_biome),
             BiomeAreas = data.m_biomeArea == defaults.m_biomeArea ? null : ConvertBiomeAreas(data.m_biomeArea),
             RequiredGlobalKey = NormalizeNullable(data.m_requiredGlobalKey),
+            RequiredPersistentEvent = NormalizeNullable(data.m_requiredPersistentEvent),
             RequiredEnvironments = NormalizeReferenceStringList(data.m_requiredEnvironments),
             TimeOfDay = data.m_spawnAtDay == defaults.m_spawnAtDay && data.m_spawnAtNight == defaults.m_spawnAtNight
                 ? null
@@ -123,6 +124,7 @@ internal static partial class SpawnSystemManager
             Biomes = ConvertBiomes(snapshot.Data.m_biome),
             BiomeAreas = ConvertBiomeAreas(snapshot.Data.m_biomeArea),
             RequiredGlobalKey = NormalizeNullable(snapshot.Data.m_requiredGlobalKey),
+            RequiredPersistentEvent = NormalizeNullable(snapshot.Data.m_requiredPersistentEvent),
             RequiredEnvironments = snapshot.Data.m_requiredEnvironments.Select(environment => environment.Trim()).ToList(),
             TimeOfDay = TimeOfDayFormatting.FromSpawnFlags(snapshot.Data.m_spawnAtDay, snapshot.Data.m_spawnAtNight),
             NoSpawnRadius = snapshot.Data.m_spawnDistance,

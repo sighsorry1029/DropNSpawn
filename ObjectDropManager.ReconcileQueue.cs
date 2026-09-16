@@ -262,7 +262,7 @@ internal static partial class ObjectDropManager
             return $"root:{root.gameObject.GetInstanceID()}:{prefabName}";
         }
 
-        Vector2i zone = ZoneSystem.GetZone(gameObject.transform.position);
+        Vector2s zone = ZoneSystem.GetZone(gameObject.transform.position);
         return $"zone:{zone.x}:{zone.y}:{prefabName}";
     }
 

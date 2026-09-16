@@ -52,19 +52,27 @@ internal static partial class Program
             string assemblyPath = Required(options, "--assembly");
             string gamePath = Required(options, "--game-dir");
             string projectPath = options.TryGetValue("--project-dir", out string? configuredProject) ? configuredProject : Directory.GetCurrentDirectory();
-            using var current = new ModContract(assemblyPath, gamePath, projectPath);
+            options.TryGetValue("--managed-dir", out string? managedPath);
+            using var current = new ModContract(assemblyPath, gamePath, projectPath, managedPath);
+            CheckGameContracts(current);
             Dictionary<string, string> actual = CheckTransportContracts(current);
             if (options.TryGetValue("--baseline", out string? baselinePath))
             {
-                using var baseline = new ModContract(baselinePath, gamePath, projectPath);
+                using var baseline = new ModContract(baselinePath, gamePath, projectPath, managedPath);
                 Dictionary<string, string> expected = CheckTransportContracts(baseline);
                 foreach (KeyValuePair<string, string> pair in expected)
+                {
+                    string domain = pair.Key.Split(':')[0];
+                    if (domain is "SpawnSystem" or "Event" && CheckPersistentEventSchemaUpgrade(current, baseline, domain))
+                        continue;
                     Check(actual[pair.Key] == pair.Value, $"wire/signature compatibility: {pair.Key}");
+                }
             }
             CheckPayloadLifetime(current);
             CheckNetworkContracts(current);
             CheckCharacterContracts(current);
             CheckEventCompatibilityContracts(current);
+            CheckPersistentEventContracts(current);
             Console.WriteLine($"PASS: {_checks} managed contract checks. Unity gameplay and network execution are not covered.");
             return 0;
         }
@@ -241,12 +249,15 @@ internal static partial class Program
     {
         private readonly string[] _searchPaths;
         private readonly Assembly _assembly;
-        internal ModContract(string assemblyPath, string gamePath, string projectPath) : base(isCollectible: true)
+        internal Assembly Assembly => _assembly;
+        internal string[] SearchPaths => _searchPaths;
+        internal ModContract(string assemblyPath, string gamePath, string projectPath, string? managedPath = null) : base(isCollectible: true)
         {
-            _searchPaths = new[] { Path.GetDirectoryName(Path.GetFullPath(assemblyPath))!,
-                Path.Combine(projectPath, "Libs"), Path.Combine(gamePath, "BepInEx", "core"),
-                Path.Combine(gamePath, "valheim_Data", "Managed", "publicized_assemblies"),
-                Path.Combine(gamePath, "valheim_Data", "Managed") };
+            // Resolve game types only from original assemblies, never stale output
+            // copies or publicized references. --managed-dir also supports server snapshots.
+            _searchPaths = new[] { Path.GetFullPath(managedPath ?? Path.Combine(gamePath, "valheim_Data", "Managed")),
+                Path.Combine(gamePath, "BepInEx", "core"), Path.Combine(projectPath, "Libs"),
+                Path.GetDirectoryName(Path.GetFullPath(assemblyPath))! };
             _assembly = LoadFromAssemblyPath(Path.GetFullPath(assemblyPath));
         }
         internal Type Type(string name) => _assembly.GetType("DropNSpawn." + name, throwOnError: true)!;
@@ -256,7 +267,7 @@ internal static partial class Program
             if (name.Name == "0Harmony") return typeof(HarmonyLib.AccessTools).Assembly;
             if (name.Name is null || name.Name is "mscorlib" or "netstandard" || name.Name.StartsWith("System", StringComparison.Ordinal)) return null;
             foreach (string directory in _searchPaths)
-                foreach (string filename in new[] { name.Name + ".dll", name.Name + "_publicized.dll" })
+                foreach (string filename in new[] { name.Name + ".dll" })
                 {
                     string path = Path.Combine(directory, filename);
                     if (File.Exists(path)) return LoadFromAssemblyPath(Path.GetFullPath(path));

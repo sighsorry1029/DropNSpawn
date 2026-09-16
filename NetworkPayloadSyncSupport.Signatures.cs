@@ -140,5 +140,6 @@ internal static partial class NetworkPayloadSyncSupport
         WriteStringList(builder, definition.Objects);
         WriteNullableString(builder, definition.Data);
         WriteNullableString(builder, definition.Faction);
+        WriteNullableString(builder, definition.RequiredPersistentEvent);
     }
 }

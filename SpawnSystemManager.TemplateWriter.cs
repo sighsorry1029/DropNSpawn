@@ -36,6 +36,7 @@ internal static partial class SpawnSystemManager
         yield return "    timeOfDay: null # ex) [day, night]";
         yield return "    requiredEnvironments: [] # ex) [Rain, Clear] # Allowed environment names";
         yield return "    requiredGlobalKey: '' # ex) defeated_gdking # Native default is '' # Supports 'key 10' numeric syntax too";
+        yield return "    requiredPersistentEvent: '' # Internal name of the persistent event required at the spawn center # Empty = no requirement";
         yield return "    inLava: false # True = lava only # False = outside lava only";
         yield return "    inForest: null # ex) true = forest only # false = outside forest only # null or no field allows both";
         yield return "    insidePlayerBase: false # False = outside player-base influence only";

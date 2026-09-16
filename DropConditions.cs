@@ -83,7 +83,7 @@ internal static class DropConditionEvaluator
     private sealed class CachedLocationResolution
     {
         public int Epoch { get; set; }
-        public Vector2i Zone { get; set; }
+        public Vector2s Zone { get; set; }
         public Vector3 Position { get; set; }
         public string LocationName { get; set; } = "";
         public bool HasLocationName { get; set; }
@@ -665,7 +665,7 @@ internal static class DropConditionEvaluator
             return null;
         }
 
-        Vector2i zone = ZoneSystem.GetZone(position);
+        Vector2s zone = ZoneSystem.GetZone(position);
         if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
         {
             return null;
@@ -718,7 +718,7 @@ internal static class DropConditionEvaluator
             return false;
         }
 
-        Vector2i currentZone = ZoneSystem.GetZone(position);
+        Vector2s currentZone = ZoneSystem.GetZone(position);
         if (cachedResolution.Epoch != _locationResolutionEpoch || cachedResolution.Zone != currentZone)
         {
             return false;
@@ -772,7 +772,7 @@ internal static class DropConditionEvaluator
 
         if (ZoneSystem.instance != null)
         {
-            Vector2i zone = ZoneSystem.GetZone(location.transform.position);
+            Vector2s zone = ZoneSystem.GetZone(location.transform.position);
             if (ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
             {
                 string prefabName = GetZoneLocationPrefabName(locationInstance.m_location);
@@ -811,7 +811,7 @@ internal static class DropConditionEvaluator
             return false;
         }
 
-        Vector2i zone = ZoneSystem.GetZone(position);
+        Vector2s zone = ZoneSystem.GetZone(position);
         if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance locationInstance))
         {
             return false;
