@@ -100,6 +100,7 @@ internal static partial class ObjectDropManager
 
     internal static void RefreshReferenceConfigurationFile()
     {
+        ReferenceRefreshSupport.WarnBeforeFullLocationScan();
         string referenceContent;
         string locationReferenceContent;
         string sourceSignature;

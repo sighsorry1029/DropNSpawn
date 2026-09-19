@@ -9,6 +9,104 @@ using Mono.Cecil;
 
 internal static partial class Program
 {
+    private static void CheckLocationReferenceContracts(ModContract mod, string? mwlManifestPath)
+    {
+        Type support = mod.Type("ReferenceRefreshSupport");
+        Type scanType = support.GetNestedType("LocationReferenceScan", All)!;
+        Type assetType = mod.LoadGameAssembly("SoftReferenceableAssets").GetType("SoftReferenceableAssets.AssetID", true)!;
+        object firstId = Activator.CreateInstance(assetType, new object[] { 1u, 2u, 3u, 4u })!;
+        object otherId = Activator.CreateInstance(assetType, new object[] { 5u, 6u, 7u, 8u })!;
+        object ids = Activator.CreateInstance(typeof(HashSet<>).MakeGenericType(assetType))!;
+        Call(ids, "Add", firstId);
+        object scan = NewScan(ids);
+        Check((bool)Call(scan, "ShouldSkip", firstId)!, "automatic scan excludes MWL asset IDs");
+        Check(!(bool)Call(scan, "ShouldSkip", otherId)!, "automatic scan keeps unrelated assets");
+        object deferred = NewScan(null);
+        Check((bool)Call(deferred, "ShouldSkip", otherId)!, "missing manifest safely defers interior scanning");
+        Check(!Equals(Property(scan, "Signature"), Property(deferred, "Signature")), "deferred and MWL-only scan caches differ");
+        Check(Equals(Property(scan, "Signature"), Property(NewScan(ids), "Signature")), "scan signature is deterministic");
+        Call(ids, "Add", otherId);
+        Check(!Equals(Property(scan, "Signature"), Property(NewScan(ids), "Signature")), "changed manifest IDs invalidate scan cache");
+        string header = (string)support.GetField("PartialLocationReferenceHeader", All)!.GetRawConstantValue()!;
+        string content = (string)Call(scan, "Annotate", "- prefab: RegisteredPrefab\n")!;
+        Check(content.StartsWith(header + Environment.NewLine) && content.Contains("- prefab: RegisteredPrefab"), "partial export labels scope without removing registered entries");
+
+        string testPath = Path.Combine(Path.GetTempPath(), "dns-reference-" + Guid.NewGuid().ToString("N") + ".yml");
+        Type lifecycle = mod.Type("ReferenceArtifactLifecycle");
+        try
+        {
+            File.WriteAllText(testPath, "# Existing full reference\n- prefab: KeepMe\n");
+            Check(!(bool)Invoke(lifecycle, null, "HasHeader", testPath, header)!, "full/unmarked references are not eligible for partial replacement");
+            object?[] planArgs = { "test", testPath, "test-signature", null, header };
+            Check(!(bool)Invoke(lifecycle, null, "TryPlanUpdate", planArgs)!, "restricted automatic update preserves full reference before cache access");
+            Check(File.ReadAllText(testPath).Contains("KeepMe"), "preserved full reference is unchanged");
+            File.WriteAllText(testPath, content);
+            Check((bool)Invoke(lifecycle, null, "HasHeader", testPath, header)!, "partial references can be refreshed as partial");
+            File.Delete(testPath);
+            planArgs[3] = null;
+            Check((bool)Invoke(lifecycle, null, "TryPlanUpdate", planArgs)!, "missing references can be created with restricted scanning");
+        }
+        finally
+        {
+            File.Delete(testPath);
+        }
+
+        Type objectManager = mod.Type("ObjectDropManager");
+        Type bucketType = objectManager.GetNestedType("LocationReferenceBucket", All)!;
+        object bucket = Activator.CreateInstance(bucketType, nonPublic: true)!;
+        Type entryType = mod.Type("PrefabReferenceEntry");
+        object first = JsonSerializer.Deserialize("{\"Prefab\":\"Chest\",\"Container\":{\"DropChance\":0.5}}", entryType, JsonOptions)!;
+        object same = JsonSerializer.Deserialize("{\"Prefab\":\"Chest\",\"Container\":{\"DropChance\":0.5}}", entryType, JsonOptions)!;
+        object different = JsonSerializer.Deserialize("{\"Prefab\":\"Chest\",\"Container\":{\"DropChance\":0.75}}", entryType, JsonOptions)!;
+        Check(Property(bucket, "UniqueReferenceEntry") == null, "empty location bucket has no supplemental defaults");
+        Call(bucket, "AddReferenceEntry", first);
+        Call(bucket, "AddReferenceEntry", same);
+        Check(ReferenceEquals(Property(bucket, "UniqueReferenceEntry"), first), "identical location defaults retain only the first entry");
+        Call(bucket, "AddReferenceEntry", different);
+        Check(Property(bucket, "UniqueReferenceEntry") == null && bucketType.GetField("_signature", All)!.GetValue(bucket) == null,
+            "conflicting defaults release both the entry and YAML signature");
+        Call(bucket, "AddReferenceEntry", first);
+        Call(bucket, "AddReferenceEntry", (object?)null); // Must return before serialization once ambiguous.
+        Check(Property(bucket, "UniqueReferenceEntry") == null, "ambiguous bucket never becomes unique again or serializes later entries");
+
+        using var module = ModuleDefinition.ReadModule(mod.Assembly.Location);
+        TypeDefinition iterator = module.GetType("DropNSpawn.ReferenceRefreshSupport").NestedTypes
+            .Single(type => type.Name.StartsWith("<EnumerateLocationRootPrefabs>"));
+        MethodDefinition moveNext = iterator.Methods.Single(method => method.Name == "MoveNext");
+        var calls = moveNext.Body.Instructions.Where(i => i.Operand is MethodReference).Select(i => ((MethodReference)i.Operand).Name).ToList();
+        Check(calls.IndexOf("ShouldSkip") >= 0 && calls.IndexOf("ShouldSkip") < calls.IndexOf("Load"), "MWL exclusion occurs before asset loading");
+        MethodDefinition releaseFinally = iterator.Methods.Single(method => method.HasBody && method.Body.Instructions.Any(i =>
+            i.Operand is MethodReference m && m.Name == "Release" && m.DeclaringType.Name.StartsWith("SoftReference")));
+        Check(releaseFinally.Name.Contains("Finally") && iterator.Methods.Any(method => method.Name.EndsWith("Dispose") &&
+            method.Body.Instructions.Any(i => i.Operand is MethodReference m && m.Name == releaseFinally.Name)),
+            "borrowed asset release is in the iterator finally/disposal path");
+        foreach (string managerName in new[] { "ObjectDropManager", "SpawnerManager" })
+        {
+            TypeDefinition manager = module.GetType("DropNSpawn." + managerName);
+            MethodDefinition auto = manager.Methods.Single(method => method.Name == (managerName == "ObjectDropManager" ? "EnsureReferenceArtifactsUpToDate" : "EnsureSpawnerReferenceConfigurationUpToDate"));
+            Check(auto.Body.Instructions.Any(i => i.Operand is MethodReference m && m.Name == "CreateAutomaticLocationScan"), managerName + ": automatic export uses restricted policy");
+            Check(!manager.NestedTypes.SelectMany(type => type.Methods).Concat(manager.Methods).Where(method => method.HasBody)
+                .SelectMany(method => method.Body.Instructions).Any(i => i.Operand is MethodReference m && m.Name == "Load" && m.DeclaringType.Name.StartsWith("SoftReference")),
+                managerName + ": no unbalanced private location loader remains");
+        }
+
+        if (mwlManifestPath != null)
+        {
+            Type manifestType = mod.LoadGameAssembly("SoftReferenceableAssets").GetType("SoftReferenceableAssets.AssetBundleManifest", true)!;
+            object manifest = Invoke(manifestType, null, "DeserializeFromDisk", Path.GetFullPath(mwlManifestPath))!;
+            var map = (IDictionary)manifestType.GetField("m_assetToLocationMap")!.GetValue(manifest)!;
+            object realIds = Activator.CreateInstance(typeof(HashSet<>).MakeGenericType(assetType))!;
+            foreach (object id in map.Keys) Call(realIds, "Add", id);
+            object realScan = NewScan(realIds);
+            Check(map.Count > 0, "provided MWL manifest is readable with the original game parser");
+            foreach (object id in map.Keys) Check((bool)Call(realScan, "ShouldSkip", id)!, "provided MWL asset is excluded without loading its bundle");
+            Check(!(bool)Call(realScan, "ShouldSkip", otherId)!, "provided MWL manifest does not exclude unrelated test asset");
+            Console.WriteLine($"MWL manifest: {map.Count} asset IDs checked without loading bundles.");
+        }
+
+        object NewScan(object? excluded) => Activator.CreateInstance(scanType, All, null, new[] { excluded }, null)!;
+    }
+
     // Static contract checks and accessor construction, not a Unity scene or PatchAll.
     private static void CheckGameContracts(ModContract mod)
     {

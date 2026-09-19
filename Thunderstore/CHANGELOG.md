@@ -1,3 +1,11 @@
+## 1.3.12 — MWL reference generation safety
+
+- Automatic Object/Spawner reference generation now skips More World Locations AIO location interiors before loading their assets. MWL is identified by its plugin GUID and manifest asset IDs; already registered prefab references and override behavior remain unchanged.
+- Preserved existing full references instead of replacing them with partial automatic exports. New partial references are labeled and use distinct cache signatures. If the MWL manifest cannot be read, automatic location-interior scanning is deferred rather than force-loading all locations.
+- Balanced location-scan soft-reference loads with releases, including failed loads, exceptions and early iterator disposal. Reused Spawner location results across its two reference outputs and stopped retaining every conflicting Object reference variant.
+- Kept explicit `dns:reference object` and `dns:reference spawner` full exports available, with an MWL memory/time warning. Manual full exports can still be expensive on low-memory systems.
+- Added managed regression coverage for MWL asset exclusion, reference preservation, partial-export metadata, load/release structure and Object reference ambiguity. Steam Deck performance and gameplay with MWL have not been verified. YAML and network schemas are unchanged; update all peers together for the mod version check.
+
 ## 1.3.11 — Valheim 1.0.12 / Expand World Data 1.71
 
 - Updated the Expand World Data dependency to 1.71.0 and the vendored ServerSync to the reviewed `valheim-1.0.7-r1` reference, including its RPC constant and connection-buffer fixes.

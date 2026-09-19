@@ -331,7 +331,32 @@ internal static partial class ObjectDropManager
     {
         public SortedSet<string> Components { get; } = new(StringComparer.OrdinalIgnoreCase);
         public SortedSet<string> Locations { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public Dictionary<string, PrefabReferenceEntry> ReferenceEntriesBySignature { get; } = new(StringComparer.Ordinal);
+        public PrefabReferenceEntry? UniqueReferenceEntry { get; private set; }
+        private string? _signature;
+        private bool _hasConflictingEntries;
+
+        internal void AddReferenceEntry(PrefabReferenceEntry entry)
+        {
+            if (_hasConflictingEntries)
+            {
+                return;
+            }
+
+            string signature = Serializer.Serialize(entry).TrimEnd('\r', '\n');
+            if (_signature == null)
+            {
+                _signature = signature;
+                UniqueReferenceEntry = entry;
+            }
+            else if (!string.Equals(_signature, signature, StringComparison.Ordinal))
+            {
+                // Supplemental defaults are emitted only for unambiguous prefabs.
+                // Once ambiguous, no variant or YAML string needs to be retained.
+                _hasConflictingEntries = true;
+                _signature = null;
+                UniqueReferenceEntry = null;
+            }
+        }
     }
 
     private static readonly object Sync = new();
@@ -650,17 +675,21 @@ internal static partial class ObjectDropManager
             return;
         }
 
-        string currentSourceSignature = ComputeReferenceSourceSignature();
+        ReferenceRefreshSupport.LocationReferenceScan? scan = ReferenceRefreshSupport.CreateAutomaticLocationScan();
+        string? requiredHeader = scan == null ? null : ReferenceRefreshSupport.PartialLocationReferenceHeader;
+        string currentSourceSignature = ComputeReferenceSourceSignature(scan);
         bool shouldWritePrimary = ReferenceArtifactLifecycle.TryPlanUpdate(
             ReferenceAutoUpdateStateKey,
             ReferenceConfigurationPath,
             currentSourceSignature,
-            out ReferenceArtifactUpdateKind primaryUpdateKind);
+            out ReferenceArtifactUpdateKind primaryUpdateKind,
+            requiredHeader);
         bool shouldWriteLocation = ReferenceArtifactLifecycle.TryPlanUpdate(
             LocationReferenceAutoUpdateStateKey,
             LocationReferenceConfigurationPath,
             currentSourceSignature,
-            out ReferenceArtifactUpdateKind locationUpdateKind);
+            out ReferenceArtifactUpdateKind locationUpdateKind,
+            requiredHeader);
         bool isCreatingAnyReference = primaryUpdateKind == ReferenceArtifactUpdateKind.Created ||
                                       locationUpdateKind == ReferenceArtifactUpdateKind.Created;
 
@@ -676,18 +705,24 @@ internal static partial class ObjectDropManager
         }
 
         CaptureSnapshotsIfNeeded();
-        Dictionary<string, LocationReferenceBucket> locationBuckets = BuildLocationReferenceBuckets();
+        Dictionary<string, LocationReferenceBucket> locationBuckets = BuildLocationReferenceBuckets(scan);
+        if (scan != null)
+        {
+            DropNSpawnPlugin.DropNSpawnLogger.LogInfo("Object automatic references omit MWL location interiors; override behavior is unchanged.");
+        }
         if (shouldWritePrimary)
         {
+            string content = BuildReferenceConfigurationTemplate(locationBuckets);
             WriteReferenceConfigurationFile(
-                BuildReferenceConfigurationTemplate(locationBuckets),
+                scan?.Annotate(content) ?? content,
                 $"{ReferenceArtifactLifecycle.FormatAction(primaryUpdateKind)} object reference configuration at {ReferenceConfigurationPath}.");
             ReferenceArtifactLifecycle.RecordUpdate(ReferenceAutoUpdateStateKey, ReferenceConfigurationPath, currentSourceSignature);
         }
 
         if (shouldWriteLocation)
         {
-            WriteLocationReferenceConfigurationFile(BuildLocationReferenceConfigurationTemplate(locationBuckets));
+            string content = BuildLocationReferenceConfigurationTemplate(locationBuckets);
+            WriteLocationReferenceConfigurationFile(scan?.Annotate(content) ?? content);
             DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
                 $"{ReferenceArtifactLifecycle.FormatAction(locationUpdateKind)} object location reference configuration at {LocationReferenceConfigurationPath}.");
             ReferenceArtifactLifecycle.RecordUpdate(LocationReferenceAutoUpdateStateKey, LocationReferenceConfigurationPath, currentSourceSignature);
@@ -1742,11 +1777,12 @@ internal static partial class ObjectDropManager
         }
     }
 
-    private static string ComputeReferenceSourceSignature()
+    private static string ComputeReferenceSourceSignature(ReferenceRefreshSupport.LocationReferenceScan? scan = null)
     {
-        return ReferenceRefreshSupport.ComputeStableHashForKeys(
+        string signature = ReferenceRefreshSupport.ComputeStableHashForKeys(
             EnumerateRelevantPrefabs()
                 .Select(prefab => prefab.name));
+        return scan == null ? signature : ReferenceRefreshSupport.ComputeStableHash(signature + ":" + scan.Signature);
     }
 
     private static int HashGameObjectCollection(int hash, IEnumerable<GameObject> prefabs)
@@ -1792,22 +1828,22 @@ internal static partial class ObjectDropManager
             string normalizedPrefabName = ReferenceRefreshSupport.NormalizeKey(prefabName);
             if (normalizedPrefabName.Length == 0 ||
                 existingPrefabs.Contains(normalizedPrefabName) ||
-                bucket.ReferenceEntriesBySignature.Count != 1)
+                bucket.UniqueReferenceEntry == null)
             {
                 continue;
             }
 
-            PrefabReferenceEntry entry = bucket.ReferenceEntriesBySignature.Values.First();
+            PrefabReferenceEntry entry = bucket.UniqueReferenceEntry;
             existingPrefabs.Add(normalizedPrefabName);
             yield return entry;
         }
     }
 
-    private static Dictionary<string, LocationReferenceBucket> BuildLocationReferenceBuckets()
+    private static Dictionary<string, LocationReferenceBucket> BuildLocationReferenceBuckets(ReferenceRefreshSupport.LocationReferenceScan? scan = null)
     {
         Dictionary<string, LocationReferenceBucket> buckets = new(StringComparer.OrdinalIgnoreCase);
 
-        foreach ((string locationPrefab, GameObject rootPrefab) in EnumerateLocationRootPrefabs())
+        foreach ((string locationPrefab, GameObject rootPrefab) in ReferenceRefreshSupport.EnumerateLocationRootPrefabs(scan))
         {
             foreach (Transform transform in rootPrefab.GetComponentsInChildren<Transform>(true))
             {
@@ -1835,44 +1871,11 @@ internal static partial class ObjectDropManager
                     bucket.Components.Add(component);
                 }
 
-                string signature = Serializer.Serialize(referenceEntry).TrimEnd('\r', '\n');
-                bucket.ReferenceEntriesBySignature.TryAdd(signature, referenceEntry);
+                bucket.AddReferenceEntry(referenceEntry);
             }
         }
 
         return buckets;
-    }
-
-    private static IEnumerable<(string LocationPrefab, GameObject RootPrefab)> EnumerateLocationRootPrefabs()
-    {
-        if (ZoneSystem.instance == null)
-        {
-            yield break;
-        }
-
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (ZoneSystem.ZoneLocation location in ZoneSystem.instance.m_locations)
-        {
-            if (!location.m_prefab.IsValid)
-            {
-                continue;
-            }
-
-            string locationPrefab = (location.m_prefab.Name ?? "").Trim();
-            if (locationPrefab.Length == 0 || !seen.Add(locationPrefab))
-            {
-                continue;
-            }
-
-            location.m_prefab.Load();
-            GameObject? rootPrefab = location.m_prefab.Asset;
-            if (rootPrefab == null)
-            {
-                continue;
-            }
-
-            yield return (locationPrefab, rootPrefab);
-        }
     }
 
     private static PrefabSnapshot? CaptureSnapshot(GameObject prefab)

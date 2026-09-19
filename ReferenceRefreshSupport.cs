@@ -4,6 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
+using BepInEx.Bootstrap;
+using SoftReferenceableAssets;
+using UnityEngine;
 using YamlDotNet.Serialization;
 
 namespace DropNSpawn;
@@ -11,6 +14,117 @@ namespace DropNSpawn;
 internal static class ReferenceRefreshSupport
 {
     internal const string CurrentReferenceLogicVersion = "2026-03-26-full-rewrite-v1";
+
+    internal const string MoreWorldLocationsGuid = "warpalicious.More_World_Locations_AIO";
+    internal const string PartialLocationReferenceHeader = "# DropNSpawn location scan: automatic-mwl-excluded-v1";
+
+    // Only automatic reference generation uses this policy. Runtime rules and
+    // explicit exports never use the exclusion list.
+    internal sealed class LocationReferenceScan
+    {
+        private readonly HashSet<AssetID>? _excludedAssets;
+
+        internal LocationReferenceScan(HashSet<AssetID>? excludedAssets)
+        {
+            _excludedAssets = excludedAssets;
+            Signature = ComputeStableHashForKeys(new[] { PartialLocationReferenceHeader }.Concat(
+                excludedAssets == null ? new[] { "all-locations-deferred" } : excludedAssets.Select(id => id.ToString())));
+        }
+
+        internal string Signature { get; }
+        internal bool ShouldSkip(AssetID assetId) => _excludedAssets == null || _excludedAssets.Contains(assetId);
+
+        internal string Annotate(string content) => PartialLocationReferenceHeader + Environment.NewLine +
+            (_excludedAssets == null
+                ? "# Location interiors were not scanned because the MWL manifest could not be read."
+                : "# MWL location interiors were not scanned; registered prefab references are still included.") + Environment.NewLine +
+            "# Explicit dns:reference object/spawner exports include all locations and can be expensive." + Environment.NewLine + content;
+    }
+
+    internal static LocationReferenceScan? CreateAutomaticLocationScan()
+    {
+        if (!Chainloader.PluginInfos.TryGetValue(MoreWorldLocationsGuid, out var plugin))
+        {
+            return null;
+        }
+
+        try
+        {
+            string directory = Path.GetDirectoryName(plugin.Location)!;
+            string? path = Directory.EnumerateFiles(directory)
+                .FirstOrDefault(file => string.Equals(Path.GetFileName(file), "assetBundleManifest_full", StringComparison.OrdinalIgnoreCase));
+            SoftReferenceableAssets.AssetBundleManifest? manifest = path == null
+                ? null
+                : SoftReferenceableAssets.AssetBundleManifest.DeserializeFromDisk(path);
+            if (manifest != null && manifest.AssetCount > 0)
+            {
+                return new LocationReferenceScan(manifest.m_assetToLocationMap.Keys.ToHashSet());
+            }
+        }
+        catch (Exception ex)
+        {
+            DropNSpawnPlugin.DropNSpawnLogger.LogWarning($"Could not read MWL reference-scan metadata: {ex.Message}");
+        }
+
+        // Do not fall back to force-loading every location when identification fails.
+        DropNSpawnPlugin.DropNSpawnLogger.LogWarning(
+            "MWL manifest unavailable: automatic location-interior references are deferred; registered prefab references and override rules remain available.");
+        return new LocationReferenceScan(null);
+    }
+
+    internal static IEnumerable<(string LocationPrefab, GameObject RootPrefab)> EnumerateLocationRootPrefabs(LocationReferenceScan? scan = null)
+    {
+        if (ZoneSystem.instance == null)
+        {
+            yield break;
+        }
+
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (ZoneSystem.ZoneLocation location in ZoneSystem.instance.m_locations)
+        {
+            // Work on a copy: do not leave the borrowed asset cached on ZoneLocation.
+            SoftReference<GameObject> prefab = location.m_prefab;
+            if (!prefab.IsValid || scan?.ShouldSkip(prefab.m_assetID) == true)
+            {
+                continue;
+            }
+
+            string name = (prefab.Name ?? "").Trim();
+            if (name.Length == 0 || !seen.Add(name))
+            {
+                continue;
+            }
+
+            try
+            {
+                if (prefab.Load() != LoadResult.Succeeded)
+                {
+                    continue;
+                }
+
+                GameObject root = prefab.Asset;
+                if (root != null)
+                {
+                    yield return (name, root);
+                }
+            }
+            finally
+            {
+                // Load holds a reference even on a failed load. Iterator disposal
+                // also runs this on consumer exceptions or early termination.
+                prefab.Release();
+            }
+        }
+    }
+
+    internal static void WarnBeforeFullLocationScan()
+    {
+        if (Chainloader.PluginInfos.ContainsKey(MoreWorldLocationsGuid))
+        {
+            DropNSpawnPlugin.DropNSpawnLogger.LogWarning(
+                "Explicit full location reference export includes MWL interiors. This can take minutes and use substantial memory on low-memory systems.");
+        }
+    }
 
     internal static string ComputeStableHashForKeys(IEnumerable<string?> keys)
     {

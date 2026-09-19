@@ -17,10 +17,10 @@ internal static partial class SpawnerManager
         public CreatureSpawnerComponentSnapshot? CreatureSpawner { get; set; }
     }
 
-    private static List<TemplateAggregate> BuildTemplateAggregates()
+    private static List<TemplateAggregate> BuildTemplateAggregates(ReferenceRefreshSupport.LocationReferenceScan? scan = null)
     {
         Dictionary<string, TemplateAggregate> aggregates = new(StringComparer.OrdinalIgnoreCase);
-        Dictionary<string, SortedSet<string>> locationPrefabsBySpawnerPrefab = BuildLocationReferenceLookup();
+        Dictionary<string, SortedSet<string>> locationPrefabsBySpawnerPrefab = BuildLocationReferenceLookup(scan);
 
         foreach (SpawnAreaComponentSnapshot snapshot in SpawnAreaSnapshots)
         {
@@ -58,10 +58,10 @@ internal static partial class SpawnerManager
         return templateAggregates;
     }
 
-    private static List<PrefabOwnerSection<TemplateAggregate>> BuildTemplateAggregateSections()
+    private static List<PrefabOwnerSection<TemplateAggregate>> BuildTemplateAggregateSections(List<TemplateAggregate> aggregates)
     {
         List<PrefabOwnerSection<TemplateAggregate>> aggregateSections = PrefabOutputSections.BuildSections(
-            BuildTemplateAggregates(),
+            aggregates,
             aggregate => aggregate.Prefab,
             aggregate => aggregate.OwnerName);
         foreach (PrefabOwnerSection<TemplateAggregate> section in aggregateSections)
@@ -74,7 +74,7 @@ internal static partial class SpawnerManager
 
     private static List<PrefabOwnerSection<SpawnerConfigurationEntry>> BuildConfigurationTemplate()
     {
-        List<PrefabOwnerSection<TemplateAggregate>> aggregateSections = BuildTemplateAggregateSections();
+        List<PrefabOwnerSection<TemplateAggregate>> aggregateSections = BuildTemplateAggregateSections(BuildTemplateAggregates());
 
         return aggregateSections
             .Select(section => new PrefabOwnerSection<SpawnerConfigurationEntry>(
@@ -83,9 +83,9 @@ internal static partial class SpawnerManager
             .ToList();
     }
 
-    private static string BuildReferenceConfigurationTemplate()
+    private static string BuildReferenceConfigurationTemplate(List<TemplateAggregate> aggregates)
     {
-        List<PrefabOwnerSection<SpawnerReferenceEntry>> sections = BuildTemplateAggregateSections()
+        List<PrefabOwnerSection<SpawnerReferenceEntry>> sections = BuildTemplateAggregateSections(aggregates)
             .Select(section => new PrefabOwnerSection<SpawnerReferenceEntry>(
                 section.OwnerName,
                 section.Entries
@@ -101,9 +101,8 @@ internal static partial class SpawnerManager
         return PrefabOutputSections.SerializeReferenceSections(sections, Serializer);
     }
 
-    private static string BuildLocationReferenceConfigurationTemplate()
+    private static string BuildLocationReferenceConfigurationTemplate(List<TemplateAggregate> aggregates)
     {
-        List<TemplateAggregate> aggregates = BuildTemplateAggregates();
         Dictionary<string, string> ownerNamesByPrefab = aggregates.ToDictionary(
             aggregate => aggregate.Prefab,
             aggregate => aggregate.OwnerName,
@@ -122,11 +121,11 @@ internal static partial class SpawnerManager
         return SerializeLocationReferenceEntries(entries, ownerNamesByPrefab);
     }
 
-    private static Dictionary<string, SortedSet<string>> BuildLocationReferenceLookup()
+    private static Dictionary<string, SortedSet<string>> BuildLocationReferenceLookup(ReferenceRefreshSupport.LocationReferenceScan? scan)
     {
         Dictionary<string, SortedSet<string>> groupedInstances = new(StringComparer.OrdinalIgnoreCase);
 
-        foreach ((string locationPrefab, GameObject rootPrefab) in EnumerateLocationRootPrefabs())
+        foreach ((string locationPrefab, GameObject rootPrefab) in ReferenceRefreshSupport.EnumerateLocationRootPrefabs(scan))
         {
             foreach (SpawnArea spawnArea in rootPrefab.GetComponentsInChildren<SpawnArea>(true))
             {
@@ -211,25 +210,36 @@ internal static partial class SpawnerManager
 
     private static bool EnsureSpawnerReferenceConfigurationUpToDate()
     {
-        string currentSourceSignature = ComputeReferenceSourceSignature();
+        ReferenceRefreshSupport.LocationReferenceScan? scan = ReferenceRefreshSupport.CreateAutomaticLocationScan();
+        string? requiredHeader = scan == null ? null : ReferenceRefreshSupport.PartialLocationReferenceHeader;
+        string currentSourceSignature = ComputeReferenceSourceSignature(scan);
         bool writePrimaryReference = ReferenceArtifactLifecycle.TryPlanUpdate(
             ReferenceAutoUpdateStateKey,
             ReferenceConfigurationPath,
             currentSourceSignature,
-            out ReferenceArtifactUpdateKind primaryUpdateKind);
+            out ReferenceArtifactUpdateKind primaryUpdateKind,
+            requiredHeader);
         bool writeLocationReference = ReferenceArtifactLifecycle.TryPlanUpdate(
             LocationReferenceAutoUpdateStateKey,
             LocationReferenceConfigurationPath,
             currentSourceSignature,
-            out ReferenceArtifactUpdateKind locationUpdateKind);
+            out ReferenceArtifactUpdateKind locationUpdateKind,
+            requiredHeader);
         if (!writePrimaryReference && !writeLocationReference)
         {
             return false;
         }
 
         CaptureSnapshotsIfNeeded();
-        string? referenceContent = writePrimaryReference ? BuildReferenceConfigurationTemplate() : null;
-        string? locationReferenceContent = writeLocationReference ? BuildLocationReferenceConfigurationTemplate() : null;
+        List<TemplateAggregate> aggregates = BuildTemplateAggregates(scan);
+        string? referenceContent = writePrimaryReference ? BuildReferenceConfigurationTemplate(aggregates) : null;
+        string? locationReferenceContent = writeLocationReference ? BuildLocationReferenceConfigurationTemplate(aggregates) : null;
+        if (scan != null)
+        {
+            if (referenceContent != null) referenceContent = scan.Annotate(referenceContent);
+            if (locationReferenceContent != null) locationReferenceContent = scan.Annotate(locationReferenceContent);
+            DropNSpawnPlugin.DropNSpawnLogger.LogInfo("Spawner automatic references omit MWL location interiors; override behavior is unchanged.");
+        }
         bool updatedExisting = primaryUpdateKind == ReferenceArtifactUpdateKind.Updated ||
                                locationUpdateKind == ReferenceArtifactUpdateKind.Updated;
         string action = updatedExisting ? "Updated" : "Created";
@@ -283,13 +293,15 @@ internal static partial class SpawnerManager
         }
     }
 
-    private static string ComputeReferenceSourceSignature()
+    private static string ComputeReferenceSourceSignature(ReferenceRefreshSupport.LocationReferenceScan? scan = null)
     {
-        return ReferenceRefreshSupport.ComputeStableHashForKeys(BuildCurrentSpawnerReferencePrefabKeys());
+        string signature = ReferenceRefreshSupport.ComputeStableHashForKeys(BuildCurrentSpawnerReferencePrefabKeys());
+        return scan == null ? signature : ReferenceRefreshSupport.ComputeStableHash(signature + ":" + scan.Signature);
     }
 
     internal static bool TryWriteFullScaffoldConfigurationFile(out string path, out string error)
     {
+        ReferenceRefreshSupport.WarnBeforeFullLocationScan();
         string content;
         string logMessage;
         lock (Sync)
@@ -314,6 +326,7 @@ internal static partial class SpawnerManager
 
     internal static void RefreshReferenceConfigurationFile()
     {
+        ReferenceRefreshSupport.WarnBeforeFullLocationScan();
         string referenceContent;
         string locationReferenceContent;
         string sourceSignature;
@@ -326,8 +339,9 @@ internal static partial class SpawnerManager
             }
 
             CaptureSnapshotsIfNeeded();
-            referenceContent = BuildReferenceConfigurationTemplate();
-            locationReferenceContent = BuildLocationReferenceConfigurationTemplate();
+            List<TemplateAggregate> aggregates = BuildTemplateAggregates();
+            referenceContent = BuildReferenceConfigurationTemplate(aggregates);
+            locationReferenceContent = BuildLocationReferenceConfigurationTemplate(aggregates);
             sourceSignature = ComputeReferenceSourceSignature();
             logMessage = $"Updated spawner reference configurations at {ReferenceConfigurationPath} and {LocationReferenceConfigurationPath}.";
         }
@@ -343,38 +357,6 @@ internal static partial class SpawnerManager
         lock (Sync)
         {
             ResetReferenceSnapshots();
-        }
-    }
-
-    private static IEnumerable<(string LocationPrefab, GameObject RootPrefab)> EnumerateLocationRootPrefabs()
-    {
-        if (ZoneSystem.instance == null)
-        {
-            yield break;
-        }
-
-        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
-        foreach (ZoneSystem.ZoneLocation location in ZoneSystem.instance.m_locations)
-        {
-            if (!location.m_prefab.IsValid)
-            {
-                continue;
-            }
-
-            string locationPrefab = (location.m_prefab.Name ?? "").Trim();
-            if (locationPrefab.Length == 0 || !seen.Add(locationPrefab))
-            {
-                continue;
-            }
-
-            location.m_prefab.Load();
-            GameObject? rootPrefab = location.m_prefab.Asset;
-            if (rootPrefab == null)
-            {
-                continue;
-            }
-
-            yield return (locationPrefab, rootPrefab);
         }
     }
 

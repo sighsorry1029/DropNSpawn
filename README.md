@@ -2,7 +2,8 @@
 
 Configure object and creature drops, object loot, spawners, and world spawning. Add stacked drops, level-scaled trophies, VNEI support, and location-scoped spawner rules.
 
-Version 1.3.11 targets Valheim **1.0.12**, Expand World Data **1.71.0 or later**, and BepInExPack Valheim **5.4.2350**. See [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.12.md) for verified scope and multiplayer upgrade requirements.
+Version 1.3.12 targets Valheim **1.0.15**, Expand World Data's **1.71 API** and the reviewed **1.72 hotfix build**, and BepInExPack Valheim **5.4.2350**. See [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.15.md) for the prior 1.3.11 verification scope, dedicated-server result, and the one SpawnSystem value update that existing YAML may need.
+
 ## Domains
 
 | Domain | What it controls |
@@ -12,7 +13,7 @@ Version 1.3.11 targets Valheim **1.0.12**, Expand World Data **1.71.0 or later**
 | `spawner` | `SpawnArea` and `CreatureSpawner` tables, intervals, caps, level ranges, and location-scoped spawner rules |
 | `spawnsystem` | World `SpawnSystem` rows, biome rules, time-of-day rules, global-key gates, and extended spawn data |
 
-`spawnsystem` is a full replacement domain for `SpawnSystem.m_spawnLists`: keep every row you still want in that table. Valheim 1.0.12's separate AltBiome spawn lists continue through the game's native path. `spawnSystem.requiredPersistentEvent` preserves a row's native persistent-event requirement; use the event's internal name, or `''` for no requirement.
+`spawnsystem` is a full replacement domain for `SpawnSystem.m_spawnLists`: keep every row you still want in that table. Valheim 1.0.15's separate AltBiome spawn lists continue through the game's native path. `spawnSystem.requiredPersistentEvent` preserves a row's native persistent-event requirement; use the event's internal name, or `''` for no requirement.
 
 ## Location
 DropNSpawn no longer owns a user-editable `DNS_location.yml` domain. Boss altar, altar `ItemStand`, same-boss duplicate blocking, boss despawn, and boss-tamed pressure rules live in the standalone `BossRules` mod. DropNSpawn keeps internal location lookup helpers for object and spawner `locations:` selectors.
@@ -109,6 +110,9 @@ Notes:
 
 - `DNS_spawnsystem.reference.yml` is generated from vanilla and upstream mod SpawnSystem data. `DNS_spawnsystem.yml` full overrides are not used as reference source data.
 - `DNS_object.locations.reference.yml` and `DNS_spawner.locations.reference.yml` are generated lookup files and are also kept up to date automatically.
+- With More World Locations AIO installed, automatic Object/Spawner exports skip MWL location interiors to avoid loading every MWL bundle on first connection. Already registered prefabs and all override rules remain available. Partial exports are labeled in their headers; existing unmarked/full references are preserved instead of replaced by a partial export.
+- MWL is identified by its plugin GUID and manifest asset IDs, not by a prefab-name prefix. If its manifest is unavailable, automatic interior scanning is deferred for all locations rather than risking a full load. Registered-prefab exports still work.
+- `dns:reference object` and `dns:reference spawner` explicitly include all location interiors and replace the corresponding references with full exports. These commands (and `dns:full spawner`) can still take minutes and use substantial memory with MWL; avoid running them on low-memory clients. Automatic and full exports use different cache signatures.
 
 ## Console Commands
 

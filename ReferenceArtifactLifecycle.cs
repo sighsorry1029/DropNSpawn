@@ -15,13 +15,23 @@ internal static class ReferenceArtifactLifecycle
         string stateKey,
         string referencePath,
         string sourceSignature,
-        out ReferenceArtifactUpdateKind updateKind)
+        out ReferenceArtifactUpdateKind updateKind,
+        string? requiredExistingHeader = null)
     {
         updateKind = ReferenceArtifactUpdateKind.None;
         if (!File.Exists(referencePath))
         {
             updateKind = ReferenceArtifactUpdateKind.Created;
             return true;
+        }
+
+        // A restricted automatic scan must not replace an older/full export.
+        // Only files explicitly marked as partial can be refreshed as partial.
+        if (requiredExistingHeader != null && !HasHeader(referencePath, requiredExistingHeader))
+        {
+            DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
+                $"Preserved existing reference at {referencePath}: automatic MWL location scanning is restricted. Use dns:reference for an explicit full refresh.");
+            return false;
         }
 
         if (ReferenceRefreshSupport.ShouldSkipAutoUpdate(
@@ -44,6 +54,12 @@ internal static class ReferenceArtifactLifecycle
             referencePath,
             sourceSignature,
             logicVersion: ReferenceRefreshSupport.CurrentReferenceLogicVersion);
+    }
+
+    private static bool HasHeader(string path, string header)
+    {
+        using StreamReader reader = File.OpenText(path);
+        return string.Equals(reader.ReadLine(), header, System.StringComparison.Ordinal);
     }
 
     internal static string FormatAction(ReferenceArtifactUpdateKind updateKind)

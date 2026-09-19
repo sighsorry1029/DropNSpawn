@@ -73,6 +73,7 @@ internal static partial class Program
             CheckCharacterContracts(current);
             CheckEventCompatibilityContracts(current);
             CheckPersistentEventContracts(current);
+            CheckLocationReferenceContracts(current, options.GetValueOrDefault("--mwl-manifest"));
             Console.WriteLine($"PASS: {_checks} managed contract checks. Unity gameplay and network execution are not covered.");
             return 0;
         }
