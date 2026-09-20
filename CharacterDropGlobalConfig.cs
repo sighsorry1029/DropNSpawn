@@ -11,6 +11,7 @@ internal static class CharacterDropGlobalConfig
 {
     private const string CreatureLevelControlPluginGuid = "org.bepinex.plugins.creaturelevelcontrol";
     private const float DefaultOnePerPlayerNearbyRange = 32f;
+    private const string DefaultMonsterInstantLootDropBlacklist = "Dragon, Hatchling";
 
     internal enum CharacterLootSystem
     {
@@ -21,15 +22,19 @@ internal static class CharacterDropGlobalConfig
     private static readonly object DropInStackBlacklistLock = new();
     private static readonly object TrophyLevelMultiplierBlacklistLock = new();
     private static readonly object PlayerAlignedKillerBlacklistLock = new();
+    private static readonly object MonsterInstantLootDropBlacklistLock = new();
     private static string _dropInStackBlacklistRaw = "";
     private static string _trophyLevelMultiplierBlacklistRaw = "";
     private static string _playerAlignedKillerBlacklistRaw = "";
+    private static string _monsterInstantLootDropBlacklistRaw = "";
     private static HashSet<string> _dropInStackBlacklist = new(StringComparer.OrdinalIgnoreCase);
     private static HashSet<string> _trophyLevelMultiplierBlacklist = new(StringComparer.OrdinalIgnoreCase);
     private static HashSet<string> _playerAlignedKillerBlacklist = new(StringComparer.OrdinalIgnoreCase);
+    private static HashSet<string> _monsterInstantLootDropBlacklist = new(StringComparer.OrdinalIgnoreCase);
     private static bool? _isCreatureLevelControlLoaded;
 
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _monsterInstantLootDrop = null!;
+    private static ConfigEntry<string> _monsterInstantLootDropBlacklistEntry = null!;
     private static ConfigEntry<CharacterLootSystem> _characterLootSystem = null!;
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _disableCharacterLootScalingWhenCreatureLevelControlLoaded = null!;
     private static ConfigEntry<int> _additionalLootChancePerStarCreature = null!;
@@ -73,9 +78,16 @@ internal static class CharacterDropGlobalConfig
             "2 - Character",
             "monster instant loot drop",
             DropNSpawnPlugin.Toggle.Off,
-            "If on, monster ragdoll loot saved from CharacterDrop is spawned immediately while the ragdoll remains for its vanilla lifetime. The saved ragdoll loot list is consumed so vanilla ragdoll cleanup does not drop the same items again.",
+            "If on, monster ragdoll loot saved from CharacterDrop is spawned immediately while the ragdoll remains for its vanilla lifetime. The saved ragdoll loot list is consumed so vanilla ragdoll cleanup does not drop the same items again. Creature prefabs in monster instant loot drop blacklist keep their normal ragdoll loot timing.",
             synchronizedSetting: true,
             configManagerOrder: 450);
+        _monsterInstantLootDropBlacklistEntry = plugin.BindConfigEntry(
+            "2 - Character",
+            "monster instant loot drop blacklist",
+            DefaultMonsterInstantLootDropBlacklist,
+            "Comma, semicolon, or newline separated creature prefab names excluded from monster instant loot drop. Uses the original creature prefab, not the ragdoll or dropped item name. Names are case-insensitive. Excluded creatures keep their normal ragdoll loot timing; drop amounts and other loot settings are unchanged. Empty means no exclusions. Changes apply to newly created ragdolls.",
+            synchronizedSetting: true,
+            configManagerOrder: 445);
         _characterLootSystem = plugin.BindConfigEntry(
             "2 - Character",
             "character loot system",
@@ -171,6 +183,32 @@ internal static class CharacterDropGlobalConfig
     internal static bool IsMonsterInstantLootDropEnabled()
     {
         return _monsterInstantLootDrop?.Value == DropNSpawnPlugin.Toggle.On;
+    }
+
+    internal static bool IsMonsterInstantLootDropBlacklisted(string? prefabName)
+    {
+        if (prefabName == null)
+        {
+            return false;
+        }
+
+        string normalizedPrefabName = prefabName.Trim();
+        if (normalizedPrefabName.Length == 0)
+        {
+            return false;
+        }
+
+        lock (MonsterInstantLootDropBlacklistLock)
+        {
+            string raw = _monsterInstantLootDropBlacklistEntry?.Value ?? DefaultMonsterInstantLootDropBlacklist;
+            if (!string.Equals(_monsterInstantLootDropBlacklistRaw, raw, StringComparison.Ordinal))
+            {
+                _monsterInstantLootDropBlacklist = ParseNameSet(raw);
+                _monsterInstantLootDropBlacklistRaw = raw;
+            }
+
+            return _monsterInstantLootDropBlacklist.Contains(normalizedPrefabName);
+        }
     }
 
     internal static bool IsCalculateChanceLootSystemEnabled()

@@ -71,6 +71,7 @@ internal static partial class Program
             CheckPayloadLifetime(current);
             CheckNetworkContracts(current);
             CheckCharacterContracts(current);
+            CheckInstantLootBlacklistContracts(current);
             CheckEventCompatibilityContracts(current);
             CheckPersistentEventContracts(current);
             CheckLocationReferenceContracts(current, options.GetValueOrDefault("--mwl-manifest"));

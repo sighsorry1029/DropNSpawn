@@ -52,6 +52,9 @@ internal static class PluginSettingsFacade
     internal static bool IsMonsterInstantLootDropEnabled() =>
         CharacterDropGlobalConfig.IsMonsterInstantLootDropEnabled();
 
+    internal static bool IsMonsterInstantLootDropBlacklisted(string? prefabName) =>
+        CharacterDropGlobalConfig.IsMonsterInstantLootDropBlacklisted(prefabName);
+
     internal static bool IsCharacterDropCalculateChanceLootSystemEnabled() =>
         CharacterDropGlobalConfig.IsCalculateChanceLootSystemEnabled();
 

@@ -193,6 +193,13 @@ internal static class RagdollSetupMonsterInstantLootDropPatch
             return;
         }
 
+        // Preserve saved loot for normal ragdoll cleanup; match the creature, not its ragdoll.
+        if (PluginSettingsFacade.IsMonsterInstantLootDropBlacklisted(
+                CharacterDropManager.GetPrefabName(characterDrop.gameObject)))
+        {
+            return;
+        }
+
         Vector3 center = __instance.GetAverageBodyPosition();
         if (__instance.m_lootSpawnJoint != null)
         {

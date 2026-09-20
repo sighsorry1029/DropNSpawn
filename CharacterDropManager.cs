@@ -2411,7 +2411,7 @@ internal static partial class CharacterDropManager
             : ObjectDB.instance?.GetItemPrefab(trimmedName) ?? ZNetScene.instance?.GetPrefab(trimmedName);
     }
 
-    private static string GetPrefabName(GameObject gameObject)
+    internal static string GetPrefabName(GameObject gameObject)
     {
         if (gameObject == null)
         {

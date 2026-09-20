@@ -5,6 +5,55 @@ using System.Text.Json;
 
 internal static partial class Program
 {
+    private static void CheckInstantLootBlacklistContracts(ModContract mod)
+    {
+        Type settings = mod.Type("CharacterDropGlobalConfig");
+        Type facade = mod.Type("PluginSettingsFacade");
+        string defaults = (string)settings.GetField("DefaultMonsterInstantLootDropBlacklist", All)!.GetRawConstantValue()!;
+        Check(defaults == "Dragon, Hatchling", "instant loot blacklist defaults to creature prefab names");
+        string[] fieldNames = { "_monsterInstantLootDropBlacklistEntry", "_monsterInstantLootDropBlacklistRaw", "_monsterInstantLootDropBlacklist" };
+        FieldInfo[] fields = fieldNames.Select(name => settings.GetField(name, All)!).ToArray();
+        object?[] previous = fields.Select(field => field.GetValue(null)).ToArray();
+        Type configType = mod.LoadGameAssembly("BepInEx").GetType("BepInEx.Configuration.ConfigFile", true)!;
+        string path = Path.Combine(Path.GetTempPath(), "dns-unsaved-instant-loot-" + Guid.NewGuid().ToString("N") + ".cfg");
+        object config = Activator.CreateInstance(configType, new object?[] { path, false, null })!;
+        SetProperty(config, "SaveOnConfigSet", false);
+        MethodInfo bind = configType.GetMethods().Single(method => method.Name == "Bind" && method.IsGenericMethodDefinition &&
+            method.GetParameters().Length == 4 && method.GetParameters()[0].ParameterType == typeof(string) &&
+            method.GetParameters()[3].ParameterType == typeof(string)).MakeGenericMethod(typeof(string));
+        object entry = bind.Invoke(config, new object[] { "2 - Character", "monster instant loot drop blacklist", defaults, "" })!;
+        try
+        {
+            fields[0].SetValue(null, entry);
+            Check(Excluded("Dragon") && Excluded("Hatchling"), "instant loot excludes both default creatures");
+            Check(Excluded(" dragon ") && Excluded("HATCHLING"), "instant loot names ignore surrounding whitespace and case");
+            foreach (string? name in new[] { null, "", " ", "Boar", "DragonEgg", "TrophyDragonQueen", "Dragon_ragdoll" })
+                Check(!Excluded(name), "instant loot requires an exact creature name: " + (name ?? "null"));
+            object cached = fields[2].GetValue(null)!;
+            Excluded("Dragon");
+            Check(ReferenceEquals(cached, fields[2].GetValue(null)), "unchanged instant loot setting reuses parsed names");
+
+            // Change actual ConfigEntry values, as config reload and server sync do.
+            SetProperty(entry, "Value", " Wolf ; Boar\r\nWOLF,, ;\n");
+            Check(Excluded("Wolf") && Excluded("boar") && !Excluded("Dragon") && !Excluded("Hatchling"),
+                "live blacklist edits replace previous names and support all list separators");
+            Check(!ReferenceEquals(cached, fields[2].GetValue(null)) && ((HashSet<string>)fields[2].GetValue(null)!).Count == 2,
+                "changed instant loot setting rebuilds and deduplicates its name cache");
+            SetProperty(entry, "Value", "");
+            Check(!Excluded("Wolf") && !Excluded("Boar") && !Excluded("Dragon") && !Excluded("Hatchling"),
+                "empty instant loot blacklist removes all exclusions rather than restoring defaults");
+            SetProperty(entry, "Value", defaults);
+            Check(Excluded("Dragon") && Excluded("Hatchling") && !Excluded("Wolf"), "restoring defaults replaces the live blacklist");
+            Check(!File.Exists(path), "instant loot fixtures never write a real config profile");
+        }
+        finally
+        {
+            for (int i = 0; i < fields.Length; i++) fields[i].SetValue(null, previous[i]);
+        }
+
+        bool Excluded(string? prefab) => (bool)Invoke(facade, null, "IsMonsterInstantLootDropBlacklisted", new object?[] { prefab })!;
+    }
+
     private static void CheckCharacterContracts(ModContract mod)
     {
         Type manager = mod.Type("CharacterDropManager");

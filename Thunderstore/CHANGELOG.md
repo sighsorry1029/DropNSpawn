@@ -1,3 +1,11 @@
+## 1.3.13 — Instant loot exclusions and documentation cleanup
+
+- Added the synced `monster instant loot drop blacklist` setting, defaulting to `Dragon, Hatchling`. Matching creature prefabs keep their normal ragdoll loot timing while instant loot remains enabled for other creatures; drop contents, amounts and existing duplicate prevention are unchanged.
+- Made blacklist matching case-insensitive and live-updatable. Commas, semicolons and newlines are accepted, and an empty value removes all exclusions. Changes apply to newly created ragdolls.
+- Simplified the README around installation, generated references, active YAML files, authoritative SpawnSystem behavior, MWL export safety and the most important override rules while keeping all existing images.
+- Removed duplicate Character baseline storage and made config reload comparison use the existing domain-toggle map, reducing maintenance paths without changing YAML, network or public integration contracts.
+- Added managed coverage for instant-loot defaults, exact prefab matching, live edits, cache invalidation and empty-list behavior. Actual ragdoll timing and multiplayer execution still require in-game verification; update all peers together for the mod version check.
+
 ## 1.3.12 — MWL reference generation safety
 
 - Automatic Object/Spawner reference generation now skips More World Locations AIO location interiors before loading their assets. MWL is identified by its plugin GUID and manifest asset IDs; already registered prefab references and override behavior remain unchanged.

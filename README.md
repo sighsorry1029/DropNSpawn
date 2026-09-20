@@ -1,69 +1,67 @@
 # DropNSpawn
 
-Configure object and creature drops, object loot, spawners, and world spawning. Add stacked drops, level-scaled trophies, VNEI support, and location-scoped spawner rules.
+Customize Valheim's drops, loot, spawners, world spawning, and raids with YAML. Use generated references to find prefab names and values, then edit only what you need.
 
-Version 1.3.12 targets Valheim **1.0.15**, Expand World Data's **1.71 API** and the reviewed **1.72 hotfix build**, and BepInExPack Valheim **5.4.2350**. See [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.15.md) for the prior 1.3.11 verification scope, dedicated-server result, and the one SpawnSystem value update that existing YAML may need.
+| Character drops | Object loot | Spawners |
+| --- | --- | --- |
+| ![Character drop configuration](https://i.ibb.co/nMZ7gcZR/characterdrop.png) | ![Object drop configuration](https://i.ibb.co/yFhNTP60/objectdrop.png) | ![Spawner and world spawn checks](https://i.ibb.co/GQ9bPWb7/spawns.png) |
 
-## Domains
+![How Valheim world spawning works](https://i.ibb.co/wZ4BfJF1/spawnsystem.png)
 
-| Domain | What it controls |
+## What you can change
+
+| Domain | Controls |
 | --- | --- |
-| `character` | `CharacterDrop` loot, one-per-player drop counting, and drop-in-stack |
-| `object` | Containers, pickables, pickable items, fish, destructibles, mine rocks, trees, and object drop tables |
-| `spawner` | `SpawnArea` and `CreatureSpawner` tables, intervals, caps, level ranges, and location-scoped spawner rules |
-| `spawnsystem` | World `SpawnSystem` rows, biome rules, time-of-day rules, global-key gates, and extended spawn data |
+| `character` | Creature drops, quantities, chances, level scaling, and stacked loot |
+| `object` | Chests, pickables, fish, trees, rocks, destructibles, and their loot |
+| `spawner` | SpawnArea and CreatureSpawner tables, intervals, limits, levels, and location rules |
+| `spawnsystem` | World spawn tables, biomes, time of day, and progression requirements |
+| `events` | Raid definitions, spawn lists, conditions, and scheduling |
 
-`spawnsystem` is a full replacement domain for `SpawnSystem.m_spawnLists`: keep every row you still want in that table. Valheim 1.0.15's separate AltBiome spawn lists continue through the game's native path. `spawnSystem.requiredPersistentEvent` preserves a row's native persistent-event requirement; use the event's internal name, or `''` for no requirement.
+## Install
 
-## Location
-DropNSpawn no longer owns a user-editable `DNS_location.yml` domain. Boss altar, altar `ItemStand`, same-boss duplicate blocking, boss despawn, and boss-tamed pressure rules live in the standalone `BossRules` mod. DropNSpawn keeps internal location lookup helpers for object and spawner `locations:` selectors.
+Install the same DropNSpawn version and its dependencies on the server and all clients. A mod manager is the simplest option; for manual installation, place `DropNSpawn.dll` in `BepInEx/plugins/`.
 
-RuneStone global pins and Vegvisir rewards live in the standalone `UsefulRunestones` mod.
+Requires **BepInExPack Valheim 5.4.2350** and **Expand World Data**. The current target is **Valheim 1.0.15**; see the [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.15.md) for reviewed EWD builds and existing-YAML update notes.
 
-## Character
-![](https://i.ibb.co/nMZ7gcZR/characterdrop.png)
+## Quick start
 
-- configure creature loot
-- merge multiple conditional loot rows for the same creature
-- VNEI-compatible character drop display
-- drop creature loot in one stack when configured
-- `onePerPlayer` can count nearby living players within the configured range
+1. Start the game or server and load a world once to generate the configuration files.
+2. Open `BepInEx/config/DropNSpawn/` and find the relevant `DNS_<domain>.reference.yml`.
+3. Copy the entries you want to customize into `DNS_<domain>.yml`, or a supplemental file such as `DNS_character_wolves.yml`.
+4. Save. Loaded YAML files reload at runtime; on a multiplayer server, edit the server's files.
 
-Omitting `characterDrop.drops` (or setting it to `null`) leaves the existing drops unchanged. An explicit `drops: []` replaces them with an empty list when that rule matches. Matching rules still merge their valid drop rows; a nonempty list containing only invalid items does not clear existing drops.
+For example, put this in `DNS_character.yml` to replace Lox loot:
 
-## Object
-![](https://i.ibb.co/yFhNTP60/objectdrop.png)
+```yaml
+- prefab: Lox
+  characterDrop:
+    drops:
+    - item: LoxMeat
+      amount: 4~6
+    - item: LoxPelt
+      amount: 2~3
+    - item: TrophyLox
+      chance: 0.1
+      levelMultiplier: false
+```
 
-- chest loot replacement
-- tool-tier and health changes for trees and rocks
-- tree or rock drop changes
-- pickable loot changes (bone piles, fish, berries)
-- destructible health and spawn-on-destroy changes
-- `DNS_object.locations.reference.yml` exists because many objects are dependent on locations
+Global options live in `BepInEx/config/sighsorry.DropNSpawn.cfg`. All five domains start enabled; toggle them under `4 - Domains`. Loot scaling, stacked drops, trophy scaling, and event scheduling have their own settings; most server-facing settings sync from the server.
 
-## Spawner
-![](https://i.ibb.co/GQ9bPWb7/spawns.png)
+Under `2 - Character`, `monster instant loot drop blacklist` defaults to `Dragon, Hatchling`. These creature prefabs keep normal ragdoll loot timing even when instant loot is enabled. Use comma-separated names, or leave it empty for no exclusions; changes affect new ragdolls.
 
-- change spawn tables
-- change spawn intervals, trigger distance, caps, level range, respawn time
-- apply location-scoped spawner overrides with top-level `locations`
-- ExpandWorldData compatible
-- `DNS_spawner.locations.reference.yml` exists because many spawners are dependent on locations
+## Know before editing
 
-## SpawnSystem
-The vertical lines in the spawner image are world `SpawnSystem` checks.
+- **SpawnSystem replaces the main world spawn table.** Keep every row you still want across your loaded SpawnSystem files. Unlike the other domains, it is not a set of small patches to existing rows. Valheim's separate AltBiome lists remain native.
+- **Custom drop lists replace native loot, not add to it.** Matching Character rules merge their custom drops. Put `conditions` at the entry level, not on individual drop items. Omitted or `null` drops leave existing loot unchanged; `drops: []` explicitly contributes an empty replacement.
+- **Spawner rules select one winner.** The most specific passing selector wins; later-loaded entries break ties. Use top-level `locations` to scope a rule to a location.
+- **Generated files are lookup material.** Do not edit `.reference.yml` or `.full.yml` to change gameplay. Generated `.sample.yml` files in `examples/` are inactive until copied or renamed to a loaded override filename.
 
-- biome/world spawn rules
-- global-key-gated spawning
-- time-of-day spawn rules
-- world-level conditional behavior
-- ExpandWorldData compatible
-- SpawnSystem rows and event spawns use the same flat `spawnSystem` block; nested spawn `conditions` and `modifiers` blocks are not supported.
-- This domain is authoritative and replaces the live `SpawnSystem` table with the rows you define.
-  ![](https://i.ibb.co/wZ4BfJF1/spawnsystem.png)
-- Above image explains how Valheim world spawning works.
+Both `.yml` and `.yaml` are supported. Loaded names are `DNS_<domain>` and `DNS_<domain>_*`, with either extension. Use `events` for raids, for example `DNS_events.yml`.
 
-Each loaded SpawnSystem override file can independently scale the intervals of all rows in that file by putting an optional header first:
+### Scale spawn intervals per file
+
+Place this optional header before all prefab entries in a SpawnSystem override file:
 
 ```yaml
 - spawnIntervalMultiplier: 2.0
@@ -73,125 +71,35 @@ Each loaded SpawnSystem override file can independently scale the intervals of a
     spawnInterval: 36
 ```
 
-The example produces an effective interval of `72` seconds. The header is not a SpawnSystem row and does not change the order of the prefab rows. The multiplier must be a finite number greater than zero; omitting it means `1.0`. A value of `0.5` halves intervals and makes checks more frequent, while `2.0` doubles intervals and makes checks less frequent. Rows without an explicit `spawnInterval` scale the native `4` second default. Invalid headers reject the reload and keep the previous authoritative configuration. Event spawns in `DNS_events.yml` are not affected.
+This sets an effective interval of **72 seconds**. `0.5` halves intervals; `2.0` doubles them. The multiplier must be finite and greater than zero, defaults to `1.0`, and affects only that file—not event spawns. Decimal intervals are preserved. Keep the other world spawn rows you want; this is only a header example.
 
-## Workflow
+## References and commands
 
-1. Open `BepInEx/config/DropNSpawn/`.
-2. Use the generated `.reference.yml` files to find real prefab names and current values.
-3. Copy only the rows you want to change into `DNS_<domain>.yml` or `DNS_<domain>_*.yml`.
-4. Save the YAML file. DropNSpawn reloads loaded YAML at runtime.
+Reference files are generated automatically and refreshed when source data changes. Object and Spawner also provide `.locations.reference.yml` files for location lookup.
 
-Generated samples live in `BepInEx/config/DropNSpawn/examples/`. They are safe examples until you copy them into an active override file or rename them to a loaded `DNS_<domain>_*.yml` file.
+| Console command | Purpose |
+| --- | --- |
+| `dns:reference [object\|character\|spawner\|spawnsystem\|events\|all]` | Regenerate reference files |
+| `dns:full [object\|character\|spawner\|spawnsystem\|all]` | Write exhaustive, non-loaded `.full.yml` scaffolds |
+| `dns:inspect spawner` | Inspect the current or nearest spawner and its location context |
 
-## YAML Files
+Events use `DNS_events.reference.yml` instead of a separate full scaffold.
 
-Loaded override files:
+**Using More World Locations AIO?** Automatic Object/Spawner references skip MWL location interiors to avoid loading every bundle. Registered prefabs and override rules remain usable, and partial exports are labeled. If the MWL manifest is unavailable, automatic interior scanning is deferred for all locations.
 
-- `DNS_<domain>.yml`
-- `DNS_<domain>.yaml`
-- `DNS_<domain>_*.yml`
-- `DNS_<domain>_*.yaml`
-
-Generated helper files:
-
-- `DNS_<domain>.reference.yml` shows current game data and prefab names.
-- `DNS_object.locations.reference.yml` shows which location roots contain object prefabs.
-- `DNS_spawner.locations.reference.yml` shows location context for spawner rules.
-- `DNS_<domain>.full.yml` is an exhaustive scaffold written by `dns:full`; it is not loaded.
-
-Use one primary file per domain when possible. Supplemental files are useful for splitting large configs by biome, progression tier, or feature.
-
-## Reference Updates
-
-Reference files are generated lookup snapshots. Missing reference files are created automatically, and existing reference files are updated automatically when their source game data changes.
-
-Notes:
-
-- `DNS_spawnsystem.reference.yml` is generated from vanilla and upstream mod SpawnSystem data. `DNS_spawnsystem.yml` full overrides are not used as reference source data.
-- `DNS_object.locations.reference.yml` and `DNS_spawner.locations.reference.yml` are generated lookup files and are also kept up to date automatically.
-- With More World Locations AIO installed, automatic Object/Spawner exports skip MWL location interiors to avoid loading every MWL bundle on first connection. Already registered prefabs and all override rules remain available. Partial exports are labeled in their headers; existing unmarked/full references are preserved instead of replaced by a partial export.
-- MWL is identified by its plugin GUID and manifest asset IDs, not by a prefab-name prefix. If its manifest is unavailable, automatic interior scanning is deferred for all locations rather than risking a full load. Registered-prefab exports still work.
-- `dns:reference object` and `dns:reference spawner` explicitly include all location interiors and replace the corresponding references with full exports. These commands (and `dns:full spawner`) can still take minutes and use substantial memory with MWL; avoid running them on low-memory clients. Automatic and full exports use different cache signatures.
-
-## Console Commands
-
-- `dns:reference [object|character|spawner|spawnsystem|all]`
-  Regenerates reference files.
-- `dns:full [object|character|spawner|spawnsystem|all]`
-  Writes non-loaded full scaffold files.
-- `dns:inspect spawner`
-  Shows the current or nearest spawner target and resolved location selector context.
-
-## Useful Config
-
-Most server-facing settings are synced from the server.
-
-Domain toggles live under `4 - Domains`:
-
-- `Enable Object Overrides`
-- `Enable Character Overrides`
-- `Enable Spawner Overrides`
-- `Enable SpawnSystem Overrides`
-- `Enable Event Overrides`
-
-General and character settings include:
-
-- `Lock Configuration`
-- `Default SpawnArea Max Total Spawns`
-- `Default zero CreatureSpawner respawn time minutes`
-- `OnePerPlayer drop check range`
-- `character loot system`
-- `disable DNS character loot scaling when CLLC is loaded`
-- `chance for additional loot per star for creatures`
-- `chance for additional loot per star for bosses`
-- `global drop in stack`
-- `global drop in stack blacklist`
-- `global trophy level multiplier`
-- `global trophy level multiplier blacklist`
-
-`character loot system = CalculateChance` keeps each successful non-trophy character-drop chance intact and scales its final item amount by the configured per-star chance only when that drop's `levelMultiplier` is `true`. Trophy drops use that linear scaling whenever `global trophy level multiplier` is on, regardless of their `levelMultiplier` value.
-
-`disable DNS character loot scaling when CLLC is loaded` defaults to `On`. It does not rewrite the config values shown for DNS loot scaling; when Creature Level & Loot Control is installed, DNS treats `character loot system`, both per-star loot chance options, and `global trophy level multiplier` as inactive at runtime so CLLC can own loot quantities. YAML overrides, drop-in-stack, instant loot, and OnePerPlayer range still work.
-
-`Default zero CreatureSpawner respawn time minutes` defaults to `0` and accepts `0~60`; `0` disables the option. It changes only CreatureSpawner components whose current `respawnTimeMinutes` is `0`; YAML `creatureSpawner.respawnTimeMinutes` values keep priority.
-
-Event settings include:
-
-- `Event scheduling mode`
-- `Default event player base`
-- `Minimum distance between events`
-- `Event duration multiplier`
-- `Random event chance`
-- `Random event interval`
-
-`Event scheduling mode` supports `Vanilla` (one active event and one server-wide check), `MultipleGlobal` (multiple active events and one server-wide check), and `MultiplePerPlayer` (multiple active events with one independent check per player). Standalone event checks follow the selected global or per-player mode.
-
-`Event duration multiplier` accepts `0~3`. Positive values scale event durations that are not explicitly set by YAML `settings[2]`; `0.5` halves them, `1` keeps them unchanged, and `2` doubles them. `0` disables every event whose effective duration after YAML is positive, while duration-`0` events remain enabled.
-
-`Default event player base` can globally treat events without YAML `conditions.playerBase` as `Off`, `Away`, `Near`, or `AwayAndNear`. YAML event overrides keep priority.
-
-Boss altar rules, same boss duplicate blocking for altars and `CreatureSpawner`, per-player boss stones, remote Forsaken Power selection, boss despawn, and boss tamed pressure live in BossRules.
+Manual `dns:reference object`, `dns:reference spawner`, and `dns:full spawner` can load all location interiors, take minutes, and use substantial memory. Avoid these full exports on low-memory clients.
 
 ## Compatibility
 
-If another mod fully owns the same system, disable the overlapping DropNSpawn domain instead of stacking both.
+- **VNEI** can display configured character drops. **ESP** is useful for inspecting spawns and objects.
+- **Creature Level & Loot Control:** DNS's own character loot scaling is inactive by default when CLLC is installed. YAML overrides, stacked drops, instant loot, and OnePerPlayer range still work.
+- If another mod owns the same system, disable the overlapping DNS domain: MonsterDB (`character`, `spawnsystem`), Drop That! (`object`, `character`), Spawn That! (`spawner`, `spawnsystem`), or Expand World Spawns (`spawnsystem`).
+- Boss altar and boss-management features belong to **BossRules**; runestone pins and Vegvisir rewards belong to **UsefulRunestones**. DropNSpawn retains location lookup for Object and Spawner selectors.
 
-- `VNEI`: DropNSpawn character drops are exposed for normal lookup.
-- `MonsterDB`: overlaps with `character` and `spawnsystem`.
-- `Drop That!`: overlaps with `object` and `character`.
-- `Spawn That!`: overlaps with `spawner` and `spawnsystem`.
-- `Expand World Spawns`: overlaps with `spawnsystem`.
+## Guides and support
 
-## Helpful Mods
-
-- `ESP` for spawners, spawn points, and object info
-- `XRayVision` for object components
-- `Infinity Hammer` for placing and removing test objects
-
-## Building and validation
-
-See [the development guide](docs/development.md) for build prerequisites, regression checks, and the gameplay verification matrix. For routine work, use `dotnet build DropNSpawn.csproj -c Debug -p:DeployToGame=true` to build, merge, and update the local game DLL. Ordinary Release builds create Thunderstore/Nexus ZIPs and can trigger automatic uploads from registered watch folders; run them only for an explicitly requested release.
-
-## GitHub
-https://github.com/sighsorry1029/DropNSpawn
+- [Override rules and conditional drops](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/override-logic-guide.md)
+- [Spawner configuration](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/spawner-domain-guide.md)
+- [Omitted, null, and empty YAML values](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/yaml-null-empty-guide.md)
+- [Build and validation guide](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/development.md)
+- [Changelog](https://github.com/sighsorry1029/DropNSpawn/blob/main/Thunderstore/CHANGELOG.md) · [Source and issues](https://github.com/sighsorry1029/DropNSpawn) · [Discord](https://discord.com/invite/VFRJcPwUdm)
