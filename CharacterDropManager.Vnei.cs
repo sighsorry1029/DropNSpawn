@@ -42,9 +42,9 @@ internal static partial class CharacterDropManager
                 : null;
             bool hasEntries = vneiEntries?.Count > 0;
             bool hasSnapshot = CharacterDropRuntime.TryGetSnapshot(prefabName, out CharacterDropSnapshot? snapshot);
-            List<CharacterDropItemSnapshot>? baseDrops = hasSnapshot
-                ? snapshot!.Drops
-                : CloneSnapshotDrops(characterDrop.m_drops);
+            List<CharacterDrop.Drop> baseDrops = hasSnapshot
+                ? snapshot!.BuiltDrops
+                : CloneDrops(characterDrop.m_drops, normalizeNonItemLevelMultiplier: true);
             if (!hasEntries && baseDrops.Count == 0)
             {
                 return false;
@@ -54,7 +54,7 @@ internal static partial class CharacterDropManager
             HashSet<string> seen = new(StringComparer.Ordinal);
             if (!suppressVanilla)
             {
-                foreach (CharacterDropItemSnapshot drop in baseDrops)
+                foreach (CharacterDrop.Drop drop in baseDrops)
                 {
                     AddVneiSnapshotDrop(results, seen, drop);
                 }
@@ -77,27 +77,27 @@ internal static partial class CharacterDropManager
         return entry?.CharacterDrop?.Drops != null;
     }
 
-    private static void AddVneiSnapshotDrop(List<VneiRecipeResult> results, HashSet<string> seen, CharacterDropItemSnapshot drop)
+    private static void AddVneiSnapshotDrop(List<VneiRecipeResult> results, HashSet<string> seen, CharacterDrop.Drop drop)
     {
-        if (drop.ItemPrefab == null)
+        if (drop.m_prefab == null)
         {
             return;
         }
 
-        string fingerprint = $"{drop.ItemPrefab.name}\n{drop.AmountMin}\n{drop.AmountMax}\n{drop.Chance.ToString("R")}";
+        string fingerprint = $"{drop.m_prefab.name}\n{drop.m_amountMin}\n{drop.m_amountMax}\n{drop.m_chance.ToString("R")}";
         if (!seen.Add(fingerprint))
         {
             return;
         }
 
         results.Add(new VneiRecipeResult(
-            drop.ItemPrefab.name,
+            drop.m_prefab.name,
             1,
             1,
             1f,
-            Math.Max(1, drop.AmountMin),
-            Math.Max(Math.Max(1, drop.AmountMin), drop.AmountMax),
-            Mathf.Clamp01(drop.Chance)));
+            Math.Max(1, drop.m_amountMin),
+            Math.Max(Math.Max(1, drop.m_amountMin), drop.m_amountMax),
+            Mathf.Clamp01(drop.m_chance)));
     }
 
     private static void AddVneiConfiguredDrop(List<VneiRecipeResult> results, HashSet<string> seen, CharacterDropEntryDefinition definition, string context)

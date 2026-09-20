@@ -70,6 +70,7 @@ internal static partial class Program
 
             CheckCharacterResolution(manager, definitionType, ruleType, entryType);
             CheckCharacterDropOwnership(manager, mod, compiled);
+            CheckCharacterBaselineNormalization(manager, mod);
 
             // Local input is still cloned; owned transport data is normalized in place.
             object local = JsonSerializer.Deserialize("{\"Prefab\":\" Creature \",\"Enabled\":false,\"RuleId\":\" local \",\"CharacterDrop\":{\"Drops\":[]}}", entryType, JsonOptions)!;
@@ -199,6 +200,37 @@ internal static partial class Program
             Invoke(manager, null, "ApplyOwnedCharacterDrops", component, snapshot, "Owned", enabled, compiled);
             return (IList)liveDropsField.GetValue(component)!;
         }
+    }
+
+    private static void CheckCharacterBaselineNormalization(Type manager, ModContract mod)
+    {
+        Type dropType = mod.LoadGameAssembly("assembly_valheim").GetType("CharacterDrop+Drop", true)!;
+        object row = Activator.CreateInstance(dropType)!;
+        // A missing prefab is the non-item case executable without Unity native calls.
+        foreach (var (field, value) in new (string, object)[] {
+                     ("m_amountMin", 2), ("m_amountMax", 5), ("m_chance", 0.25f),
+                     ("m_onePerPlayer", true), ("m_levelMultiplier", true), ("m_dontScale", true) })
+            dropType.GetField(field)!.SetValue(row, value);
+        IList source = ListOf(dropType, row);
+        IList baseline = (IList)Invoke(manager, null, "CloneDrops", source, true)!;
+        object captured = baseline[0]!;
+        Check(!ReferenceEquals(source, baseline) && !ReferenceEquals(row, captured), "character capture owns list and rows");
+        foreach (string field in new[] { "m_prefab", "m_amountMin", "m_amountMax", "m_chance", "m_onePerPlayer", "m_dontScale" })
+            Check(Equals(dropType.GetField(field)!.GetValue(row), dropType.GetField(field)!.GetValue(captured)), "character capture preserves " + field);
+        Check(!(bool)dropType.GetField("m_levelMultiplier")!.GetValue(captured)! &&
+              (bool)dropType.GetField("m_levelMultiplier")!.GetValue(row)!, "non-item normalization changes only the owned baseline");
+        Check(Invoke(manager, null, "GetReferenceLevelMultiplierOverride", captured) == null,
+            "normalized non-item reference omits its default false multiplier");
+        Check(Equals(Invoke(manager, null, "GetReferenceLevelMultiplierOverride", row), true),
+            "reference projection preserves an explicit nondefault multiplier");
+        dropType.GetField("m_amountMin")!.SetValue(row, 99);
+        source.Clear();
+        Check(baseline.Count == 1 && (int)dropType.GetField("m_amountMin")!.GetValue(captured)! == 2,
+            "upstream mutation cannot change captured reference/apply baseline");
+        IList restored = (IList)Invoke(manager, null, "CloneDrops", baseline, false)!;
+        dropType.GetField("m_amountMax")!.SetValue(restored[0], 99);
+        Check((int)dropType.GetField("m_amountMax")!.GetValue(captured)! == 5,
+            "restoring a live drop does not mutate the shared read-only baseline");
     }
 
     private static object? Property(object value, string name) => value.GetType().GetProperty(name, All)!.GetValue(value);

@@ -1435,7 +1435,6 @@ internal static partial class CharacterDropManager
         return new CharacterDropSnapshot
         {
             Prefab = prefab,
-            Drops = CloneSnapshotDrops(characterDrop.m_drops),
             BuiltDrops = CloneDrops(characterDrop.m_drops, normalizeNonItemLevelMultiplier: true)
         };
     }
@@ -2071,26 +2070,6 @@ internal static partial class CharacterDropManager
     private static void UnregisterLiveCharacterDrop(CharacterDrop characterDrop, string prefabName)
     {
         CharacterDropRuntime.UnregisterLiveCharacterDrop(characterDrop, prefabName);
-    }
-
-    private static List<CharacterDropItemSnapshot> CloneSnapshotDrops(List<CharacterDrop.Drop> drops)
-    {
-        List<CharacterDropItemSnapshot> clone = new(drops.Count);
-        foreach (CharacterDrop.Drop drop in drops)
-        {
-            clone.Add(new CharacterDropItemSnapshot
-            {
-                ItemPrefab = drop.m_prefab,
-                AmountMin = drop.m_amountMin,
-                AmountMax = drop.m_amountMax,
-                Chance = drop.m_chance,
-                OnePerPlayer = drop.m_onePerPlayer,
-                LevelMultiplier = NormalizeBaselineCharacterDropLevelMultiplier(drop.m_prefab, drop.m_levelMultiplier),
-                DontScale = drop.m_dontScale
-            });
-        }
-
-        return clone;
     }
 
     private static List<CharacterDrop.Drop> CloneDrops(List<CharacterDrop.Drop> drops, bool normalizeNonItemLevelMultiplier = false)

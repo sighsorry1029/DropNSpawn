@@ -5,21 +5,10 @@ using UnityEngine;
 
 namespace DropNSpawn;
 
-internal sealed class CharacterDropItemSnapshot
-{
-    public GameObject? ItemPrefab { get; set; }
-    public int AmountMin { get; set; }
-    public int AmountMax { get; set; }
-    public float Chance { get; set; }
-    public bool OnePerPlayer { get; set; }
-    public bool LevelMultiplier { get; set; }
-    public bool DontScale { get; set; }
-}
-
 internal sealed class CharacterDropSnapshot
 {
     public GameObject Prefab { get; set; } = null!;
-    public List<CharacterDropItemSnapshot> Drops { get; set; } = new();
+    // Owned baseline shared by read-only projections; live components receive clones.
     public List<CharacterDrop.Drop> BuiltDrops { get; set; } = new();
 }
 

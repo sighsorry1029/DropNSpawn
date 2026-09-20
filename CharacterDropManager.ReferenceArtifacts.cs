@@ -146,17 +146,17 @@ internal static partial class CharacterDropManager
 
     private static CharacterDropPrefabEntry BuildConfigurationEntry(CharacterDropSnapshot snapshot)
     {
-        List<CharacterDropEntryDefinition> drops = snapshot.Drops
-            .Select(drop => new { Name = NormalizeReferenceItemName(drop.ItemPrefab), Drop = drop })
+        List<CharacterDropEntryDefinition> drops = snapshot.BuiltDrops
+            .Select(drop => new { Name = NormalizeReferenceItemName(drop.m_prefab), Drop = drop })
             .Where(entry => !string.IsNullOrWhiteSpace(entry.Name))
             .Select(entry => new CharacterDropEntryDefinition
             {
                 Item = entry.Name!,
-                Amount = RangeFormatting.FromReference(entry.Drop.AmountMin, entry.Drop.AmountMax, 1, 1),
-                Chance = IsReferenceDefault(entry.Drop.Chance, 1f) ? null : entry.Drop.Chance,
-                OnePerPlayer = entry.Drop.OnePerPlayer ? true : null,
+                Amount = RangeFormatting.FromReference(entry.Drop.m_amountMin, entry.Drop.m_amountMax, 1, 1),
+                Chance = IsReferenceDefault(entry.Drop.m_chance, 1f) ? null : entry.Drop.m_chance,
+                OnePerPlayer = entry.Drop.m_onePerPlayer ? true : null,
                 LevelMultiplier = GetReferenceLevelMultiplierOverride(entry.Drop),
-                DontScale = entry.Drop.DontScale ? true : null
+                DontScale = entry.Drop.m_dontScale ? true : null
             })
             .ToList();
 
@@ -181,10 +181,10 @@ internal static partial class CharacterDropManager
         return definition.Amount ?? RangeFormatting.From(definition.AmountMin, definition.AmountMax ?? definition.AmountMin);
     }
 
-    private static bool? GetReferenceLevelMultiplierOverride(CharacterDropItemSnapshot drop)
+    private static bool? GetReferenceLevelMultiplierOverride(CharacterDrop.Drop drop)
     {
-        bool defaultValue = GetDefaultCharacterDropLevelMultiplier(drop.ItemPrefab);
-        return drop.LevelMultiplier == defaultValue ? null : drop.LevelMultiplier;
+        bool defaultValue = GetDefaultCharacterDropLevelMultiplier(drop.m_prefab);
+        return drop.m_levelMultiplier == defaultValue ? null : drop.m_levelMultiplier;
     }
 
     private static string? NormalizeReferenceItemName(GameObject? itemPrefab)
