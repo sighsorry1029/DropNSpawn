@@ -1,5 +1,15 @@
 # Domain Coexistence Design
 
+> Historical proposal, not the current override contract. Parts of this design were
+> adopted, changed, or removed; the migration phases below are not an active plan.
+> In particular, DropNSpawn no longer owns a location gameplay domain, and Spawner
+> applies the most specific passing entry (later loaded wins ties), not every
+> matching selector block. Do not change runtime policy to match this proposal.
+>
+> Use the [override guide](override-logic-guide.md), [Spawner guide](spawner-domain-guide.md),
+> [location lookup scope](location-spawner-refactor-plan.md), and
+> [runtime boundaries](runtime-boundaries.md) for the current behavior.
+
 ## Goal
 
 Support multiple rules for the same prefab without regressing startup cost, network cost, or runtime predictability.

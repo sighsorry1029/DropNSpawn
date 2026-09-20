@@ -34,11 +34,14 @@ This is valid:
     - item: Resin
 ```
 
-This is not supported:
+Conditions nested inside `characterDrop` are not supported. An entry with no
+conditions is valid and matches everywhere, as shown in Example B below.
 
 ```yaml
 - prefab: Boar
   characterDrop:
+    conditions:
+      biomes: [Swamp]
     drops:
     - item: Resin
 ```
