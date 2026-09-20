@@ -299,13 +299,10 @@ internal sealed class PluginReloadCoordinator
 
             try
             {
-                DropNSpawnPlugin.DomainToggleState previousState = CaptureDomainToggleState();
+                DropNSpawnPlugin.Toggle[] previousState = CaptureDomainToggleState();
                 IsConfigEntryReloadSuppressed = true;
                 _host.SaveWithRespectToConfigSet(reload: true, save: false);
-                ReloadDomains(
-                    GetChangedDomainToggles(
-                        previousState,
-                        CaptureDomainToggleState()));
+                ReloadDomains(GetChangedDomainToggles(previousState));
                 DropNSpawnPlugin.DropNSpawnLogger.LogInfo("Configuration reload complete.");
             }
             catch (Exception ex)
@@ -340,14 +337,15 @@ internal sealed class PluginReloadCoordinator
         }
     }
 
-    private DropNSpawnPlugin.DomainToggleState CaptureDomainToggleState()
+    private DropNSpawnPlugin.Toggle[] CaptureDomainToggleState()
     {
-        return new DropNSpawnPlugin.DomainToggleState(
-            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Object),
-            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Character),
-            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Spawner),
-            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.SpawnSystem),
-            GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain.Event));
+        DropNSpawnPlugin.Toggle[] values = new DropNSpawnPlugin.Toggle[_domainToggles.Length];
+        for (int i = 0; i < _domainToggles.Length; i++)
+        {
+            values[i] = _domainToggles[i].Entry.Value;
+        }
+
+        return values;
     }
 
     private DropNSpawnPlugin.ReloadDomain GetReloadDomainForToggleSetting(object? sender)
@@ -364,47 +362,15 @@ internal sealed class PluginReloadCoordinator
         return domains;
     }
 
-    private DropNSpawnPlugin.Toggle GetDomainToggleValue(DropNSpawnPlugin.ReloadDomain domain)
-    {
-        foreach ((ConfigEntry<DropNSpawnPlugin.Toggle> entry, DropNSpawnPlugin.ReloadDomain toggleDomain) in _domainToggles)
-        {
-            if (toggleDomain == domain)
-            {
-                return entry.Value;
-            }
-        }
-
-        return DropNSpawnPlugin.Toggle.Off;
-    }
-
-    private static DropNSpawnPlugin.ReloadDomain GetChangedDomainToggles(
-        DropNSpawnPlugin.DomainToggleState previous,
-        DropNSpawnPlugin.DomainToggleState current)
+    private DropNSpawnPlugin.ReloadDomain GetChangedDomainToggles(DropNSpawnPlugin.Toggle[] previous)
     {
         DropNSpawnPlugin.ReloadDomain domains = DropNSpawnPlugin.ReloadDomain.None;
-        if (previous.Object != current.Object)
+        for (int i = 0; i < _domainToggles.Length; i++)
         {
-            domains |= DropNSpawnPlugin.ReloadDomain.Object;
-        }
-
-        if (previous.Character != current.Character)
-        {
-            domains |= DropNSpawnPlugin.ReloadDomain.Character;
-        }
-
-        if (previous.Spawner != current.Spawner)
-        {
-            domains |= DropNSpawnPlugin.ReloadDomain.Spawner;
-        }
-
-        if (previous.SpawnSystem != current.SpawnSystem)
-        {
-            domains |= DropNSpawnPlugin.ReloadDomain.SpawnSystem;
-        }
-
-        if (previous.Event != current.Event)
-        {
-            domains |= DropNSpawnPlugin.ReloadDomain.Event;
+            if (previous[i] != _domainToggles[i].Entry.Value)
+            {
+                domains |= _domainToggles[i].Domain;
+            }
         }
 
         return domains;

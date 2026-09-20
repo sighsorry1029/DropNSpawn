@@ -34,24 +34,6 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         All = Object | Character | Spawner | SpawnSystem | Event
     }
 
-    internal readonly struct DomainToggleState
-    {
-        internal DomainToggleState(Toggle @object, Toggle character, Toggle spawner, Toggle spawnSystem, Toggle @event)
-        {
-            Object = @object;
-            Character = character;
-            Spawner = spawner;
-            SpawnSystem = spawnSystem;
-            Event = @event;
-        }
-
-        internal Toggle Object { get; }
-        internal Toggle Character { get; }
-        internal Toggle Spawner { get; }
-        internal Toggle SpawnSystem { get; }
-        internal Toggle Event { get; }
-    }
-
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
     internal const string ModVersion = "1.3.12";

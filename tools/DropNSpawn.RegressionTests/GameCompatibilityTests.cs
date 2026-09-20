@@ -9,6 +9,52 @@ using Mono.Cecil;
 
 internal static partial class Program
 {
+    private static void CheckConfigReloadContracts(ModContract mod)
+    {
+        Type toggle = mod.Type("DropNSpawnPlugin").GetNestedType("Toggle", All)!;
+        Type reloadDomain = mod.Type("DropNSpawnPlugin").GetNestedType("ReloadDomain", All)!;
+        Type configType = mod.LoadGameAssembly("BepInEx").GetType("BepInEx.Configuration.ConfigFile", true)!;
+        string path = Path.Combine(Path.GetTempPath(), "dns-unsaved-config-" + Guid.NewGuid().ToString("N") + ".cfg");
+        object config = Activator.CreateInstance(configType, new object?[] { path, false, null })!;
+        SetProperty(config, "SaveOnConfigSet", false);
+        MethodInfo bind = configType.GetMethods().Single(method => method.Name == "Bind" && method.IsGenericMethodDefinition &&
+            method.GetParameters().Length == 4 && method.GetParameters()[0].ParameterType == typeof(string) &&
+            method.GetParameters()[3].ParameterType == typeof(string)).MakeGenericMethod(toggle);
+        string[] names = { "Object", "Character", "Spawner", "SpawnSystem", "Event" };
+        object[] entries = names.Select((name, index) => bind.Invoke(config,
+            new[] { "test", name, Enum.ToObject(toggle, index % 2), "" })!).ToArray();
+        object coordinator = Activator.CreateInstance(mod.Type("PluginReloadCoordinator"), All, null,
+            new object?[] { null }.Concat(entries).ToArray(), null)!;
+        object initial = Call(coordinator, "CaptureDomainToggleState")!;
+        Check(Changed(initial) == 0, "config reload with unchanged toggles selects no domains");
+        for (int i = 0; i < entries.Length; i++)
+        {
+            Set(i, 1 - i % 2);
+            Check(Changed(initial) == Mask(names[i]), "config reload selects only changed " + names[i]);
+            Check(Convert.ToInt32(Call(coordinator, "GetReloadDomainForToggleSetting", entries[i])) == Mask(names[i]),
+                "live setting sender still selects " + names[i]);
+            Set(i, i % 2);
+        }
+        Set(0, 1);
+        Set(3, 0);
+        Check(Changed(initial) == (Mask("Object") | Mask("SpawnSystem")), "config reload unions independently changed domains");
+        Set(0, 0);
+        Set(3, 1);
+        Check(Changed(initial) == 0, "toggle changes reverted before reload do not select a domain");
+        Set(4, 2);
+        object raw = Call(coordinator, "CaptureDomainToggleState")!;
+        Set(4, 3);
+        Check(Changed(raw) == Mask("Event"), "raw non-On/Off enum value changes still trigger reload");
+        Check(Convert.ToInt32(Call(coordinator, "GetReloadDomainForToggleSetting", (object?)null)) == 0 &&
+              Convert.ToInt32(Call(coordinator, "GetReloadDomainForToggleSetting", new object())) == 0,
+            "unrelated setting senders select no domains");
+        Check(!File.Exists(path), "config contract fixtures never write a profile");
+
+        int Changed(object previous) => Convert.ToInt32(Call(coordinator, "GetChangedDomainToggles", previous));
+        int Mask(string name) => Convert.ToInt32(Enum.Parse(reloadDomain, name));
+        void Set(int index, int value) => SetProperty(entries[index], "Value", Enum.ToObject(toggle, value));
+    }
+
     private static void CheckLocationReferenceContracts(ModContract mod, string? mwlManifestPath)
     {
         Type support = mod.Type("ReferenceRefreshSupport");
