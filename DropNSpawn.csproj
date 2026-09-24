@@ -499,6 +499,7 @@
         <Compile Include="DropNSpawnConsoleCommands.cs"/>
         <Compile Include="ExpandWorldFieldOverrideSupport.cs"/>
         <Compile Include="ExpandWorldSpawnDataSupport.cs"/>
+        <Compile Include="ExpandWorldDataCompatibility.cs"/>
         <Compile Include="EventConfiguration.cs"/>
         <Compile Include="EventManager.cs"/>
         <Compile Include="ExampleContentWriter.cs"/>

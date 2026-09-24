@@ -53,12 +53,13 @@ internal static partial class Program
             string gamePath = Required(options, "--game-dir");
             string projectPath = options.TryGetValue("--project-dir", out string? configuredProject) ? configuredProject : Directory.GetCurrentDirectory();
             options.TryGetValue("--managed-dir", out string? managedPath);
-            using var current = new ModContract(assemblyPath, gamePath, projectPath, managedPath);
+            options.TryGetValue("--ewd-dll", out string? ewdPath);
+            using var current = new ModContract(assemblyPath, gamePath, projectPath, managedPath, ewdPath);
             CheckGameContracts(current);
             Dictionary<string, string> actual = CheckTransportContracts(current);
             if (options.TryGetValue("--baseline", out string? baselinePath))
             {
-                using var baseline = new ModContract(baselinePath, gamePath, projectPath, managedPath);
+                using var baseline = new ModContract(baselinePath, gamePath, projectPath, managedPath, ewdPath);
                 Dictionary<string, string> expected = CheckTransportContracts(baseline);
                 foreach (KeyValuePair<string, string> pair in expected)
                 {
@@ -76,6 +77,7 @@ internal static partial class Program
             CheckPersistentEventContracts(current);
             CheckLocationReferenceContracts(current, options.GetValueOrDefault("--mwl-manifest"));
             CheckConfigReloadContracts(current);
+            CheckEwdCompatibilityContracts(current);
             Console.WriteLine($"PASS: {_checks} managed contract checks. Unity gameplay and network execution are not covered.");
             return 0;
         }
@@ -251,16 +253,20 @@ internal static partial class Program
     private sealed class ModContract : AssemblyLoadContext, IDisposable
     {
         private readonly string[] _searchPaths;
+        private readonly string? _ewdPath;
         private readonly Assembly _assembly;
         internal Assembly Assembly => _assembly;
         internal string[] SearchPaths => _searchPaths;
-        internal ModContract(string assemblyPath, string gamePath, string projectPath, string? managedPath = null) : base(isCollectible: true)
+        internal ModContract(string assemblyPath, string gamePath, string projectPath, string? managedPath = null, string? ewdPath = null) : base(isCollectible: true)
         {
             // Resolve game types only from original assemblies, never stale output
             // copies or publicized references. --managed-dir also supports server snapshots.
+            _ewdPath = ewdPath == null ? null : Path.GetFullPath(ewdPath);
+            if (_ewdPath != null && !File.Exists(_ewdPath)) throw new FileNotFoundException("Requested EWD test input was not found.", _ewdPath);
             _searchPaths = new[] { Path.GetFullPath(managedPath ?? Path.Combine(gamePath, "valheim_Data", "Managed")),
-                Path.Combine(gamePath, "BepInEx", "core"), Path.Combine(projectPath, "Libs"),
-                Path.GetDirectoryName(Path.GetFullPath(assemblyPath))! };
+                Path.Combine(gamePath, "BepInEx", "core"),
+                ewdPath == null ? Path.Combine(projectPath, "Libs") : Path.GetDirectoryName(Path.GetFullPath(ewdPath))!,
+                Path.Combine(projectPath, "Libs"), Path.GetDirectoryName(Path.GetFullPath(assemblyPath))! };
             _assembly = LoadFromAssemblyPath(Path.GetFullPath(assemblyPath));
         }
         internal Type Type(string name) => _assembly.GetType("DropNSpawn." + name, throwOnError: true)!;
@@ -268,6 +274,7 @@ internal static partial class Program
         protected override Assembly? Load(AssemblyName name)
         {
             if (name.Name == "0Harmony") return typeof(HarmonyLib.AccessTools).Assembly;
+            if (name.Name == "ExpandWorldData" && _ewdPath != null) return LoadFromAssemblyPath(_ewdPath);
             if (name.Name is null || name.Name is "mscorlib" or "netstandard" || name.Name.StartsWith("System", StringComparison.Ordinal)) return null;
             foreach (string directory in _searchPaths)
                 foreach (string filename in new[] { name.Name + ".dll" })

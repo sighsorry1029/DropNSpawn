@@ -91,6 +91,7 @@ Manual `dns:reference object`, `dns:reference spawner`, and `dns:full spawner` c
 
 ## Compatibility
 
+- **Expand World Data 1.73:** DNS manages normal world spawns, raids, and loot. EWD's corresponding Spawn/Event/Drop features are suppressed at runtime without changing its settings or YAML. World and AltBiome data remain EWD-owned, including AltBiome spawn `data`, `fields`, `objects`, and `faction`. DNS domain Off restores DNS's baseline; it does not enable EWD's overlapping features. Install matching builds on the server and clients and restart after changing the mod set. See the [integration notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-ewd-1.73.md).
 - **VNEI** can display configured character drops. **ESP** is useful for inspecting spawns and objects.
 - **Creature Level & Loot Control:** DNS's own character loot scaling is inactive by default when CLLC is installed. YAML overrides, stacked drops, instant loot, and OnePerPlayer range still work.
 - If another mod owns the same system, disable the overlapping DNS domain: MonsterDB (`character`, `spawnsystem`), Drop That! (`object`, `character`), Spawn That! (`spawner`, `spawnsystem`), or Expand World Spawns (`spawnsystem`).

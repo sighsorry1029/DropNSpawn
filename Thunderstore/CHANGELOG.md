@@ -1,3 +1,12 @@
+## 1.3.14 — Expand World Data 1.73 compatibility
+
+- Added runtime compatibility for EWD 1.73's integrated Spawn/Event/Drop features. DNS retains control of normal world spawns, raids and loot even when EWD's overlapping options are enabled, without rewriting EWD configuration values or YAML files. EWD's Multiple events and Check per player modes are also suppressed through the event feature gate.
+- Preserved EWD's world, biome and AltBiome systems. AltBiome spawn `data`, `fields`, `objects` and `faction` now use the existing DNS spawn payload path, and these extension fields are retained when EWD exports AltBiome data for server synchronization.
+- Stopped retaining discarded AltBiome spawn metadata across reloads while preserving payloads still used by live heightmaps. No per-frame reflection or scene scanning was added.
+- Prevented numeric global-key consumption from custom-data spawns when the DNS SpawnSystem domain is Off. DNS domain Off remains baseline restoration, not a handoff to EWD.
+- Added official EWD DLL contract checks and isolated Mono coverage for patch installation, reload/sync entrypoint suppression, setting preservation and AltBiome metadata lifetime. Actual host/dedicated multiplayer spawning and synchronization remain in-game verification steps.
+- Kept the existing EWD dependency minimum, YAML formats and DNS network schemas. Update the server and all clients to 1.3.14 together and restart. Legacy standalone EWS/EWE installations are outside this compatibility patch's supported scope.
+
 ## 1.3.13 — Instant loot exclusions and documentation cleanup
 
 - Added the synced `monster instant loot drop blacklist` setting, defaulting to `Dragon, Hatchling`. Matching creature prefabs keep their normal ragdoll loot timing while instant loot remains enabled for other creatures; drop contents, amounts and existing duplicate prevention are unchanged.

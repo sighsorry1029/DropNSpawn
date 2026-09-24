@@ -159,6 +159,7 @@ internal sealed class PluginBootstrapCoordinator
 
     private void ApplyPatchesAndWatchers()
     {
+        ExpandWorldDataCompatibility.Initialize(_host.HarmonyInstance);
         Assembly assembly = Assembly.GetExecutingAssembly();
         _host.HarmonyInstance.PatchAll(assembly);
         EspSpawnSystemCompatibility.Initialize(_host.HarmonyInstance);

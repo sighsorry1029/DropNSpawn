@@ -121,7 +121,10 @@ internal static class SpawnSystemSpawnPatch
             return;
         }
 
-        SpawnSystemManager.ConsumeExtendedRequiredGlobalKeyAfterSpawn(critter);
+        if (PluginSettingsFacade.IsSpawnSystemDomainEnabled())
+        {
+            SpawnSystemManager.ConsumeExtendedRequiredGlobalKeyAfterSpawn(critter);
+        }
         SpawnSystemCustomDataSupport.SpawnObjects(critter, spawnPoint);
     }
 

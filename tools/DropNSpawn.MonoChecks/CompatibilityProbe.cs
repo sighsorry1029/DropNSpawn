@@ -4,6 +4,8 @@ using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
+using System.Linq;
+using BepInEx.Configuration;
 using HarmonyLib;
 
 namespace DropNSpawn.Tests
@@ -95,6 +97,88 @@ namespace DropNSpawn.Tests
                 ItemDrop.OnCreateNew(item, cheated);
                 Check(item.m_itemData.m_cheated == cheated && item.m_itemData.m_worldLevel == 2, "game item provenance " + cheated);
             }
+            string testRoot = Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location);
+            AccessTools.Method(typeof(BepInEx.Paths), "SetExecutablePath").Invoke(null,
+                new object[] { Path.Combine(testRoot, "CompatibilityMonoHost.exe"), testRoot, managed, null });
+            // EWD's managed initializer queues ServerSync startup. Keep that queue
+            // pending: full BepInEx/Unity/network startup is outside this probe.
+            var threading = (BepInEx.ThreadingHelper)FormatterServices.GetUninitializedObject(typeof(BepInEx.ThreadingHelper));
+            AccessTools.Field(typeof(BepInEx.ThreadingHelper), "_invokeLock").SetValue(threading, new object());
+            AccessTools.PropertySetter(typeof(BepInEx.ThreadingHelper), "Instance").Invoke(null, new object[] { threading });
+            CheckEwdCompatibility(mod);
+        }
+
+        private static void CheckEwdCompatibility(Assembly mod)
+        {
+            Assembly ewd = Assembly.Load("ExpandWorldData");
+            Type spawnPatcher = ewd.GetType("ExpandWorld.Spawn.Patcher");
+            if (spawnPatcher == null) return;
+            Type eventPatcher = ewd.GetType("ExpandWorld.Event.Patcher", true);
+            Type configType = ewd.GetType("ExpandWorldData.Configuration", true);
+            string configPath = Path.Combine(Path.GetTempPath(), "dns-ewd-mono-" + Guid.NewGuid().ToString("N") + ".cfg");
+            var config = new ConfigFile(configPath, false) { SaveOnConfigSet = false };
+            string[] switches = { "configDataSpawns", "configDataEvents", "configDataDrops", "configMultipleEvents", "configCheckPerPlayer" };
+            foreach (string name in switches)
+                configType.GetField(name).SetValue(null, config.Bind("test", name, true, ""));
+            var upstream = new Harmony("DropNSpawn.isolated.ewd");
+            var compatibility = new Harmony("DropNSpawn.isolated.ewd.compatibility");
+            MethodInfo spawn = spawnPatcher.GetMethod("Patch");
+            MethodInfo events = eventPatcher.GetMethod("Patch");
+            Type compat = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
+            try
+            {
+                // Reproduce EWD.Awake-before-DNS order, including already JITted gates.
+                // No RandEventSystem scene exists here; avoid its native null check
+                // during the unpatched spawn patcher's active-event enumeration.
+                var eventSwitch = (ConfigEntry<bool>)configType.GetField("configDataEvents").GetValue(null);
+                eventSwitch.Value = false;
+                spawn.Invoke(null, new object[] { upstream });
+                events.Invoke(null, new object[] { upstream });
+                Check(HasOwner(typeof(SpawnSystem), "Awake", upstream.Id), "EWD normal spawn lifecycle initially enabled");
+                // Installing the upstream scheduler needs Player/Animator native
+                // initialization. Verify its disabled gates here; removal of an
+                // already-installed scheduler remains an in-game check.
+                eventSwitch.Value = true;
+                // Supply the EWD Harmony instance directly: full EWD/ServerSync
+                // startup needs Unity and is intentionally outside this probe.
+                compat.GetMethod("InstallPatches", All).Invoke(null, new object[] { compatibility, ewd, upstream });
+                Check(!HasOwner(typeof(SpawnSystem), "Awake", upstream.Id), "DNS removes already-installed EWD spawn lifecycle");
+                Check(!HasOwner(typeof(RandEventSystem), "FixedUpdate", upstream.Id), "DNS keeps EWD scheduler disabled despite saved true setting");
+                spawn.Invoke(null, new object[] { upstream });
+                events.Invoke(null, new object[] { upstream });
+                Check(!HasOwner(typeof(SpawnSystem), "Awake", upstream.Id) && !HasOwner(typeof(RandEventSystem), "FixedUpdate", upstream.Id),
+                    "EWD runtime patch refresh cannot reclaim DNS domains");
+                foreach (string domain in new[] { "Spawn", "Event" })
+                {
+                    Type manager = ewd.GetType("ExpandWorld." + domain + ".Manager", true);
+                    foreach (string name in new[] { "CreateConfig", "ReadConfig", "Toggle" })
+                        manager.GetMethod(name, All).Invoke(null, null);
+                    foreach (string name in new[] { "FromSetting", "Set" })
+                        manager.GetMethod(name, All).Invoke(null, new object[] { "invalid YAML: [" });
+                    manager.GetMethod(domain == "Spawn" ? "ApplySpawnData" : "ApplyTiming", All).Invoke(null, new object[] { null });
+                    Check(true, "EWD " + domain + " direct/reload/sync entrypoints skipped without scene access");
+                }
+                Type dtoType = ewd.GetType("ExpandWorld.Spawn.Data", true);
+                object dto = Activator.CreateInstance(dtoType);
+                dtoType.GetField("drops").SetValue(dto, "test_drop");
+                object customData = ewd.GetType("ExpandWorld.Spawn.LoaderFields", true).GetMethod("HandleCustomData")
+                    .Invoke(null, new[] { dto, (object)new SpawnSystem.SpawnData() });
+                Check(customData == null, "EWD drop conversion is disabled despite saved true setting");
+                foreach (string name in switches)
+                    Check(((ConfigEntry<bool>)configType.GetField(name).GetValue(null)).Value, "EWD user setting preserved: " + name);
+                Check(!File.Exists(configPath), "EWD compatibility did not create/save config");
+            }
+            finally
+            {
+                compatibility.UnpatchSelf();
+                upstream.UnpatchSelf();
+            }
+        }
+
+        private static bool HasOwner(Type type, string method, string owner)
+        {
+            var info = Harmony.GetPatchInfo(AccessTools.Method(type, method));
+            return info != null && info.Owners.Contains(owner);
         }
 
         private static void ObserveEvent() { postfixCalls++; }
