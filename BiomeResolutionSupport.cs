@@ -10,10 +10,10 @@ namespace DropNSpawn;
 internal static class BiomeResolutionSupport
 {
     private static readonly Dictionary<string, Heightmap.Biome> VanillaBiomeLookup = BuildVanillaBiomeLookup();
-    private static readonly Type? ExpandWorldDataBiomeManagerType = Type.GetType("ExpandWorldData.BiomeManager, ExpandWorldData");
-    private static readonly Type? ExpandWorldDataDataManagerType = Type.GetType("ExpandWorldData.DataManager, ExpandWorldData");
-    private static readonly FieldInfo? ExpandWorldDataConfigSyncField = Type
-        .GetType("ExpandWorldData.EWD, ExpandWorldData")
+    private static readonly Type? ExpandWorldDataBiomeManagerType = ExpandWorldDataCompatibility.FindType("ExpandWorldData.BiomeManager");
+    private static readonly Type? ExpandWorldDataDataManagerType = ExpandWorldDataCompatibility.FindType("ExpandWorldData.DataManager");
+    private static readonly FieldInfo? ExpandWorldDataConfigSyncField = ExpandWorldDataCompatibility
+        .FindType("ExpandWorldData.EWD")
         ?.GetField("ConfigSync", BindingFlags.Public | BindingFlags.Static);
     private static readonly PropertyInfo? ExpandWorldDataIsReadyProperty = ExpandWorldDataDataManagerType
         ?.GetProperty("IsReady", BindingFlags.Public | BindingFlags.Static);
@@ -21,8 +21,7 @@ internal static class BiomeResolutionSupport
         ?.FieldType.GetProperty("IsSourceOfTruth", BindingFlags.Public | BindingFlags.Instance);
     private static readonly PropertyInfo? ExpandWorldDataInitialSyncDoneProperty = ExpandWorldDataConfigSyncField
         ?.FieldType.GetProperty("InitialSyncDone", BindingFlags.Public | BindingFlags.Instance);
-    private static readonly MethodInfo? ExpandWorldDataTryGetBiomeMethod = Type
-        .GetType("ExpandWorldData.BiomeManager, ExpandWorldData")
+    private static readonly MethodInfo? ExpandWorldDataTryGetBiomeMethod = ExpandWorldDataBiomeManagerType
         ?.GetMethod("TryGetBiome", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(string), typeof(Heightmap.Biome).MakeByRefType() }, null);
     private static readonly MethodInfo? ExpandWorldDataTryGetDisplayNameMethod = ExpandWorldDataBiomeManagerType
         ?.GetMethod("TryGetDisplayName", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(Heightmap.Biome), typeof(string).MakeByRefType() }, null);

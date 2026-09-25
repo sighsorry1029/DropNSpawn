@@ -2,7 +2,8 @@ param(
     [string] $GamePath = 'C:\Program Files (x86)\Steam\steamapps\common\Valheim',
     [string] $GameManaged = '',
     [string] $ModDll = "$PSScriptRoot\..\..\bin\Debug\DropNSpawn.dll",
-    [string] $EwdDll = "$PSScriptRoot\..\..\Libs\ExpandWorldData.dll"
+    [string] $EwdDll = "$PSScriptRoot\..\..\Libs\ExpandWorldData.dll",
+    [switch] $WithoutEwd
 )
 $ErrorActionPreference = 'Stop'
 $managed = if ($GameManaged) { $GameManaged } else { Join-Path $GamePath 'valheim_Data\Managed' }
@@ -28,7 +29,7 @@ $isolatedMod = Join-Path $directory 'DropNSpawn.dll'
 Copy-Item -LiteralPath $ModDll -Destination $isolatedMod
 # Only this disposable test folder receives dependencies, never the game folder.
 Get-ChildItem -LiteralPath $core -Filter *.dll | Copy-Item -Destination $directory
-Copy-Item -LiteralPath $EwdDll -Destination (Join-Path $directory 'ExpandWorldData.dll')
+if (!$WithoutEwd) { Copy-Item -LiteralPath $EwdDll -Destination (Join-Path $directory 'ExpandWorldData.dll') }
 # EWD 1.73 has an external YAML dependency; this remains a test-folder copy only.
 Copy-Item -LiteralPath "$PSScriptRoot\..\..\bin\Debug\YamlDotNet.dll" -Destination $directory
 $stdout = Join-Path $directory 'stdout.txt'

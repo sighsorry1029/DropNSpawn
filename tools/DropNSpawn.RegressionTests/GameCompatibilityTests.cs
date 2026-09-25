@@ -164,6 +164,7 @@ internal static partial class Program
         foreach (MemberReference member in module.GetMemberReferences())
         {
             string scope = member.DeclaringType.Scope.Name;
+            if (scope == "ExpandWorldData" && mod.WithoutEwd) continue;
             if (member.DeclaringType is ArrayType ||
                 !(scope.StartsWith("assembly_", StringComparison.Ordinal) || scope is "ExpandWorldData" or "SoftReferenceableAssets" or "Splatform")) continue;
             references++;
@@ -233,9 +234,11 @@ internal static partial class Program
                     {
                         List<CodeInstruction> input = PatchProcessor.GetOriginalInstructions(original);
                         var output = ((IEnumerable<CodeInstruction>)patch.Invoke(null, new object[] { input })!).ToList();
-                        int callback = output.FindIndex(i => i.operand is MethodInfo m && m.Name == "RecordSpawnedObject");
-                        if (type.Name != "SpawnAreaSpawnOnePatch" || output.Count != input.Count + 3 || callback < 2 ||
-                            output[callback - 2].opcode != OpCodes.Dup || output[callback - 1].opcode != OpCodes.Ldarg_0)
+                        bool worldSpawn = type.Name == "SpawnSystemSpawnPatch";
+                        string callbackName = worldSpawn ? "ApplyStandaloneFaction" : "RecordSpawnedObject";
+                        int callback = output.FindIndex(i => i.operand is MethodInfo m && m.Name == callbackName);
+                        if ((!worldSpawn && type.Name != "SpawnAreaSpawnOnePatch") || output.Count != input.Count + 3 || callback < 2 ||
+                            output[callback - 2].opcode != OpCodes.Dup || output[callback - 1].opcode != (worldSpawn ? OpCodes.Ldarg_1 : OpCodes.Ldarg_0))
                             failures.Add(type.Name + ": spawn callback insertion changed or was not found");
                         transpilers++;
                     }
@@ -265,7 +268,7 @@ internal static partial class Program
         foreach (string target in new[] { "SetupGui", "Start" })
             if (AccessTools.Method(startup, target, Type.EmptyTypes) == null) failures.Add("Localization lifecycle hook: " + target);
         foreach (string fieldName in new[] { "ExpandWorldDataConfigSyncField", "ExpandWorldDataIsSourceOfTruthProperty", "ExpandWorldDataInitialSyncDoneProperty", "ExpandWorldDataTryGetBiomeMethod", "ExpandWorldDataTryGetDisplayNameMethod", "ExpandWorldDataBiomeToDisplayNameField" })
-            if (biomeSupport.GetField(fieldName, All)!.GetValue(null) == null) failures.Add("EWD reflection contract: " + fieldName);
+            if ((biomeSupport.GetField(fieldName, All)!.GetValue(null) == null) != mod.WithoutEwd) failures.Add("EWD reflection contract: " + fieldName);
 
         TypeDefinition manager = module.Types.Single(t => t.Name == "CharacterDropManager");
         foreach (string methodName in new[] { "SpawnStackedItem", "SpawnConfiguredLooseItem" })

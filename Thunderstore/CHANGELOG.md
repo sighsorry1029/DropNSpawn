@@ -1,3 +1,11 @@
+## 1.3.15 — Standalone support and optional Expand World Data
+
+- Made Expand World Data a soft dependency and removed it from the required package dependencies. Basic drops, spawners, world spawning, raids and faction overrides now work without EWD; existing optional CreatureManager faction integration is retained.
+- Preserved spawn `data`/`fields`/`objects`, event `startCommands`/`endCommands`, custom biomes, AltBiome metadata and overlapping-feature protection when EWD 1.71 or newer is installed. EWD is not bundled or modified.
+- Without EWD, nonempty EWD-only settings reject the affected domain's configuration update and retain its previous accepted configuration instead of silently ignoring those settings. Empty extension fields and disabled spawn rows remain valid.
+- Kept YAML formats and all five domain network schemas unchanged. Added standalone loading, configuration rejection and EWD-present regression coverage using original client/server assemblies and isolated Unity Mono checks; actual gameplay and multiplayer still require in-game verification.
+- Updated the BepInExPack Valheim package dependency to 5.4.2351. Update DNS on the server and all clients together and restart; install EWD on all participating peers when using EWD-dependent configurations.
+
 ## 1.3.14 — Expand World Data 1.73 compatibility
 
 - Added runtime compatibility for EWD 1.73's integrated Spawn/Event/Drop features. DNS retains control of normal world spawns, raids and loot even when EWD's overlapping options are enabled, without rewriting EWD configuration values or YAML files. EWD's Multiple events and Check per player modes are also suppressed through the event feature gate.

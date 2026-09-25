@@ -14,7 +14,7 @@ using ServerSync;
 namespace DropNSpawn;
 
 [BepInPlugin(ModGUID, ModName, ModVersion)]
-[BepInDependency("expand_world_data", "1.71")]
+[BepInDependency("expand_world_data", BepInDependency.DependencyFlags.SoftDependency)]
 [BepInDependency("sighsorry.CreatureManager", BepInDependency.DependencyFlags.SoftDependency)]
 /// <summary>
 /// Unity entrypoint and top-level wiring for the runtime platform.
@@ -36,7 +36,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
 
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
-    internal const string ModVersion = "1.3.14";
+    internal const string ModVersion = "1.3.15";
     internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
     private static string ConfigFileName = $"{ModGUID}.cfg";

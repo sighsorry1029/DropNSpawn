@@ -78,6 +78,7 @@ internal static partial class Program
             CheckLocationReferenceContracts(current, options.GetValueOrDefault("--mwl-manifest"));
             CheckConfigReloadContracts(current);
             CheckEwdCompatibilityContracts(current);
+            CheckOptionalEwdContracts(current);
             Console.WriteLine($"PASS: {_checks} managed contract checks. Unity gameplay and network execution are not covered.");
             return 0;
         }
@@ -147,8 +148,7 @@ internal static partial class Program
         Type payloadType = support.GetNestedType("PreparedPayload", All)!;
         object payload = Activator.CreateInstance(payloadType, nonPublic: true)!;
         PropertyInfo objectsProperty = payloadType.GetProperty("CustomObjects")!;
-        var objects = (IList)Activator.CreateInstance(objectsProperty.PropertyType)!;
-        objects.Add(RuntimeHelpers.GetUninitializedObject(objectsProperty.PropertyType.GetGenericArguments()[0]));
+        var objects = new ArrayList { new object() };
         objectsProperty.SetValue(payload, objects);
         Invoke(support, null, "ApplyPreparedPayload", source, payload);
         object liveClone = Activator.CreateInstance(spawnType)!;
@@ -254,6 +254,7 @@ internal static partial class Program
     {
         private readonly string[] _searchPaths;
         private readonly string? _ewdPath;
+        internal bool WithoutEwd { get; }
         private readonly Assembly _assembly;
         internal Assembly Assembly => _assembly;
         internal string[] SearchPaths => _searchPaths;
@@ -261,19 +262,23 @@ internal static partial class Program
         {
             // Resolve game types only from original assemblies, never stale output
             // copies or publicized references. --managed-dir also supports server snapshots.
-            _ewdPath = ewdPath == null ? null : Path.GetFullPath(ewdPath);
+            WithoutEwd = ewdPath == "none";
+            _ewdPath = ewdPath == null || WithoutEwd ? null : Path.GetFullPath(ewdPath);
             if (_ewdPath != null && !File.Exists(_ewdPath)) throw new FileNotFoundException("Requested EWD test input was not found.", _ewdPath);
             _searchPaths = new[] { Path.GetFullPath(managedPath ?? Path.Combine(gamePath, "valheim_Data", "Managed")),
                 Path.Combine(gamePath, "BepInEx", "core"),
-                ewdPath == null ? Path.Combine(projectPath, "Libs") : Path.GetDirectoryName(Path.GetFullPath(ewdPath))!,
+                _ewdPath == null ? Path.Combine(projectPath, "Libs") : Path.GetDirectoryName(_ewdPath)!,
                 Path.Combine(projectPath, "Libs"), Path.GetDirectoryName(Path.GetFullPath(assemblyPath))! };
             _assembly = LoadFromAssemblyPath(Path.GetFullPath(assemblyPath));
+            Type("ExpandWorldDataCompatibility").GetMethod("ConfigureDependency", Program.All)?.Invoke(null,
+                new object?[] { WithoutEwd ? null : LoadGameAssembly("ExpandWorldData") });
         }
         internal Type Type(string name) => _assembly.GetType("DropNSpawn." + name, throwOnError: true)!;
         internal Assembly LoadGameAssembly(string name) => LoadFromAssemblyName(new AssemblyName(name));
         protected override Assembly? Load(AssemblyName name)
         {
             if (name.Name == "0Harmony") return typeof(HarmonyLib.AccessTools).Assembly;
+            if (name.Name == "ExpandWorldData" && WithoutEwd) throw new FileNotFoundException("EWD deliberately unavailable in standalone test.");
             if (name.Name == "ExpandWorldData" && _ewdPath != null) return LoadFromAssemblyPath(_ewdPath);
             if (name.Name is null || name.Name is "mscorlib" or "netstandard" || name.Name.StartsWith("System", StringComparison.Ordinal)) return null;
             foreach (string directory in _searchPaths)

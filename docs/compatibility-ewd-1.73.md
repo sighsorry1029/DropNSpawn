@@ -2,6 +2,29 @@
 
 Reviewed and patched on 2026-09-24 for DropNSpawn 1.3.14 and the existing Valheim 1.0.15 target. This is a DNS compatibility boundary, not an EWD fork or a game-version upgrade. Legacy standalone Expand World Spawns / Expand World Events installations are outside this change's supported/tested scope.
 
+## Optional dependency update (2026-09-25, DropNSpawn 1.3.15)
+
+DNS now declares EWD as a soft dependency and no longer requires it in the package manifest. EWD-present ownership and AltBiome behavior below are retained. BepInEx load order is preserved, and DNS checks the existing minimum EWD 1.71 before initializing domains; an unsupported installed EWD is not silently treated as absent. Compatibility patch failures still stop initialization rather than allowing overlapping owners.
+
+Without EWD, core domains and native faction overrides remain available. Nonempty spawn `data`/`fields`/`objects` and event `startCommands`/`endCommands` are rejected at the shared local/synced acceptance boundary, before committing a new domain configuration. Empty fields and disabled spawn rows do not require EWD. Existing files are never rewritten. Install EWD on all participating peers when using its features; rejecting an incompatible synced domain is not a new mixed-mod connection negotiation protocol.
+
+Opaque core payloads and non-inlined typed EWD helpers avoid optional type resolution in the standalone path. No extra runtime DLL, transport version, config key or general integration interface was introduced. Test commands and limits are in [development.md](development.md).
+
+Initial implementation validation, before the 1.3.15 version bump:
+
+- Debug build with `DeployToGame=true` and code-generation verification: zero warnings/errors; final merged DLL and local plugin SHA-256 both `D02D79B5484DB76C4C1ED8D380EC94AC335E6AD135A4F30D016D9D9E76500B47`. The unchanged baseline build initially hit the native-PDB writer crash noted below; an identical retry passed before editing.
+- Original 1.0.15 client/server contracts: 694 checks per role with EWD loading denied. With official EWD 1.73 and the 1.3.14 Release baseline: 1,171 checks per role, including unchanged five-domain wire/signature fixtures. Pinned EWD 1.71: 1,138 checks on the client with the same baseline. Counts include field assertions, not independent gameplay scenarios.
+- Isolated Unity Mono, original client/server assemblies: 20 checks per role with no EWD DLL, 27 per role with EWD 1.73. Native Unity Time/Random internal-call warnings arise during patch JIT in the scene-free host; those native methods are not executed by the checks.
+- Real local parser rejection is covered for Spawner/SpawnSystem/Event; previous accepted payload retention is exercised through the actual reload coordinator for Spawner/Event. SpawnSystem's final rejection logger needs a native scene signature and remains a gameplay check. Full plugin startup, actual faction AI/ZDO propagation, world reload, remote clients and AltBiome gameplay were not executed.
+
+Release 1.3.15 validation:
+
+- Debug build with `DeployToGame=true` and code-generation verification, then ordinary Release packaging: zero warnings/errors. Final Debug DLL and local installed copy both have SHA-256 `E3EBC763D97A3F76203C1157FED5724D0260690C28BA2B0F045C3D5402741106`.
+- Final Release DLL, original client/server assemblies, compared with the preserved 1.3.14 Release: 1,148 managed checks per role without EWD; 1,171 per role with EWD 1.73; 1,138 on the client with pinned EWD 1.71. All five domain wire/signature fixtures remain compatible.
+- Final Release DLL passed 20 isolated Mono checks per role without EWD and 27 per role with EWD 1.73, with the same scene-free Unity internal-call warnings and gameplay limitations above.
+- Assembly version is 1.3.15.0; file/plugin/manifest version is 1.3.15. The manifest and fallback template require only BepInExPack Valheim 5.4.2351. Release DLL SHA-256: `33354C4ED6E4A5547361C74D7F1FDB0E9610E74077F563E1DEF417AB5697C614`.
+- Thunderstore and Nexus ZIP layouts and every entry's SHA-256 match their build/source inputs. Thunderstore ZIP SHA-256: `E67962E21F62C4EB19E2442422E7FF01D9DDE02C95D498E1FD7E9623CD59F002`; Nexus ZIP SHA-256: `E02A1CB712A45B30C222BEB156F93170988BC9701FE9F5507E826A50D826B0C1`. No actual game/multiplayer session or site-publication verification was performed.
+
 ## Ownership
 
 - DNS owns normal SpawnSystem lists, raid definitions/scheduling, and its loot policy while installed. EWD's general Spawn/Event YAML create/read/sync/apply paths and event timing changes are suppressed, including reload callbacks. User EWD configuration values and YAML files are not rewritten or removed.

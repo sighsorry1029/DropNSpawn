@@ -463,7 +463,7 @@ internal static class EventManager
     {
         // Local parsing produces fresh entries and TryGetSyncedEntries returns a
         // detached deep clone. The build hook owns this list in either path.
-        NormalizeDefinitions(definitions);
+        NormalizeDefinitions(definitions, sourceName);
         return definitions;
     }
 
@@ -608,7 +608,7 @@ internal static class EventManager
                 }
             }
 
-            NormalizeDefinitions(definitions);
+            NormalizeDefinitions(definitions, sourceName);
             return true;
         }
         catch (Exception ex)
@@ -619,7 +619,7 @@ internal static class EventManager
         }
     }
 
-    private static void NormalizeDefinitions(List<EventDefinition> definitions)
+    private static void NormalizeDefinitions(List<EventDefinition> definitions, string sourceName)
     {
         foreach (EventDefinition definition in definitions)
         {
@@ -632,6 +632,16 @@ internal static class EventManager
             definition.StartCommands = NormalizeOptionalStringList(definition.StartCommands);
             definition.EndCommands = NormalizeOptionalStringList(definition.EndCommands);
             NormalizeSpawns(definition.Spawns);
+            string context = sourceName + "/event:" + definition.Event;
+            if (definition.StartCommands?.Count > 0) ExpandWorldDataCompatibility.RequireFeature("startCommands", context);
+            if (definition.EndCommands?.Count > 0) ExpandWorldDataCompatibility.RequireFeature("endCommands", context);
+            for (int index = 0; index < (definition.Spawns?.Count ?? 0); index++)
+            {
+                EventSpawnDefinition spawn = definition.Spawns![index];
+                if (spawn.Enabled == false) continue;
+                var data = spawn.SpawnSystem;
+                ExpandWorldDataCompatibility.RequireExtensions(data?.Data, data?.Fields, data?.Objects, $"{context}/spawns[{index + 1}]:{spawn.Prefab}");
+            }
         }
     }
 

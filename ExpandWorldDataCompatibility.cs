@@ -1,15 +1,17 @@
 extern alias ewd;
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using HarmonyLib;
+using BepInEx.Bootstrap;
 using UnityEngine;
 using EwdData = ewd::Data;
-using EwdBlueprintObject = ewd::ExpandWorldData.BlueprintObject;
 
 namespace DropNSpawn;
 
@@ -19,13 +21,59 @@ namespace DropNSpawn;
 internal static class ExpandWorldDataCompatibility
 {
     private static readonly ConditionalWeakTable<SpawnSystem.SpawnData, object> SourceData = new();
-    private static Dictionary<SpawnSystem.SpawnData, EwdData.DataEntry?>? _data;
-    private static Dictionary<SpawnSystem.SpawnData, List<EwdBlueprintObject>>? _objects;
+    private static IDictionary? _data;
+    private static IDictionary? _objects;
     private static FieldInfo[] _sourceFields = Array.Empty<FieldInfo>();
+    private static Assembly? _assembly;
+
+    internal static bool IsAvailable => _assembly != null;
+    internal static Type? FindType(string name) => _assembly?.GetType(name);
+
+    internal static void DetectDependency()
+    {
+        // A DLL on disk is not sufficient: BepInEx must have loaded the optional plugin.
+        ConfigureDependency(Chainloader.PluginInfos.TryGetValue("expand_world_data", out var plugin)
+            ? plugin.Instance.GetType().Assembly : null);
+        if (!IsAvailable)
+            DropNSpawnPlugin.DropNSpawnLogger.LogInfo("EWD is not loaded: standalone DNS enabled. EWD data/fields/objects and event commands require EWD 1.71 or newer.");
+    }
+
+    internal static void ConfigureDependency(Assembly? assembly)
+    {
+        if (assembly != null)
+        {
+            string? version = assembly.GetType("ExpandWorldData.EWD")?.GetField("VERSION")?.GetRawConstantValue() as string;
+            if (!System.Version.TryParse(version, out System.Version parsed) || parsed < new System.Version(1, 71))
+                throw new InvalidOperationException("Installed Expand World Data is unsupported; DNS requires EWD 1.71 or newer when EWD is present. Update EWD or remove it before starting DNS.");
+        }
+        _assembly = assembly;
+    }
+
+    internal static void RequireExtensions(string? data, Dictionary<string, string>? fields, List<string>? objects, string context)
+    {
+        if (IsAvailable) return;
+        List<string> required = new();
+        if (!string.IsNullOrWhiteSpace(data)) required.Add("data");
+        if (fields?.Keys.Any(key => !string.IsNullOrWhiteSpace(key)) == true) required.Add("fields");
+        if (objects?.Any(value => !string.IsNullOrWhiteSpace(value)) == true) required.Add("objects");
+        if (required.Count > 0) RequireFeature(string.Join("/", required), context);
+    }
+
+    internal static void RequireFeature(string feature, string context)
+    {
+        if (!IsAvailable)
+            throw new InvalidDataException($"Entry '{context}' uses '{feature}', which requires Expand World Data 1.71 or newer. Install EWD on the server and clients or remove these settings. This configuration update was rejected, not partially applied.");
+    }
 
     internal static void Initialize(Harmony harmony)
     {
-        Assembly assembly = typeof(ewd::ExpandWorldData.EWD).Assembly;
+        if (!IsAvailable) return;
+        InitializePresent(harmony, _assembly!);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void InitializePresent(Harmony harmony, Assembly assembly)
+    {
         if (assembly.GetType("ExpandWorld.Spawn.Patcher") == null) return;
         var ewdHarmony = (Harmony)RequireField(RequireType(assembly, "ExpandWorldData.EWD"), "Harmony").GetValue(null);
         InstallPatches(harmony, assembly, ewdHarmony);
@@ -34,6 +82,7 @@ internal static class ExpandWorldDataCompatibility
             "EWD settings and YAML are unchanged; world/AltBiome data and AltBiome spawn customization remain active. Restart after changing the mod set.");
     }
 
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static void InstallPatches(Harmony harmony, Assembly assembly, Harmony ewdHarmony)
     {
         var patches = GetPatchPlan(assembly);
@@ -41,8 +90,8 @@ internal static class ExpandWorldDataCompatibility
 
         Type loader = RequireType(assembly, "ExpandWorld.Spawn.Loader");
         Type source = RequireType(assembly, "ExpandWorld.Spawn.Data");
-        _data = (Dictionary<SpawnSystem.SpawnData, EwdData.DataEntry?>)RequireField(loader, "Data").GetValue(null);
-        _objects = (Dictionary<SpawnSystem.SpawnData, List<EwdBlueprintObject>>)RequireField(loader, "Objects").GetValue(null);
+        _data = (IDictionary)RequireField(loader, "Data").GetValue(null);
+        _objects = (IDictionary)RequireField(loader, "Objects").GetValue(null);
         _sourceFields = new[] { "data", "fields", "objects", "faction" }.Select(name => RequireField(source, name)).ToArray();
 
         try
@@ -89,6 +138,7 @@ internal static class ExpandWorldDataCompatibility
 
     // Resolve the complete contract before changing any patches. Keeping this plan
     // explicit also lets the test host validate the official EWD DLL without Unity.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     internal static List<(MethodInfo Target, HarmonyPatchType Kind, string Callback)> GetPatchPlan(Assembly assembly)
     {
         var result = new List<(MethodInfo, HarmonyPatchType, string)>();
@@ -163,8 +213,8 @@ internal static class ExpandWorldDataCompatibility
     private static void CaptureSpawnData(object __0, SpawnSystem.SpawnData __result)
     {
         if (__result == null) return;
-        _data!.TryGetValue(__result, out EwdData.DataEntry? data);
-        _objects!.TryGetValue(__result, out List<EwdBlueprintObject>? objects);
+        object? data = _data![__result];
+        IList? objects = _objects![__result] as IList;
         SpawnSystemCustomDataSupport.ApplyPreparedPayload(__result, new SpawnSystemCustomDataSupport.PreparedPayload
         {
             CustomData = data,

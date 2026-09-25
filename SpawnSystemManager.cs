@@ -660,6 +660,14 @@ internal static partial class SpawnSystemManager
             NormalizeConfiguration(configuration);
         }
 
+        for (int index = 0; index < configuration.Count; index++)
+        {
+            var entry = configuration[index];
+            if (!entry.Enabled) continue;
+            var spawn = entry.SpawnSystem;
+            ExpandWorldDataCompatibility.RequireExtensions(spawn?.Data, spawn?.Fields, spawn?.Objects, CreateConfigurationContext(index, entry));
+        }
+
         return configuration;
     }
 

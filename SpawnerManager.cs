@@ -742,6 +742,12 @@ internal static partial class SpawnerManager
         {
             entry.SourcePath = string.IsNullOrWhiteSpace(entry.SourcePath) ? sourceName : entry.SourcePath;
             NormalizeEntry(entry);
+            if (!entry.Enabled) continue;
+            string context = CreateConfigurationContext(entry);
+            CreatureSpawnerDefinition? creature = entry.CreatureSpawner;
+            ExpandWorldDataCompatibility.RequireExtensions(creature?.Data, creature?.Fields, creature?.Objects, context + "/creatureSpawner");
+            foreach (SpawnAreaSpawnDefinition spawn in entry.SpawnArea?.Creatures ?? Enumerable.Empty<SpawnAreaSpawnDefinition>())
+                ExpandWorldDataCompatibility.RequireExtensions(spawn.Data, spawn.Fields, spawn.Objects, context + "/spawnArea/" + spawn.Creature);
         }
 
         return configuration;

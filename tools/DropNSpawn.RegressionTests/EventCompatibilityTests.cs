@@ -76,8 +76,7 @@ internal static partial class Program
         Type payloadType = support.GetNestedType("PreparedPayload", All)!;
         object payload = Activator.CreateInstance(payloadType, nonPublic: true)!;
         PropertyInfo objectsProperty = payloadType.GetProperty("CustomObjects")!;
-        var objects = (IList)Activator.CreateInstance(objectsProperty.PropertyType)!;
-        objects.Add(RuntimeHelpers.GetUninitializedObject(objectsProperty.PropertyType.GetGenericArguments()[0]));
+        var objects = new ArrayList { new object() };
         objectsProperty.SetValue(payload, objects);
         return payload;
     }

@@ -105,7 +105,44 @@ namespace DropNSpawn.Tests
             var threading = (BepInEx.ThreadingHelper)FormatterServices.GetUninitializedObject(typeof(BepInEx.ThreadingHelper));
             AccessTools.Field(typeof(BepInEx.ThreadingHelper), "_invokeLock").SetValue(threading, new object());
             AccessTools.PropertySetter(typeof(BepInEx.ThreadingHelper), "Instance").Invoke(null, new object[] { threading });
-            CheckEwdCompatibility(mod);
+            string ewdPath = Path.Combine(testRoot, "ExpandWorldData.dll");
+            Type compatibilityType = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
+            compatibilityType.GetMethod("ConfigureDependency", All).Invoke(null, new object[] { File.Exists(ewdPath) ? Assembly.LoadFrom(ewdPath) : null });
+            if (File.Exists(ewdPath)) CheckEwdCompatibility(mod);
+            else CheckStandalone(mod);
+        }
+
+        private static void CheckStandalone(Assembly mod)
+        {
+            var harmony = new Harmony("DropNSpawn.isolated.standalone");
+            foreach (Type type in mod.GetTypes()) harmony.CreateClassProcessor(type);
+            Check(true, "all DNS types and Harmony class processors load without EWD");
+            Type compatibility = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
+            compatibility.GetMethod("Initialize", All).Invoke(null, new object[] { harmony });
+            Check(!(bool)compatibility.GetProperty("IsAvailable", All).GetValue(null), "standalone initialization skips EWD");
+            Type support = mod.GetType("DropNSpawn.SpawnSystemCustomDataSupport", true);
+            Type entryType = mod.GetType("DropNSpawn.CanonicalSpawnSystemEntry", true);
+            Type definitionType = mod.GetType("DropNSpawn.SpawnSystemSpawnDefinition", true);
+            object entry = Activator.CreateInstance(entryType, true);
+            object definition = Activator.CreateInstance(definitionType, true);
+            entryType.GetProperty("SpawnSystem").SetValue(entry, definition);
+            definitionType.GetProperty("Faction").SetValue(definition, "ForestMonsters");
+            var spawn = new SpawnSystem.SpawnData();
+            object payload = support.GetMethod("BuildPreparedPayload", All).Invoke(null, new object[] { spawn, entry, "Mono standalone" });
+            Check(payload != null, "standalone faction payload builds under Mono JIT");
+            support.GetMethod("ApplyPreparedPayload", All).Invoke(null, new[] { (object)spawn, payload });
+            foreach (string name in new[] { "InitializeSpawn", "SpawnObjects" })
+                support.GetMethod(name, All).Invoke(null, new object[] { spawn, default(UnityEngine.Vector3) });
+            Type spawner = mod.GetType("DropNSpawn.ExpandWorldSpawnDataSupport", true);
+            Check(spawner.GetMethod("BuildPayload", All).Invoke(null, new object[] { null, null, null, null, "Mono standalone" }) == null, "standalone spawner builds without resolving EWD");
+            Type spawnPatch = mod.GetType("DropNSpawn.SpawnSystemSpawnPatch", true);
+            try
+            {
+                harmony.CreateClassProcessor(spawnPatch).Patch();
+                Check(true, "standalone spawn Harmony patch installs on original game IL");
+            }
+            finally { harmony.UnpatchSelf(); }
+            Check(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name == "ExpandWorldData"), "no EWD assembly loaded by standalone paths");
         }
 
         private static void CheckEwdCompatibility(Assembly mod)

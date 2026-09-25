@@ -6,8 +6,114 @@ using HarmonyLib;
 
 internal static partial class Program
 {
+    private static void CheckOptionalEwdContracts(ModContract mod)
+    {
+        Type compatibility = mod.Type("ExpandWorldDataCompatibility");
+        Check((bool)compatibility.GetProperty("IsAvailable", All)!.GetValue(null)! == !mod.WithoutEwd, "optional EWD availability");
+        var dependency = mod.Type("DropNSpawnPlugin").GetCustomAttributesData().Single(attribute =>
+            attribute.AttributeType.Name == "BepInDependency" && (string)attribute.ConstructorArguments[0].Value! == "expand_world_data");
+        Check(Convert.ToInt32(dependency.ConstructorArguments[1].Value) == 2, "EWD is a soft BepInEx dependency");
+
+        // These are the real local/synced configuration acceptance paths. Keep wire
+        // fixtures independent: the existing transport contract still carries EWD fields.
+        foreach (string domain in new[] { "Spawner", "SpawnSystem", "Event" })
+        {
+            foreach ((string field, string value) in new[] { ("Data", "\"custom\""), ("Fields", "{\"health\":\"\"}"), ("Objects", "[\"Wood,0,0,0,1\"]") })
+            {
+                string spawn = "{\"" + field + "\":" + value + "}";
+                string json = domain switch
+                {
+                    "Spawner" => "{\"Prefab\":\"fixture\",\"CreatureSpawner\":" + spawn + "}",
+                    "SpawnSystem" => "{\"Prefab\":\"fixture\",\"SpawnSystem\":" + spawn + "}",
+                    _ => "{\"Event\":\"fixture\",\"Spawns\":[{\"Prefab\":\"fixture\",\"SpawnSystem\":" + spawn + "}]}"
+                };
+                Accept(domain, json, !mod.WithoutEwd);
+            }
+            string empty = "{\"Data\":\" \",\"Fields\":{},\"Objects\":[],\"Faction\":\"ForestMonsters\"}";
+            Accept(domain, domain switch
+            {
+                "Spawner" => "{\"Prefab\":\"fixture\",\"CreatureSpawner\":" + empty + "}",
+                "SpawnSystem" => "{\"Prefab\":\"fixture\",\"SpawnSystem\":" + empty + "}",
+                _ => "{\"Event\":\"fixture\",\"Spawns\":[{\"Prefab\":\"fixture\",\"SpawnSystem\":" + empty + "}]}"
+            }, true);
+        }
+        Accept("Spawner", "{\"Prefab\":\"fixture\",\"SpawnArea\":{\"Creatures\":[{\"Creature\":\"Boar\",\"Data\":\"custom\"}]}}", !mod.WithoutEwd);
+        Accept("Spawner", "{\"Prefab\":\"fixture\",\"Enabled\":false,\"CreatureSpawner\":{\"Data\":\"custom\"}}", true);
+        Accept("SpawnSystem", "{\"Prefab\":\"fixture\",\"Enabled\":false,\"SpawnSystem\":{\"Data\":\"custom\"}}", true);
+        Accept("Event", "{\"Event\":\"fixture\",\"Spawns\":[{\"Prefab\":\"Boar\",\"Enabled\":false,\"SpawnSystem\":{\"Data\":\"custom\"}}]}", true);
+        foreach (string command in new[] { "StartCommands", "EndCommands" })
+            Accept("Event", "{\"Event\":\"fixture\",\"" + command + "\":[\"command\"]}", !mod.WithoutEwd);
+
+        if (!mod.WithoutEwd) return;
+        Check(!mod.Assemblies.Any(assembly => assembly.GetName().Name == "ExpandWorldData"), "EWD absent from isolated load context");
+        Type support = mod.Type("SpawnSystemCustomDataSupport");
+        object spawnData = Activator.CreateInstance(mod.LoadGameAssembly("assembly_valheim").GetType("SpawnSystem+SpawnData", true)!)!;
+        object entry = System.Text.Json.JsonSerializer.Deserialize("{\"Prefab\":\"Boar\",\"SpawnSystem\":{\"Faction\":\"ForestMonsters\"}}", mod.Type("CanonicalSpawnSystemEntry"), JsonOptions)!;
+        object payload = Invoke(support, null, "BuildPreparedPayload", spawnData, entry, "standalone faction")!;
+        Check((string)payload.GetType().GetProperty("StandaloneFaction")!.GetValue(payload)! == "ForestMonsters", "standalone faction is retained without EWD data");
+        Check(payload.GetType().GetProperty("CustomData")!.GetValue(payload) == null, "standalone faction does not construct EWD data");
+        object disabled = System.Text.Json.JsonSerializer.Deserialize("{\"Prefab\":\"Boar\",\"Enabled\":false,\"SpawnSystem\":{\"Data\":\"unused\"}}", mod.Type("CanonicalSpawnSystemEntry"), JsonOptions)!;
+        Check(Invoke(support, null, "BuildPreparedPayload", spawnData, disabled, "disabled row") == null, "disabled row still applies without preparing unused EWD data");
+
+        foreach ((string domain, string yaml) in new[]
+        {
+            ("Spawner", "- prefab: fixture\n  creatureSpawner:\n    data: custom\n"),
+            ("SpawnSystem", "- prefab: fixture\n  spawnSystem:\n    fields:\n      health: 40\n"),
+            ("Event", "- event: fixture\n  startCommands: [command]\n")
+        })
+        {
+            Type manager = mod.Type(domain + "Manager");
+            object runtime = manager.GetField("ConfigurationRuntime", All)!.GetValue(null)!;
+            object state = Property(runtime, "LoadState")!;
+            string previous = (string)Property(state, "LastLoadedPayload")!;
+            string rejected = (string)Property(state, "LastRejectedPayload")!;
+            string path = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "dns-ewd-reject-" + Guid.NewGuid().ToString("N") + ".yml");
+            try
+            {
+                SetProperty(state, "LastLoadedPayload", "previous-accepted-payload");
+                System.IO.File.WriteAllText(path, yaml);
+                var paths = new List<string> { path };
+                object documents = Invoke(mod.Type("ConfigurationLoadSupport"), null, "ReadLocalYamlDocuments", paths)!;
+                object parsed = Invoke(manager, null, "ParseLocalConfigurationDocuments", documents)!;
+                Check(((IList)Property(parsed, "Errors")!).Count > 0, domain + ": real local parser reports missing EWD");
+                // SpawnSystem's rejection logger computes a native scene signature;
+                // that final reporting path cannot run in the managed-only host.
+                if (domain != "SpawnSystem")
+                {
+                    Check(Call(runtime, "ReloadSourceOfTruth", paths)!.ToString() == "Rejected", domain + ": actual local reload rejects missing EWD");
+                    Check((string)Property(state, "LastLoadedPayload")! == "previous-accepted-payload", domain + ": rejected reload preserves accepted payload");
+                }
+            }
+            finally
+            {
+                SetProperty(state, "LastLoadedPayload", previous);
+                SetProperty(state, "LastRejectedPayload", rejected);
+                System.IO.File.Delete(path);
+            }
+        }
+
+        void Accept(string domain, string json, bool expected)
+        {
+            string typeName = domain == "Event" ? "EventDefinition" : domain == "SpawnSystem" ? "CanonicalSpawnSystemEntry" : "SpawnerConfigurationEntry";
+            Type entryType = mod.Type(typeName);
+            var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(entryType))!;
+            list.Add(System.Text.Json.JsonSerializer.Deserialize(json, entryType, JsonOptions));
+            try
+            {
+                Invoke(mod.Type(domain == "Event" ? "EventManager" : domain + "Manager"), null,
+                    domain == "Event" ? "BuildSyncedConfigurationState" : "NormalizeOwnedConfigurationEntries", list, "optional-ewd.yml");
+                Check(expected, domain + ": required EWD fields rejected");
+            }
+            catch (TargetInvocationException error) when (error.InnerException is System.IO.InvalidDataException dependencyError)
+            {
+                Check(!expected && dependencyError.Message.Contains("optional-ewd.yml") && dependencyError.Message.Contains("requires Expand World Data"), domain + ": actionable missing-dependency diagnostic");
+            }
+        }
+    }
+
     private static void CheckEwdCompatibilityContracts(ModContract mod)
     {
+        if (mod.WithoutEwd) return;
         Assembly ewd = mod.LoadGameAssembly("ExpandWorldData");
         Type compat = mod.Type("ExpandWorldDataCompatibility");
         var plan = (IList)Invoke(compat, null, "GetPatchPlan", ewd)!;

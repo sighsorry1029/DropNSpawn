@@ -19,6 +19,7 @@ internal sealed class PluginBootstrapCoordinator
 
     internal void Run()
     {
+        ExpandWorldDataCompatibility.DetectDependency();
         PluginManifestCoordinator.Initialize(DropNSpawnPlugin.ConfigSync);
 
         bool saveOnSet = _host.Config.SaveOnConfigSet;

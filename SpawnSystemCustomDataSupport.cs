@@ -1,6 +1,7 @@
 extern alias ewd;
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Globalization;
@@ -16,12 +17,13 @@ internal static class SpawnSystemCustomDataSupport
 {
     internal sealed class PreparedPayload
     {
-        public EwdData.DataEntry? CustomData { get; set; }
-        public List<EwdBlueprintObject>? CustomObjects { get; set; }
+        public object? CustomData { get; set; }
+        public IList? CustomObjects { get; set; }
+        public string? StandaloneFaction { get; set; }
 
         internal bool HasValues()
         {
-            return CustomData != null || (CustomObjects?.Count ?? 0) > 0;
+            return CustomData != null || (CustomObjects?.Count ?? 0) > 0 || StandaloneFaction != null;
         }
     }
 
@@ -63,6 +65,20 @@ internal static class SpawnSystemCustomDataSupport
             return null;
         }
 
+        // Disabled rows must still reach the native table to disable an existing
+        // spawn. Their unused extensions must not reject/drop that disabling row.
+        if (!ExpandWorldDataCompatibility.IsAvailable && !entry.Enabled) return null;
+
+        var definition = entry.SpawnSystem;
+        ExpandWorldDataCompatibility.RequireExtensions(definition?.Data, definition?.Fields, definition?.Objects, context);
+        if (ExpandWorldDataCompatibility.IsAvailable) return BuildEwdPayload(spawnData, entry, context);
+        string? faction = FactionIntegration.Normalize(definition?.Faction);
+        return faction == null ? null : new PreparedPayload { StandaloneFaction = faction };
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static PreparedPayload? BuildEwdPayload(SpawnSystem.SpawnData spawnData, CanonicalSpawnSystemEntry entry, string context)
+    {
         PreparedPayload payload = new()
         {
             CustomData = BuildCustomData(spawnData, entry, context),
@@ -116,19 +132,29 @@ internal static class SpawnSystemCustomDataSupport
 
     internal static void InitializeSpawn(SpawnSystem.SpawnData critter, Vector3 spawnPoint)
     {
-        if (critter == null ||
+        if (!ExpandWorldDataCompatibility.IsAvailable || critter == null ||
             !PayloadsBySpawnData.TryGetValue(critter, out PreparedPayload? payload) ||
             payload.CustomData == null)
         {
             return;
         }
 
-        EwdData.DataHelper.Init(critter.m_prefab, spawnPoint, Quaternion.identity, null, payload.CustomData);
+        InitializeEwdSpawn(critter.m_prefab, spawnPoint, payload.CustomData);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void InitializeEwdSpawn(GameObject prefab, Vector3 spawnPoint, object data) =>
+        EwdData.DataHelper.Init(prefab, spawnPoint, Quaternion.identity, null, (EwdData.DataEntry)data);
+
+    internal static void ApplyStandaloneFaction(GameObject spawned, SpawnSystem.SpawnData spawnData)
+    {
+        if (spawned != null && PayloadsBySpawnData.TryGetValue(spawnData, out PreparedPayload? payload) && payload.StandaloneFaction != null)
+            FactionIntegration.Apply(spawned.GetComponent<Character>(), payload.StandaloneFaction, spawnData.m_name);
     }
 
     internal static void SpawnObjects(SpawnSystem.SpawnData critter, Vector3 spawnPoint)
     {
-        if (critter == null ||
+        if (!ExpandWorldDataCompatibility.IsAvailable || critter == null ||
             !PayloadsBySpawnData.TryGetValue(critter, out PreparedPayload? payload) ||
             payload.CustomObjects == null ||
             payload.CustomObjects.Count == 0)
@@ -136,7 +162,13 @@ internal static class SpawnSystemCustomDataSupport
             return;
         }
 
-        foreach (EwdBlueprintObject obj in payload.CustomObjects)
+        SpawnEwdObjects(spawnPoint, payload.CustomObjects);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void SpawnEwdObjects(Vector3 spawnPoint, IList objects)
+    {
+        foreach (EwdBlueprintObject obj in objects)
         {
             if (obj.Chance < 1f && UnityEngine.Random.value > obj.Chance)
             {

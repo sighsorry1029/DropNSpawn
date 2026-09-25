@@ -1,9 +1,11 @@
 extern alias ewd;
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using UnityEngine;
 using EwdData = ewd::Data;
 using EwdBlueprintObject = ewd::ExpandWorldData.BlueprintObject;
@@ -13,20 +15,28 @@ namespace DropNSpawn;
 
 internal sealed class ExpandWorldSpawnDataPayload
 {
-    internal ExpandWorldSpawnDataPayload(EwdData.DataEntry? data, List<EwdBlueprintObject>? objects)
+    internal ExpandWorldSpawnDataPayload(object? data, IList? objects)
     {
         Data = data;
         Objects = objects;
     }
 
-    internal EwdData.DataEntry? Data { get; }
-    internal List<EwdBlueprintObject>? Objects { get; }
+    // Opaque at the core boundary so loading core state never resolves EWD types.
+    internal object? Data { get; }
+    internal IList? Objects { get; }
     internal bool HasObjects => Objects is { Count: > 0 };
 }
 
 internal static class ExpandWorldSpawnDataSupport
 {
     internal static ExpandWorldSpawnDataPayload? BuildPayload(GameObject? prefab, string? dataName, Dictionary<string, string>? fields, List<string>? objects, string context)
+    {
+        ExpandWorldDataCompatibility.RequireExtensions(dataName, fields, objects, context);
+        return ExpandWorldDataCompatibility.IsAvailable ? BuildEwdPayload(prefab, dataName, fields, objects, context) : null;
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ExpandWorldSpawnDataPayload? BuildEwdPayload(GameObject? prefab, string? dataName, Dictionary<string, string>? fields, List<string>? objects, string context)
     {
         EwdData.DataEntry? data = BuildCustomData(prefab, dataName, fields, context);
         List<EwdBlueprintObject>? customObjects = BuildCustomObjects(objects, context);
@@ -40,22 +50,32 @@ internal static class ExpandWorldSpawnDataSupport
 
     internal static void InitializeSpawn(GameObject? prefab, Vector3 spawnPoint, ExpandWorldSpawnDataPayload? payload)
     {
-        if (prefab == null || payload?.Data == null)
+        if (!ExpandWorldDataCompatibility.IsAvailable || prefab == null || payload?.Data == null)
         {
             return;
         }
 
-        EwdData.DataHelper.Init(prefab, spawnPoint, Quaternion.identity, null, payload.Data);
+        InitializeEwdSpawn(prefab, spawnPoint, payload.Data);
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void InitializeEwdSpawn(GameObject prefab, Vector3 spawnPoint, object data) =>
+        EwdData.DataHelper.Init(prefab, spawnPoint, Quaternion.identity, null, (EwdData.DataEntry)data);
 
     internal static void SpawnObjects(Vector3 spawnPoint, ExpandWorldSpawnDataPayload? payload)
     {
-        if (payload?.Objects == null || payload.Objects.Count == 0)
+        if (!ExpandWorldDataCompatibility.IsAvailable || payload?.Objects == null || payload.Objects.Count == 0)
         {
             return;
         }
 
-        foreach (EwdBlueprintObject obj in payload.Objects)
+        SpawnEwdObjects(spawnPoint, payload.Objects);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void SpawnEwdObjects(Vector3 spawnPoint, IList objects)
+    {
+        foreach (EwdBlueprintObject obj in objects)
         {
             if (obj.Chance < 1f && UnityEngine.Random.value > obj.Chance)
             {

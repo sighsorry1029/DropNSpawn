@@ -34,6 +34,8 @@ Use the merged DLL. To compare transport fixtures against an earlier release, ad
 
 To validate an external EWD integration build without replacing the pinned compile reference, add `--ewd-dll 'C:\path\to\ExpandWorldData.dll'`. Use its original filename in a dependency folder. EWD 1.73 checks cover the actual dynamic patch targets/transpiler instructions, AltBiome payload handoff, export extension preservation, and weak-reference lifetime. Earlier EWD builds must produce an empty integration patch plan.
 
+Use `--ewd-dll none` to deliberately deny EWD assembly loading, including the vendored reference. This checks standalone managed paths and missing-extension rejection; omitting the option is not an absence test. With EWD present, the same suite verifies acceptance of the existing extensions. YAML/wire schemas remain unchanged. Local parser rejection is exercised in all affected domains; the full SpawnSystem rejection logger requires a native scene signature and is not executed by this host.
+
 The console host loads the actual assembly and original game dependencies, invokes managed methods through reflection, and exits nonzero on a failed assertion. Coverage includes five-domain serialization/signatures and clone isolation; chunk assembly and delta validation; character empty-list semantics and mutable drop ownership; event selection and metadata/payload lifetime; VNEI event detachment; persistent-event set/clear/omit, export, clone and transport behavior; direct game/EWD member resolution and access levels; static Harmony targets/arguments/state; and the SpawnArea transpiler against original IL. It does not compile a second copy of the production algorithms. This is not a full plugin `Awake`/`PatchAll` or EWD startup test.
 
 The host uses HarmonyX 2.16 only inside the .NET 8 test process because the game's older Harmony build targets Unity Mono. This dependency is not referenced by the mod project or shipped in the mod DLL. Unity objects used as managed fixtures are uninitialized instances with explicitly populated fields; native Unity constructors, scene behavior, and real Harmony installation are not exercised. Assertion counts include individual fields and are not counts of independent gameplay scenarios.
@@ -48,9 +50,13 @@ The additional isolated Mono check uses the installed game's Mono runtime and Ha
 & .\tools\DropNSpawn.MonoChecks\Run.ps1 -GameManaged 'C:\path\to\original\valheim_server_Data\Managed'
 # Optional official EWD runtime DLL in the disposable test folder only:
 & .\tools\DropNSpawn.MonoChecks\Run.ps1 -EwdDll 'C:\path\to\ExpandWorldData.dll'
+# Truly absent optional dependency: no EWD DLL is copied to the isolated folder.
+& .\tools\DropNSpawn.MonoChecks\Run.ps1 -WithoutEwd
 ```
 
 The hidden child process uses a disposable temporary folder and a 30-second timeout. It verifies private field/delegate access, cached delegates observing later Harmony detours and the native managed item-provenance initializer. Test artifacts are retained at the printed path. It starts no Unity scene, game session or networking. Localization targets are checked statically: its static constructor installs scene-related hooks and cannot run in this native-Unity-free harness.
+
+Without EWD, the probe also enumerates all mod types and constructs their Harmony class processors, executes the optional spawn wrappers under Unity Mono, and installs/removes the actual SpawnSystem spawn patch. Standalone faction application captures the new instance immediately after native Instantiate; the EWD-present pre-Awake data path is unchanged. Actual faction behavior, ZDO ownership/rejoin restoration and real plugin startup remain gameplay checks.
 
 With EWD 1.73, the probe also installs the real DNS compatibility patches, removes an already-installed EWD Spawn lifecycle patch, exercises disabled manager entrypoints and patch refreshes, and checks that saved feature flags are unchanged. The EWD event scheduler starts disabled in this probe because installing it requires native Player/Animator initialization. Removal of an already-active EWD scheduler is therefore an in-game check, not a passing isolated scenario. The BepInEx work queue is a managed fixture and ServerSync's deferred startup is not run. Unity Time internal-call resolution warnings can occur while Harmony JITs original methods; those native methods are not executed by the assertions.
 

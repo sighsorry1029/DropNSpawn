@@ -22,7 +22,9 @@ Customize Valheim's drops, loot, spawners, world spawning, and raids with YAML. 
 
 Install the same DropNSpawn version and its dependencies on the server and all clients. A mod manager is the simplest option; for manual installation, place `DropNSpawn.dll` in `BepInEx/plugins/`.
 
-Requires **BepInExPack Valheim 5.4.2350** and **Expand World Data**. The current target is **Valheim 1.0.15**; see the [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.15.md) for reviewed EWD builds and existing-YAML update notes.
+Requires **BepInExPack Valheim 5.4.2351**. **Expand World Data is optional**: DNS's basic drops, spawners, world spawning, raids, and native faction overrides work without it. Install EWD **1.71 or newer** on the server and clients to use spawn `data`/`fields`/`objects`, event `startCommands`/`endCommands`, or EWD custom biomes. Without EWD, nonempty extension settings reject the affected domain's configuration update and retain its previous accepted configuration; they are not silently ignored. Empty extension fields are allowed.
+
+The current target is **Valheim 1.0.15**; see the [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.15.md) for reviewed EWD builds and existing-YAML update notes. Restart after changing the installed mod set; mixed EWD capability between peers is not supported for EWD-dependent configurations.
 
 ## Quick start
 
