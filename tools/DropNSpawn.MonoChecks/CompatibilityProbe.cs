@@ -7,6 +7,7 @@ using System.Runtime.Serialization;
 using System.Linq;
 using BepInEx.Configuration;
 using HarmonyLib;
+using System.Reflection.Emit;
 
 namespace DropNSpawn.Tests
 {
@@ -17,6 +18,16 @@ namespace DropNSpawn.Tests
         private const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance;
         private static int checks;
         private static int postfixCalls;
+        private static Type spawnerLimitManager;
+        private static readonly Dictionary<CreatureSpawner, ZDO> groupCounters = new Dictionary<CreatureSpawner, ZDO>(new SpawnerFixtureComparer());
+        private static CreatureSpawner selectedGroupSpawner;
+
+        // Fixture identity only: Unity Object equality needs native scene state.
+        private sealed class SpawnerFixtureComparer : IEqualityComparer<CreatureSpawner>
+        {
+            public bool Equals(CreatureSpawner x, CreatureSpawner y) => ReferenceEquals(x, y);
+            public int GetHashCode(CreatureSpawner obj) => RuntimeHelpers.GetHashCode(obj);
+        }
 
         public static int Run()
         {
@@ -108,9 +119,104 @@ namespace DropNSpawn.Tests
             string ewdPath = Path.Combine(testRoot, "ExpandWorldData.dll");
             Type compatibilityType = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
             compatibilityType.GetMethod("ConfigureDependency", All).Invoke(null, new object[] { File.Exists(ewdPath) ? Assembly.LoadFrom(ewdPath) : null });
+            CheckCreatureSpawnerLimits(mod);
             if (File.Exists(ewdPath)) CheckEwdCompatibility(mod);
             else CheckStandalone(mod);
         }
+
+        private static void CheckCreatureSpawnerLimits(Assembly mod)
+        {
+            var production = new Harmony("DropNSpawn.isolated.spawner.limit");
+            var isolation = new Harmony("DropNSpawn.isolated.spawner.fixtures");
+            spawnerLimitManager = mod.GetType("DropNSpawn.SpawnerManager", true);
+            try
+            {
+                production.CreateClassProcessor(mod.GetType("DropNSpawn.CreatureSpawnerSpawnPatch", true)).Patch();
+                Check(true, "CreatureSpawner Spawn prefix/postfix including state and runOriginal install under Mono");
+                production.UnpatchSelf();
+                production.CreateClassProcessor(mod.GetType("DropNSpawn.CreatureSpawnerGroupSpawnPatch", true)).Patch();
+
+                // Run the real group loop + production transpiler. Only native RNG,
+                // scene/config-dependent candidate setup and Instantiate are replaced.
+                isolation.Patch(spawnerLimitManager.GetMethod("IsCreatureSpawnerGroupCandidate", All),
+                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolatedGroupCandidate)));
+                isolation.Patch(AccessTools.Method(typeof(CreatureSpawner), "Spawn"),
+                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolatedGroupSpawn)));
+                isolation.Patch(AccessTools.Method(typeof(CreatureSpawner.Group), "SpawnWeighted"),
+                    transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateGroupNativeCalls)));
+
+                var exhausted = (CreatureSpawner)FormatterServices.GetUninitializedObject(typeof(CreatureSpawner));
+                var eligible = (CreatureSpawner)FormatterServices.GetUninitializedObject(typeof(CreatureSpawner));
+                var view = (ZNetView)FormatterServices.GetUninitializedObject(typeof(ZNetView));
+                AccessTools.Field(typeof(CreatureSpawner), "m_nview").SetValue(eligible, view);
+                var netView = (AccessTools.FieldRef<CreatureSpawner, ZNetView>)spawnerLimitManager.GetField("CreatureSpawnerNetView", All).GetValue(null);
+                Check(ReferenceEquals(netView(eligible), view), "cached accessor reads the original private CreatureSpawner network view under Mono");
+                exhausted.m_spawnerWeight = 100f;
+                eligible.m_spawnerWeight = 1f;
+                int countKey = (int)spawnerLimitManager.GetField("CreatureSpawnerTotalSpawnCountZdoKey", All).GetValue(null);
+                MethodInfo setInt = AccessTools.Method(typeof(ZDOExtraData), "Set", new[] { typeof(ZDOID), typeof(int), typeof(int) });
+                foreach (var pair in new[] { new KeyValuePair<CreatureSpawner, uint>(exhausted, 92001), new KeyValuePair<CreatureSpawner, uint>(eligible, 92002) })
+                {
+                    var zdo = (ZDO)FormatterServices.GetUninitializedObject(typeof(ZDO));
+                    zdo.m_uid = new ZDOID(9812346L, pair.Value);
+                    AccessTools.Property(typeof(ZDO), "Owner").SetValue(zdo, true);
+                    groupCounters.Add(pair.Key, zdo);
+                }
+                setInt.Invoke(null, new object[] { groupCounters[exhausted].m_uid, countKey, 1 });
+                var group = new CreatureSpawner.Group();
+                typeof(HashSet<CreatureSpawner>).GetFields(All)
+                    .Single(field => field.FieldType == typeof(IEqualityComparer<CreatureSpawner>))
+                    .SetValue(group, new SpawnerFixtureComparer());
+                group.Add(exhausted);
+                group.Add(eligible);
+                Check(group.Count == 2, "two distinct managed spawner fixtures in the native group");
+                group.SpawnWeighted();
+                Check(ReferenceEquals(selectedGroupSpawner, eligible), "exhausted high-weight member neither spawns nor consumes another member's probability");
+                selectedGroupSpawner = null;
+                setInt.Invoke(null, new object[] { groupCounters[eligible].m_uid, countKey, 1 });
+                group.SpawnWeighted();
+                Check(ReferenceEquals(selectedGroupSpawner, null), "group with all limits exhausted selects no spawner");
+                setInt.Invoke(null, new object[] { groupCounters[exhausted].m_uid, countKey, 0 });
+                group.SpawnWeighted();
+                Check(ReferenceEquals(selectedGroupSpawner, exhausted), "eligibility is reevaluated on the next group attempt");
+            }
+            finally
+            {
+                isolation.UnpatchSelf();
+                production.UnpatchSelf();
+                groupCounters.Clear();
+                selectedGroupSpawner = null;
+                spawnerLimitManager = null;
+            }
+        }
+
+        private static bool IsolatedGroupCandidate(CreatureSpawner spawner, ref bool __result)
+        {
+            __result = (bool)spawnerLimitManager.GetMethod("CanCreatureSpawnerSpawnWithLimit", All).Invoke(null, new object[] { groupCounters[spawner], 1 });
+            return false;
+        }
+
+        private static bool IsolatedGroupSpawn(CreatureSpawner __instance, ref ZNetView __result)
+        {
+            selectedGroupSpawner = __instance;
+            __result = null;
+            return false;
+        }
+
+        private static IEnumerable<CodeInstruction> IsolateGroupNativeCalls(IEnumerable<CodeInstruction> instructions)
+        {
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (instruction.operand is MethodInfo method && method.DeclaringType == typeof(UnityEngine.Random) && method.Name == "Range")
+                    instruction.operand = AccessTools.Method(typeof(CompatibilityProbe), nameof(FirstWeight));
+                else if (instruction.operand is MethodInfo log && log.DeclaringType == typeof(ZLog) && log.Name == "LogError")
+                    instruction.operand = AccessTools.Method(typeof(CompatibilityProbe), nameof(IgnoreEmptyGroupLog));
+                yield return instruction;
+            }
+        }
+
+        private static float FirstWeight(float min, float max) => min;
+        private static void IgnoreEmptyGroupLog(object message) { }
 
         private static void CheckStandalone(Assembly mod)
         {

@@ -11,6 +11,7 @@ internal static class SpawnerGlobalConfig
     internal const int MaxZeroCreatureSpawnerRespawnTimeMinutes = 60;
 
     private static ConfigEntry<int>? _defaultSpawnAreaMaxTotalSpawns;
+    private static ConfigEntry<int>? _defaultCreatureSpawnerMaxTotalSpawns;
     private static ConfigEntry<int>? _defaultZeroCreatureSpawnerRespawnTimeMinutes;
 
     internal static void Bind(DropNSpawnPlugin plugin)
@@ -26,6 +27,16 @@ internal static class SpawnerGlobalConfig
                 new AcceptableValueRange<int>(MinSpawnAreaMaxTotalSpawns, MaxSpawnAreaMaxTotalSpawns)),
             synchronizedSetting: true,
             configManagerOrder: 450);
+
+        _defaultCreatureSpawnerMaxTotalSpawns = plugin.BindConfigEntry(
+            "1 - General",
+            "Default CreatureSpawner Max Total Spawns",
+            0,
+            new ConfigDescription(
+                $"Default cumulative successful-spawn limit for each CreatureSpawner. 0 adds no limit and preserves native one-time/respawn rules. Values from 1 to {MaxSpawnAreaMaxTotalSpawns} stop further spawning without destroying the spawner. Only successful spawns while a positive limit is active are counted; saved counts survive reloads and disabling the limit. Override per YAML entry with creatureSpawner.maxTotalSpawns.",
+                new AcceptableValueRange<int>(MinSpawnAreaMaxTotalSpawns, MaxSpawnAreaMaxTotalSpawns)),
+            synchronizedSetting: true,
+            configManagerOrder: 445);
 
         _defaultZeroCreatureSpawnerRespawnTimeMinutes = plugin.BindConfigEntry(
             "1 - General",
@@ -47,6 +58,7 @@ internal static class SpawnerGlobalConfig
         }
 
         _defaultSpawnAreaMaxTotalSpawns = null;
+        _defaultCreatureSpawnerMaxTotalSpawns = null;
         _defaultZeroCreatureSpawnerRespawnTimeMinutes = null;
     }
 
@@ -58,6 +70,11 @@ internal static class SpawnerGlobalConfig
     internal static int GetDefaultZeroCreatureSpawnerRespawnTimeMinutes()
     {
         return ClampZeroCreatureSpawnerRespawnTimeMinutes(_defaultZeroCreatureSpawnerRespawnTimeMinutes?.Value ?? 0);
+    }
+
+    internal static int GetDefaultCreatureSpawnerMaxTotalSpawns()
+    {
+        return ClampSpawnAreaMaxTotalSpawns(_defaultCreatureSpawnerMaxTotalSpawns?.Value ?? 0);
     }
 
     internal static int ClampSpawnAreaMaxTotalSpawns(int value)

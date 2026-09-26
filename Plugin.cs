@@ -36,7 +36,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
 
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
-    internal const string ModVersion = "1.3.15";
+    internal const string ModVersion = "1.3.16";
     internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
     private static string ConfigFileName = $"{ModGUID}.cfg";

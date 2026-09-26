@@ -89,6 +89,7 @@ internal static partial class SpawnerManager
         AppendScaffoldLine(builder, 2, $"level: {RangeFormatting.FormatInlineObject(GetLevelRange(definition) ?? RangeFormatting.From(1, 1))}");
         AppendScaffoldLine(builder, 2, $"levelUpChance: {FormatYamlFloat(definition.LevelUpChance ?? 10f)}");
         AppendScaffoldLine(builder, 2, $"respawnTimeMinutes: {FormatYamlFloat(definition.RespawnTimeMinutes ?? 20f)}");
+        AppendScaffoldLine(builder, 2, $"maxTotalSpawns: {definition.MaxTotalSpawns?.ToString() ?? "null"}");
         AppendScaffoldLine(builder, 2, $"spawnCheckInterval: {definition.SpawnCheckInterval ?? 5}");
         AppendScaffoldLine(builder, 2, $"spawnGroupId: {definition.SpawnGroupId ?? 0}");
         AppendScaffoldLine(builder, 2, $"spawnGroupRadius: {FormatYamlFloat(definition.SpawnGroupRadius ?? 0f)}");

@@ -82,6 +82,7 @@ creatureSpawner:
   creature: Skeleton
   level: 1~2
   respawnTimeMinutes: 20
+  maxTotalSpawns: 100
   triggerDistance: 60
   timeOfDay: [night]
   allowInsidePlayerBase: false
@@ -92,6 +93,7 @@ Meaning:
 - `creature`: what this spawner creates
 - `level`: spawned creature level range
 - `respawnTimeMinutes`: respawn delay after the previous spawned creature is gone
+- `maxTotalSpawns`: cumulative successful-spawn limit for this individual spawner (details below)
 - `triggerDistance`: players must be close enough for the spawner to pass its native runtime check
 - `timeOfDay`: native day/night gate
 - `allowInsidePlayerBase`: if `false`, native player-base suppression still blocks this spawner
@@ -100,6 +102,30 @@ Native no-op note:
 
 - `requireSpawnArea` may still appear in native snapshots
 - current Valheim code does not use it, so treat it as a no-op and omit it
+
+### Cumulative spawn limit
+
+Set the synchronized config `1 - General / Default CreatureSpawner Max Total Spawns` for a global default, or override a prefab in `DNS_spawner.yml`:
+
+```yaml
+- prefab: Spawner_Boar
+  creatureSpawner:
+    maxTotalSpawns: 100
+```
+
+Use the exact prefab name from your generated reference. This field also works with existing location selectors and conditions; the usual single-winning-rule policy still applies.
+
+- Omitted or `null`: use the config default, initially `0`.
+- `0`: no **DNS cumulative limit**. This does not enable respawning or bypass native conditions.
+- `1`–`1000`: stop this spawner after that many counted successes. Counts are per instance, not shared by prefab or spawn group.
+- Only successful spawns while a positive limit is active are counted. Failed attempts and earlier unlimited/pre-feature spawns do not consume the limit.
+- The owner stores the count in the spawner's ZDO. YAML/config changes do not erase it; disabling the limit stops counting without clearing previous progress. Native world saving and network synchronization carry this ZDO data.
+- At the limit, the `CreatureSpawner` **stops but is not destroyed**. Raising the limit can allow more spawns, subject to native timing and conditions. Lowering it below the saved count stops further spawns.
+- Existing creatures and native spawn connections remain intact. Exhausted members are excluded from group selection and its weight sum, but existing creatures still participate in native living-group checks.
+
+This is independent of `respawnTimeMinutes` and `spawnCheckInterval`. In particular, `respawnTimeMinutes: 0` retains native one-time behavior even if `maxTotalSpawns` is `0` or `100`. The separate `Default zero CreatureSpawner respawn time minutes` config can explicitly enable respawning when YAML does not specify its timing; the new cumulative limit does not change that setting.
+
+The existing `spawnArea.maxTotalSpawns` has a different exhaustion policy: it **destroys** the SpawnArea. That behavior is unchanged. Install the same updated DNS build on server and clients; the Spawner synchronization schema changed to carry the new field.
 
 ## Native Spawn Group Fields
 
@@ -255,4 +281,5 @@ Use this shorthand:
 - `spawnGroupId`: which group this spawner belongs to
 - `spawnGroupRadius`: how far that group can link to nearby same-id spawners
 - `maxGroupSpawned`: how many spawned creatures the whole group can allow
+- `maxTotalSpawns`: how many successful spawns one spawner can perform while its DNS cumulative limit is enabled
 - `spawnerWeight`: which spawner wins when the group chooses one spawner to fire

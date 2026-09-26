@@ -73,6 +73,9 @@ internal static class PluginSettingsFacade
     internal static int GetDefaultSpawnAreaMaxTotalSpawns() =>
         SpawnerGlobalConfig.GetDefaultSpawnAreaMaxTotalSpawns();
 
+    internal static int GetDefaultCreatureSpawnerMaxTotalSpawns() =>
+        SpawnerGlobalConfig.GetDefaultCreatureSpawnerMaxTotalSpawns();
+
     internal static int GetDefaultZeroCreatureSpawnerRespawnTimeMinutes() =>
         SpawnerGlobalConfig.GetDefaultZeroCreatureSpawnerRespawnTimeMinutes();
 

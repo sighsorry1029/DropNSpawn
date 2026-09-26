@@ -126,6 +126,7 @@ internal static partial class ConfigurationEntryCloneSupport
             MaxLevel = source.MaxLevel,
             LevelUpChance = source.LevelUpChance,
             RespawnTimeMinutes = source.RespawnTimeMinutes,
+            MaxTotalSpawns = source.MaxTotalSpawns,
             SpawnCheckInterval = source.SpawnCheckInterval,
             SpawnGroupId = source.SpawnGroupId,
             SpawnGroupRadius = source.SpawnGroupRadius,

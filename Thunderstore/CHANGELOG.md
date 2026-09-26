@@ -1,3 +1,11 @@
+## 1.3.16 — CreatureSpawner cumulative spawn limits
+
+- Added the synchronized `Default CreatureSpawner Max Total Spawns` config and per-entry `creatureSpawner.maxTotalSpawns` YAML field. Omitted/null values inherit the config default; `0` adds no cumulative limit, and `1`–`1000` limits successful spawns per spawner instance.
+- Stored owner-counted successes in the spawner's ZDO while a positive limit is active. Reloading or disabling the limit preserves its saved count; earlier unlimited/pre-feature spawns are not counted retroactively. Reaching the limit stops spawning without destroying the CreatureSpawner, and raising the limit can allow spawning to resume under native rules.
+- Preserved native one-time behavior, respawn timing, spawn connections and living-group limits. Exhausted group members are excluded from both candidate selection and the weight sum, so they cannot consume eligible members' spawn opportunities. Existing SpawnArea destruction behavior is unchanged.
+- Updated generated templates, full scaffolds, cloning and synchronized payloads for the new field. The Spawner network schema is now 8; existing YAML remains valid, but update the server and all clients to 1.3.16 together and restart.
+- Added original-game-DLL contract checks and isolated Mono coverage for counters, ownership, live default changes, one-time YAML values, patch installation and weighted group selection. Actual world-save/restart, ownership-transfer and multiplayer gameplay checks remain in-game verification steps.
+
 ## 1.3.15 — Standalone support and optional Expand World Data
 
 - Made Expand World Data a soft dependency and removed it from the required package dependencies. Basic drops, spawners, world spawning, raids and faction overrides now work without EWD; existing optional CreatureManager faction integration is retained.

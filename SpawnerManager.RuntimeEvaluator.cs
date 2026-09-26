@@ -212,7 +212,7 @@ internal static partial class SpawnerManager
             return false;
         }
 
-        return true;
+        return PrepareCreatureSpawnerTotalSpawnLimit(creatureSpawner, out _);
     }
 
     private static void ClearRuntimeReconcileState()

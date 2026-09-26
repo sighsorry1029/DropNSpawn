@@ -501,6 +501,7 @@ internal static partial class SpawnerManager
 
     private static void ApplyCreatureSpawner(CreatureSpawner target, CreatureSpawnerDefinition definition, string context)
     {
+        LiveReconcilerState.SetAppliedCreatureSpawnerTotalSpawnLimit(target, definition.MaxTotalSpawns);
         if (definition.Creature != null)
         {
             string creatureName = definition.Creature.Trim();

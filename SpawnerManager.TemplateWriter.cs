@@ -73,6 +73,7 @@ internal static partial class SpawnerManager
         AppendTemplateLine(builder, 2, "level: 1~1 # ex) 1~2 # Range of spawned creature levels");
         AppendTemplateLine(builder, 2, "levelUpChance: 10 # Percent chance for each extra level roll when level is a range");
         AppendTemplateLine(builder, 2, "respawnTimeMinutes: 20 # 0 disables respawn after the first successful spawn # Minutes before this spawner can respawn after the previous creature is gone");
+        AppendTemplateLine(builder, 2, "maxTotalSpawns: null # null uses General / Default CreatureSpawner Max Total Spawns # 0 adds no limit # 1~1000 stops this spawner after that many successful spawns counted while limited; does not enable respawn or destroy the spawner");
         AppendTemplateLine(builder, 2, "spawnCheckInterval: 5 # Seconds between UpdateSpawner checks for this spawner");
         AppendTemplateLine(builder, 2, "spawnGroupId: 0 # Use spawnGroupRadius: 0 to avoid grouping # Nearby spawners with the same id can share native group blocking");
         AppendTemplateLine(builder, 2, "spawnGroupRadius: 0 # Meters used to link nearby same-id spawners into one native group");

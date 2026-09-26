@@ -279,12 +279,15 @@ internal static class CreatureSpawnerUpdateSpawnerPatch
 [HarmonyPatch(typeof(CreatureSpawner), "Spawn")]
 internal static class CreatureSpawnerSpawnPatch
 {
-    private static void Prefix(CreatureSpawner __instance)
+    private static bool Prefix(CreatureSpawner __instance, out ZDO? __state)
     {
+        __state = null;
         if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
         {
-            return;
+            return true;
         }
+
+        if (!SpawnerManager.PrepareCreatureSpawnerSpawn(__instance, out __state)) return false;
 
         Vector3 spawnPoint = __instance.transform.position;
         if (ZoneSystem.instance != null && ZoneSystem.instance.FindFloor(spawnPoint, out float height))
@@ -293,16 +296,52 @@ internal static class CreatureSpawnerSpawnPatch
         }
 
         SpawnerManager.InitializeCreatureSpawnerSpawnData(__instance, __instance.m_creaturePrefab, spawnPoint);
+        return true;
     }
 
-    private static void Postfix(CreatureSpawner __instance, ZNetView __result)
+    private static void Postfix(CreatureSpawner __instance, ZNetView __result, ZDO? __state, bool __runOriginal)
     {
+        SpawnerManager.RecordCreatureSpawnerTotalSpawn(__state, __runOriginal && __result != null && __result.IsValid());
         if (!PluginSettingsFacade.IsSpawnerDomainEnabled())
         {
             return;
         }
 
         SpawnerManager.ApplyCreatureSpawnerSpawnOverrides(__instance, __result);
+    }
+}
+
+[HarmonyPatch(typeof(CreatureSpawner.Group), nameof(CreatureSpawner.Group.SpawnWeighted))]
+internal static class CreatureSpawnerGroupSpawnPatch
+{
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        var result = instructions.ToList();
+        MethodInfo add = AccessTools.Method(typeof(List<CreatureSpawner>), nameof(List<CreatureSpawner>.Add));
+        int addIndex = result.FindIndex(instruction => instruction.Calls(add));
+        int start = addIndex - 3;
+        // The native eligible block adds both the candidate and its weight. Skip
+        // the whole block, using the existing loop-continue label, so exhausted
+        // spawners cannot consume another member's weighted spawn opportunity.
+        if (start < 1 || result[start].opcode != OpCodes.Ldarg_0 ||
+            result[start + 1].opcode != OpCodes.Ldfld ||
+            result[start + 1].operand is not FieldInfo field || field.Name != "m_activeSpawners" ||
+            (result[start - 1].opcode != OpCodes.Brtrue && result[start - 1].opcode != OpCodes.Brtrue_S) ||
+            result[start - 1].operand is not Label skip)
+            throw new InvalidOperationException("CreatureSpawner.Group.SpawnWeighted candidate/weight contract changed.");
+
+        var load = new CodeInstruction(result[addIndex - 1].opcode, result[addIndex - 1].operand);
+        load.labels.AddRange(result[start].labels);
+        load.blocks.AddRange(result[start].blocks);
+        result[start].labels.Clear();
+        result[start].blocks.Clear();
+        result.InsertRange(start, new[]
+        {
+            load,
+            new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(SpawnerManager), nameof(SpawnerManager.IsCreatureSpawnerGroupCandidate))),
+            new CodeInstruction(OpCodes.Brfalse, skip)
+        });
+        return result;
     }
 }
 

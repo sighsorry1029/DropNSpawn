@@ -234,6 +234,17 @@ internal static partial class Program
                     {
                         List<CodeInstruction> input = PatchProcessor.GetOriginalInstructions(original);
                         var output = ((IEnumerable<CodeInstruction>)patch.Invoke(null, new object[] { input })!).ToList();
+                        if (type.Name == "CreatureSpawnerGroupSpawnPatch")
+                        {
+                            int gate = output.FindIndex(i => i.operand is MethodInfo m && m.Name == "IsCreatureSpawnerGroupCandidate");
+                            int add = output.FindIndex(i => i.operand is MethodInfo m && m.DeclaringType?.Name == "List`1" && m.Name == "Add");
+                            if (output.Count != input.Count + 3 || gate < 1 || add != gate + 5 ||
+                                output[gate + 1].opcode != OpCodes.Brfalse || output[gate + 1].operand is not Label skip ||
+                                !output.Skip(add + 1).Any(i => i.labels.Contains(skip)))
+                                failures.Add("CreatureSpawner group gate must skip both candidate insertion and its weight");
+                            transpilers++;
+                            continue;
+                        }
                         bool worldSpawn = type.Name == "SpawnSystemSpawnPatch";
                         string callbackName = worldSpawn ? "ApplyStandaloneFaction" : "RecordSpawnedObject";
                         int callback = output.FindIndex(i => i.operand is MethodInfo m && m.Name == callbackName);
@@ -292,7 +303,7 @@ internal static partial class Program
 
     private static Type Element(Type type) => type.IsByRef ? type.GetElementType()! : type;
 
-    private static bool CheckPersistentEventSchemaUpgrade(ModContract current, ModContract baseline, string domain)
+    private static bool CheckKnownSchemaUpgrade(ModContract current, ModContract baseline, string domain)
     {
         object currentSchema = Invoke(current.Type("NetworkPayloadSyncSupport"), null, $"Create{domain}EntrySchema")!;
         object baselineSchema = Invoke(baseline.Type("NetworkPayloadSyncSupport"), null, $"Create{domain}EntrySchema")!;
@@ -300,7 +311,8 @@ internal static partial class Program
         int newVersion = (int)Property(currentSchema, "DtoVersion")!;
         if (oldVersion == newVersion) return false;
         Check((domain == "SpawnSystem" && oldVersion == 3 && newVersion == 4) ||
-              (domain == "Event" && oldVersion == 2 && newVersion == 3), domain + ": explicit persistent-event schema upgrade");
+              (domain == "Event" && oldVersion == 2 && newVersion == 3) ||
+              (domain == "Spawner" && oldVersion == 7 && newVersion == 8), domain + ": explicit schema upgrade");
         var fixture = Fixtures.Single(f => f.Domain == domain);
         byte[] oldBytes = Serialize(baseline, baselineSchema);
         byte[] newBytes = Serialize(current, currentSchema);

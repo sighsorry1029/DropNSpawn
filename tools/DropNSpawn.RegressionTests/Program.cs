@@ -29,7 +29,7 @@ internal static partial class Program
         ("Spawner", "SpawnerConfigurationEntry", """
         {"Prefab":"TestSpawner","RuleId":"spawner-rule","SourcePath":"local.yml","Locations":["Crypt"],
          "SpawnArea":{"MaxTotalSpawns":7,"Creatures":[{"Creature":"Skeleton","Weight":2,"Fields":{"health":"20"},"Objects":["Wood,0,0,0,1"]}]},
-         "CreatureSpawner":{"Creature":"Skeleton","RespawnTimeMinutes":4,"TimeOfDay":{"Values":[]},"Fields":{}}}
+         "CreatureSpawner":{"Creature":"Skeleton","RespawnTimeMinutes":4,"MaxTotalSpawns":100,"TimeOfDay":{"Values":[]},"Fields":{}}}
         """),
         ("SpawnSystem", "CanonicalSpawnSystemEntry", """
         {"Prefab":"TestWorldSpawn","RuleId":"world-rule","SourcePath":"local.yml","ReferenceOwnerName":"A mod",
@@ -64,7 +64,7 @@ internal static partial class Program
                 foreach (KeyValuePair<string, string> pair in expected)
                 {
                     string domain = pair.Key.Split(':')[0];
-                    if (domain is "SpawnSystem" or "Event" && CheckPersistentEventSchemaUpgrade(current, baseline, domain))
+                    if (domain is "SpawnSystem" or "Event" or "Spawner" && CheckKnownSchemaUpgrade(current, baseline, domain))
                         continue;
                     Check(actual[pair.Key] == pair.Value, $"wire/signature compatibility: {pair.Key}");
                 }
@@ -79,6 +79,7 @@ internal static partial class Program
             CheckConfigReloadContracts(current);
             CheckEwdCompatibilityContracts(current);
             CheckOptionalEwdContracts(current);
+            CheckCreatureSpawnerLimitContracts(current);
             Console.WriteLine($"PASS: {_checks} managed contract checks. Unity gameplay and network execution are not covered.");
             return 0;
         }

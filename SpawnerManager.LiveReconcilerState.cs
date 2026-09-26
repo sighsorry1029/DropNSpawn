@@ -14,6 +14,7 @@ internal static partial class SpawnerManager
         private readonly Dictionary<CreatureSpawner, ExpandWorldSpawnDataPayload> _appliedCreatureSpawnerData = new();
         private readonly Dictionary<CreatureSpawner, string> _appliedCreatureSpawnerFaction = new();
         private readonly Dictionary<CreatureSpawner, TimeOfDayDefinition> _appliedCreatureSpawnerTimeOfDay = new();
+        private readonly Dictionary<CreatureSpawner, int> _appliedCreatureSpawnerTotalSpawnLimits = new();
         private readonly Dictionary<SpawnArea, List<SpawnArea.SpawnData>> _appliedSpawnAreaPrefabsByInstance = new();
         private readonly Dictionary<SpawnArea.SpawnData, ExpandWorldSpawnDataPayload> _appliedSpawnAreaDataBySpawnData = new();
         private readonly Dictionary<SpawnArea.SpawnData, string> _appliedSpawnAreaFactionBySpawnData = new();
@@ -245,6 +246,16 @@ internal static partial class SpawnerManager
             RemoveAppliedCreatureSpawnerData(creatureSpawner);
             RemoveAppliedCreatureSpawnerFaction(creatureSpawner);
             RemoveAppliedCreatureSpawnerTimeOfDay(creatureSpawner);
+            if (!ReferenceEquals(creatureSpawner, null)) _appliedCreatureSpawnerTotalSpawnLimits.Remove(creatureSpawner);
+        }
+
+        public int? GetAppliedCreatureSpawnerTotalSpawnLimit(CreatureSpawner creatureSpawner) =>
+            _appliedCreatureSpawnerTotalSpawnLimits.TryGetValue(creatureSpawner, out int limit) ? limit : null;
+
+        public void SetAppliedCreatureSpawnerTotalSpawnLimit(CreatureSpawner creatureSpawner, int? limit)
+        {
+            if (limit.HasValue) _appliedCreatureSpawnerTotalSpawnLimits[creatureSpawner] = limit.Value;
+            else _appliedCreatureSpawnerTotalSpawnLimits.Remove(creatureSpawner);
         }
 
         public bool TryGetAppliedCreatureSpawnerCheckInterval(int instanceId, out int interval)
@@ -409,6 +420,7 @@ internal static partial class SpawnerManager
             _appliedCreatureSpawnerData.Clear();
             _appliedCreatureSpawnerFaction.Clear();
             _appliedCreatureSpawnerTimeOfDay.Clear();
+            _appliedCreatureSpawnerTotalSpawnLimits.Clear();
             _appliedSpawnAreaPrefabsByInstance.Clear();
             _appliedSpawnAreaDataBySpawnData.Clear();
             _appliedSpawnAreaFactionBySpawnData.Clear();

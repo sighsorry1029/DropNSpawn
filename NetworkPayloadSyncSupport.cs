@@ -1341,6 +1341,7 @@ PublishExit:
         WriteNullableInt(builder, definition.MaxLevel);
         WriteNullableFloat(builder, definition.LevelUpChance);
         WriteNullableFloat(builder, definition.RespawnTimeMinutes);
+        WriteNullableInt(builder, definition.MaxTotalSpawns);
         WriteNullableInt(builder, definition.SpawnCheckInterval);
         WriteNullableInt(builder, definition.SpawnGroupId);
         WriteNullableFloat(builder, definition.SpawnGroupRadius);
@@ -1661,6 +1662,7 @@ PublishExit:
         WriteNullableInt(package, definition.MaxLevel);
         WriteNullableFloat(package, definition.LevelUpChance);
         WriteNullableFloat(package, definition.RespawnTimeMinutes);
+        WriteNullableInt(package, definition.MaxTotalSpawns);
         WriteNullableInt(package, definition.SpawnCheckInterval);
         WriteNullableInt(package, definition.SpawnGroupId);
         WriteNullableFloat(package, definition.SpawnGroupRadius);
@@ -1691,6 +1693,7 @@ PublishExit:
             MaxLevel = ReadNullableInt(package),
             LevelUpChance = ReadNullableFloat(package),
             RespawnTimeMinutes = ReadNullableFloat(package),
+            MaxTotalSpawns = ReadNullableInt(package),
             SpawnCheckInterval = ReadNullableInt(package),
             SpawnGroupId = ReadNullableInt(package),
             SpawnGroupRadius = ReadNullableFloat(package),

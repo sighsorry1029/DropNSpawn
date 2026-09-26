@@ -157,4 +157,6 @@ internal sealed class CreatureSpawnerDefinition
     public Dictionary<string, string>? Fields { get; set; }
     [YamlMember(Order = 22)]
     public List<string>? Objects { get; set; }
+    [YamlMember(Order = 23)]
+    public int? MaxTotalSpawns { get; set; }
 }

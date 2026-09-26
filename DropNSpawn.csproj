@@ -594,7 +594,7 @@
         <Compile Include="SpawnerManager.SelectorCache.cs"/>
         <Compile Include="SpawnerManager.SelectorMatching.cs"/>
         <Compile Include="SpawnerManager.SelectorState.cs"/>
-        <Compile Include="SpawnerManager.SpawnAreaTotalSpawns.cs"/>
+        <Compile Include="SpawnerManager.TotalSpawns.cs"/>
         <Compile Include="SpawnerManager.TemplateWriter.cs"/>
         <Compile Include="SpawnerManager.Vnei.cs"/>
         <Compile Include="VneiCompatibility.cs"/>

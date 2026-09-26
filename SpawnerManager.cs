@@ -35,7 +35,7 @@ internal static partial class SpawnerManager
             InitializeRuntime = Initialize,
             OnGameDataReady = OnGameDataReady,
             HandleExpandWorldDataReady = HandleExpandWorldDataReady,
-            DtoVersion = 7,
+            DtoVersion = 8,
             TransportProfile = DomainTransportProfile.MediumConfig,
             DisplayName = "spawner",
             CacheDirectoryName = "spawner",
@@ -1249,6 +1249,11 @@ internal static partial class SpawnerManager
 
         if (entry.CreatureSpawner != null)
         {
+            if (entry.CreatureSpawner.MaxTotalSpawns.HasValue)
+            {
+                entry.CreatureSpawner.MaxTotalSpawns = SpawnerGlobalConfig.ClampSpawnAreaMaxTotalSpawns(entry.CreatureSpawner.MaxTotalSpawns.Value);
+            }
+
             NormalizeCreatureSpawnerEntryConditions(entry.Conditions, $"{entry.Prefab}.conditions");
 
             if (entry.CreatureSpawner.Level?.HasValues() == true)
@@ -1837,6 +1842,7 @@ internal static partial class SpawnerManager
                 definition.MaxLevel.HasValue ||
                 definition.LevelUpChance.HasValue ||
                 definition.RespawnTimeMinutes.HasValue ||
+                definition.MaxTotalSpawns.HasValue ||
                 definition.TriggerDistance.HasValue ||
                 definition.TriggerNoise.HasValue ||
                 definition.RequireSpawnArea.HasValue ||

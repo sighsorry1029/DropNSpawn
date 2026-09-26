@@ -1,9 +1,61 @@
+using System;
+using HarmonyLib;
 using UnityEngine;
 
 namespace DropNSpawn;
 
 internal static partial class SpawnerManager
 {
+    private static readonly int CreatureSpawnerTotalSpawnCountZdoKey = "DropNSpawn.CreatureSpawner.TotalSpawnCount".GetStableHashCode();
+    private static readonly AccessTools.FieldRef<CreatureSpawner, ZNetView> CreatureSpawnerNetView =
+        AccessTools.FieldRefAccess<CreatureSpawner, ZNetView>("m_nview");
+
+    // Only the YAML override is cached; reading the global default here makes
+    // live config edits effective without scanning/restarting every spawner.
+    private static int ResolveCreatureSpawnerMaxTotalSpawns(int? configuredMaxTotalSpawns) =>
+        configuredMaxTotalSpawns.HasValue
+            ? SpawnerGlobalConfig.ClampSpawnAreaMaxTotalSpawns(configuredMaxTotalSpawns.Value)
+            : PluginSettingsFacade.GetDefaultCreatureSpawnerMaxTotalSpawns();
+
+    private static bool PrepareCreatureSpawnerTotalSpawnLimit(CreatureSpawner spawner, out ZDO? counter)
+    {
+        counter = null;
+        int limit = ResolveCreatureSpawnerMaxTotalSpawns(LiveReconcilerState.GetAppliedCreatureSpawnerTotalSpawnLimit(spawner));
+        if (limit <= 0) return true;
+        ZDO? zdo = CreatureSpawnerNetView(spawner)?.GetZDO();
+        if (!CanCreatureSpawnerSpawnWithLimit(zdo, limit)) return false;
+        counter = zdo;
+        return true;
+    }
+
+    // Group selection can call Spawn on a different member without running its
+    // UpdateSpawner. Check its applied limit at selection and at the final spawn;
+    // normal update/reload reconciliation owns changes to the full YAML rule.
+    internal static bool PrepareCreatureSpawnerSpawn(CreatureSpawner spawner, out ZDO? counter)
+    {
+        counter = null;
+        if (!ShouldApplyLocally()) return true;
+        if (ShouldBlockClientSpawnerUpdate()) return false;
+        return PrepareCreatureSpawnerTotalSpawnLimit(spawner, out counter);
+    }
+
+    internal static bool IsCreatureSpawnerGroupCandidate(CreatureSpawner spawner) =>
+        PrepareCreatureSpawnerSpawn(spawner, out _);
+
+    internal static bool CanCreatureSpawnerSpawnWithLimit(ZDO? zdo, int limit) =>
+        limit <= 0 || (zdo != null && zdo.IsValid() && zdo.IsOwner() &&
+                       Math.Max(0, zdo.GetInt(CreatureSpawnerTotalSpawnCountZdoKey, 0)) < limit);
+
+    internal static void RecordCreatureSpawnerTotalSpawn(ZDO? counter, bool successful)
+    {
+        // Captured only for positive limits before an owned spawn. Never reset
+        // counts on reload/disable, destroy the spawner, or alter native respawn
+        // flags/connections: one-time and group living-count rules remain native.
+        if (!successful || counter == null || !counter.IsValid() || !counter.IsOwner()) return;
+        int count = Math.Max(0, counter.GetInt(CreatureSpawnerTotalSpawnCountZdoKey, 0));
+        if (count < int.MaxValue) counter.Set(CreatureSpawnerTotalSpawnCountZdoKey, count + 1);
+    }
+
     private static readonly int SpawnAreaTotalSpawnCountZdoKey = "DropNSpawn.SpawnArea.TotalSpawnCount".GetStableHashCode();
     private static readonly int SpawnAreaMaxTotalSpawnsZdoKey = "DropNSpawn.SpawnArea.MaxTotalSpawns".GetStableHashCode();
 
