@@ -42,9 +42,16 @@ internal static class ExpandWorldDataCompatibility
     {
         if (assembly != null)
         {
-            string? version = assembly.GetType("ExpandWorldData.EWD")?.GetField("VERSION")?.GetRawConstantValue() as string;
-            if (!System.Version.TryParse(version, out System.Version parsed) || parsed < new System.Version(1, 71))
-                throw new InvalidOperationException("Installed Expand World Data is unsupported; DNS requires EWD 1.71 or newer when EWD is present. Update EWD or remove it before starting DNS.");
+            // VERSION is informational, not a compatibility key (including suffixes
+            // and forks). Check the core data contract without resolving typed EWD
+            // helpers on the standalone path. Ownership contracts are checked below.
+            Type data = RequireType(assembly, "Data.DataEntry");
+            Type helper = RequireType(assembly, "Data.DataHelper");
+            RequireType(assembly, "ExpandWorldData.BlueprintObject");
+            RequireMethod(helper, "Get", data, typeof(string), typeof(string));
+            RequireMethod(helper, "Merge", data, data, data);
+            RequireMethod(helper, "Init", typeof(ZDO), typeof(GameObject), typeof(Vector3),
+                typeof(Quaternion), typeof(Vector3?), data);
         }
         _assembly = assembly;
     }
@@ -108,6 +115,16 @@ internal static class ExpandWorldDataCompatibility
             // EWD.Awake ran first and may already have installed these patches.
             // Run its own disable paths so its patch-state flags stay consistent.
             RefreshEwdPatches(assembly, ewdHarmony);
+            // The shared EWD registry logs unpatch failures instead of throwing.
+            // Verify the ownership boundary rather than treating a void return as success.
+            foreach (MethodBase target in Harmony.GetAllPatchedMethods())
+            {
+                var info = Harmony.GetPatchInfo(target);
+                if (info != null && info.Prefixes.Concat(info.Postfixes).Concat(info.Transpilers).Concat(info.Finalizers)
+                    .Any(patch => patch.owner == ewdHarmony.Id && patch.PatchMethod.DeclaringType?.Assembly == assembly &&
+                                  IsOwnedDomain(patch.PatchMethod.DeclaringType)))
+                    throw new InvalidOperationException($"EWD still owns a DNS domain patch on {target.DeclaringType?.FullName}.{target.Name}; restart required.");
+            }
         }
         catch
         {
@@ -131,7 +148,8 @@ internal static class ExpandWorldDataCompatibility
 
     private static void RefreshEwdPatches(Assembly assembly, Harmony ewdHarmony)
     {
-        foreach (string domain in new[] { "Spawn", "Event" })
+        foreach (string domain in assembly.GetType("ExpandWorld.Spawn.SpawnManager") != null
+                     ? new[] { "Spawn", "Event", "Drops" } : new[] { "Spawn", "Event" })
             RequireMethod(RequireType(assembly, $"ExpandWorld.{domain}.Patcher"), "Patch", typeof(void), typeof(Harmony))
                 .Invoke(null, new object[] { ewdHarmony });
     }
@@ -144,7 +162,39 @@ internal static class ExpandWorldDataCompatibility
         var result = new List<(MethodInfo, HarmonyPatchType, string)>();
         if (assembly.GetType("ExpandWorld.Spawn.Patcher") == null) return result;
 
-        foreach (string domain in new[] { "Spawn", "Event" })
+        if (assembly.GetType("ExpandWorld.Spawn.SpawnManager") != null)
+        {
+            // The synced-manager layout uses one patch registry, with unconditional
+            // lifecycle hooks and independent event scheduling gates. Let its own
+            // unpatch path maintain registry state and run cleanup callbacks.
+            Add(RequireType(assembly, "ExpandWorldData.Patches"), "Apply", typeof(void),
+                HarmonyPatchType.Prefix, nameof(DisableOwnedPatch), typeof(Harmony), typeof(bool),
+                typeof(Type), typeof(string), typeof(Type), typeof(string), typeof(HarmonyPatchType),
+                typeof(int), typeof(Type[]), typeof(bool), typeof(object), typeof(Action));
+            foreach (string domain in new[] { "Spawn", "Event", "Drops" })
+            {
+                Type manager = RequireType(assembly, $"ExpandWorld.{domain}.{(domain == "Drops" ? "Drop" : domain)}Manager");
+                // Resolve refresh targets before installing any patch as well.
+                RequireMethod(RequireType(assembly, $"ExpandWorld.{domain}.Patcher"), "Patch", typeof(void), typeof(Harmony));
+                Add(manager, "ReadConfigs", typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
+                Add(manager, "FromSetting", typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(string));
+                Add(manager, "Set", typeof(bool), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(Dictionary<string, string>));
+                Add(manager, domain == "Drops" ? "ToReferenceFile" : "CreateConfigs", typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
+            }
+            Add(RequireType(assembly, "ExpandWorld.Spawn.SpawnManager"), "ApplySpawnData", typeof(void),
+                HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(SpawnSystem));
+            Add(RequireType(assembly, "ExpandWorld.Spawn.SpawnManager"), "InitializeData", typeof(void),
+                HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
+            Add(RequireType(assembly, "ExpandWorld.Spawn.SpawnManager"), "InitializeSpawnSystem", typeof(void),
+                HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(SpawnSystem));
+            Add(RequireType(assembly, "ExpandWorld.Event.EventManager"), "ApplyTiming", typeof(void),
+                HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(RandEventSystem));
+            foreach (string name in new[] { "DelayClientLoad", "InitializeServerData", "InitializeClientData" })
+                Add(RequireType(assembly, "ExpandWorld.Event.EventManager"), name, typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
+            Add(RequireType(assembly, "ExpandWorld.Drops.DropManager"), "InitializeData", typeof(void),
+                HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
+        }
+        else foreach (string domain in new[] { "Spawn", "Event" })
         {
             Type manager = RequireType(assembly, $"ExpandWorld.{domain}.Manager");
             foreach (string name in new[] { "CreateConfig", "ReadConfig", "Toggle" })
@@ -153,18 +203,16 @@ internal static class ExpandWorldDataCompatibility
                 Add(manager, name, typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(string));
             Add(RequireType(assembly, $"ExpandWorld.{domain}.Patcher"), "Patch", typeof(void),
                 HarmonyPatchType.Transpiler, nameof(DisableOwnedFeatures), typeof(Harmony));
+            Add(manager, domain == "Spawn" ? "ApplySpawnData" : "ApplyTiming", typeof(void),
+                HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), domain == "Spawn" ? typeof(SpawnSystem) : typeof(RandEventSystem));
         }
-        Add(RequireType(assembly, "ExpandWorld.Spawn.Manager"), "ApplySpawnData", typeof(void),
-            HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(SpawnSystem));
-        Add(RequireType(assembly, "ExpandWorld.Event.Manager"), "ApplyTiming", typeof(void),
-            HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(RandEventSystem));
         Add(RequireType(assembly, "ExpandWorldData.Api"), "GetCurrentRandomEvent", typeof(RandomEvent),
             HarmonyPatchType.Transpiler, nameof(DisableOwnedFeatures), typeof(Vector3));
 
         Type data = RequireType(assembly, "ExpandWorld.Spawn.Data");
         Type loader = RequireType(assembly, "ExpandWorld.Spawn.Loader");
         Add(RequireType(assembly, "ExpandWorld.Spawn.LoaderFields"), "HandleCustomData", typeof(EwdData.DataEntry),
-            HarmonyPatchType.Transpiler, nameof(DisableOwnedFeatures), data, typeof(SpawnSystem.SpawnData));
+            HarmonyPatchType.Transpiler, nameof(DisableSpawnDrops), data, typeof(SpawnSystem.SpawnData));
         Add(loader, "FromData", typeof(SpawnSystem.SpawnData), HarmonyPatchType.Postfix,
             nameof(CaptureSpawnData), data, typeof(string));
         Add(loader, "ToData", data, HarmonyPatchType.Postfix, nameof(RestoreSpawnData), typeof(SpawnSystem.SpawnData));
@@ -189,6 +237,39 @@ internal static class ExpandWorldDataCompatibility
     }
 
     private static bool SkipOwnedDomain() => false;
+
+    private static void DisableOwnedPatch(ref bool __1, Type __4)
+    {
+        // Arguments are shouldPatch and patchType. Do not affect the shared
+        // registry's world, AltBiome, blueprint or common-data patches.
+        if (IsOwnedDomain(__4))
+            __1 = false;
+    }
+
+    private static bool IsOwnedDomain(Type type) =>
+        type.Namespace is "ExpandWorld.Spawn" or "ExpandWorld.Event" or "ExpandWorld.Drops";
+
+    private static IEnumerable<CodeInstruction> DisableSpawnDrops(IEnumerable<CodeInstruction> instructions)
+    {
+        int changed = 0;
+        foreach (CodeInstruction instruction in instructions)
+        {
+            // New loaders no longer test DataDrops. Replace only the value read,
+            // not the source DTO, so faction/fields and the user's YAML stay intact.
+            if (instruction.opcode == OpCodes.Ldfld && instruction.operand is FieldInfo field &&
+                field.DeclaringType?.FullName == "ExpandWorld.Spawn.Data" && field.Name == "drops" && field.FieldType == typeof(string))
+            {
+                instruction.opcode = OpCodes.Pop;
+                instruction.operand = null;
+                yield return instruction; // retain labels/exception markers
+                yield return new CodeInstruction(OpCodes.Ldnull);
+                changed++;
+            }
+            else yield return instruction;
+        }
+        if (changed == 0)
+            throw new InvalidOperationException("EWD spawn drop conversion changed; refusing an incomplete loot compatibility patch.");
+    }
 
     private static IEnumerable<CodeInstruction> DisableOwnedFeatures(IEnumerable<CodeInstruction> instructions)
     {

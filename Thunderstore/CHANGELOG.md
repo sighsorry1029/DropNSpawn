@@ -1,3 +1,10 @@
+## 1.3.17 — Expand World Data 1.74 compatibility
+
+- Fixed startup failure with EWD 1.74 after its Spawn/Event managers and loading APIs were reorganized. Added support for its shared patch registry and independent Drop domain while retaining existing EWD 1.71/1.73 and standalone DNS paths.
+- Select compatibility patches by actual types and method signatures instead of EWD version numbers. Equivalent APIs remain accepted when version labels change; missing required APIs fail explicitly rather than silently allowing conflicting owners.
+- Keep EWD's overlapping Spawn/Event/Drop features disabled across initialization, reload and synchronization, even with enabled settings or nonempty tables. EWD world/AltBiome systems, spawn data/fields/objects/faction, and user configuration files remain unchanged.
+- Added version-variant, missing-API and isolated Mono regression checks. YAML formats and network schemas are unchanged; update DNS on the server and all clients to 1.3.17 together and restart. Actual gameplay and multiplayer remain in-game verification steps.
+
 ## 1.3.16 — CreatureSpawner cumulative spawn limits
 
 - Added the synchronized `Default CreatureSpawner Max Total Spawns` config and per-entry `creatureSpawner.maxTotalSpawns` YAML field. Omitted/null values inherit the config default; `0` adds no cumulative limit, and `1`–`1000` limits successful spawns per spawner instance.

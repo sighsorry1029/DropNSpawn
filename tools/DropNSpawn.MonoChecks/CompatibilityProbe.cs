@@ -19,6 +19,7 @@ namespace DropNSpawn.Tests
         private static int checks;
         private static int postfixCalls;
         private static Type spawnerLimitManager;
+        private static bool ewdServer;
         private static readonly Dictionary<CreatureSpawner, ZDO> groupCounters = new Dictionary<CreatureSpawner, ZDO>(new SpawnerFixtureComparer());
         private static CreatureSpawner selectedGroupSpawner;
 
@@ -265,23 +266,40 @@ namespace DropNSpawn.Tests
                 configType.GetField(name).SetValue(null, config.Bind("test", name, true, ""));
             var upstream = new Harmony("DropNSpawn.isolated.ewd");
             var compatibility = new Harmony("DropNSpawn.isolated.ewd.compatibility");
+            var isolation = new Harmony("DropNSpawn.isolated.ewd.scene-fixture");
             MethodInfo spawn = spawnPatcher.GetMethod("Patch");
             MethodInfo events = eventPatcher.GetMethod("Patch");
             Type compat = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
+            bool syncedManagers = ewd.GetType("ExpandWorld.Spawn.SpawnManager") != null;
+            MethodInfo drops = ewd.GetType("ExpandWorld.Drops.Patcher")?.GetMethod("Patch");
+            MethodInfo registry = ewd.GetType("ExpandWorldData.Patches")?.GetMethod("Apply");
             try
             {
+                if (syncedManagers)
+                {
+                    // The new patcher queries native ZNet/Object state even when
+                    // features are off. Only the server/client role is a fixture.
+                    ewdServer = true;
+                    isolation.Patch(ewd.GetType("ExpandWorldData.Helper", true).GetMethod("IsServer"),
+                        prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(EwdServerFixture)));
+                }
                 // Reproduce EWD.Awake-before-DNS order, including already JITted gates.
                 // No RandEventSystem scene exists here; avoid its native null check
                 // during the unpatched spawn patcher's active-event enumeration.
                 var eventSwitch = (ConfigEntry<bool>)configType.GetField("configDataEvents").GetValue(null);
                 eventSwitch.Value = false;
+                var multipleSwitch = (ConfigEntry<bool>)configType.GetField("configMultipleEvents").GetValue(null);
+                var perPlayerSwitch = (ConfigEntry<bool>)configType.GetField("configCheckPerPlayer").GetValue(null);
+                multipleSwitch.Value = perPlayerSwitch.Value = false;
                 spawn.Invoke(null, new object[] { upstream });
                 events.Invoke(null, new object[] { upstream });
+                drops?.Invoke(null, new object[] { upstream });
                 Check(HasOwner(typeof(SpawnSystem), "Awake", upstream.Id), "EWD normal spawn lifecycle initially enabled");
                 // Installing the upstream scheduler needs Player/Animator native
                 // initialization. Verify its disabled gates here; removal of an
                 // already-installed scheduler remains an in-game check.
                 eventSwitch.Value = true;
+                multipleSwitch.Value = perPlayerSwitch.Value = true;
                 // Supply the EWD Harmony instance directly: full EWD/ServerSync
                 // startup needs Unity and is intentionally outside this probe.
                 compat.GetMethod("InstallPatches", All).Invoke(null, new object[] { compatibility, ewd, upstream });
@@ -289,16 +307,60 @@ namespace DropNSpawn.Tests
                 Check(!HasOwner(typeof(RandEventSystem), "FixedUpdate", upstream.Id), "DNS keeps EWD scheduler disabled despite saved true setting");
                 spawn.Invoke(null, new object[] { upstream });
                 events.Invoke(null, new object[] { upstream });
+                drops?.Invoke(null, new object[] { upstream });
                 Check(!HasOwner(typeof(SpawnSystem), "Awake", upstream.Id) && !HasOwner(typeof(RandEventSystem), "FixedUpdate", upstream.Id),
                     "EWD runtime patch refresh cannot reclaim DNS domains");
-                foreach (string domain in new[] { "Spawn", "Event" })
+                if (syncedManagers)
                 {
-                    Type manager = ewd.GetType("ExpandWorld." + domain + ".Manager", true);
-                    foreach (string name in new[] { "CreateConfig", "ReadConfig", "Toggle" })
-                        manager.GetMethod(name, All).Invoke(null, null);
-                    foreach (string name in new[] { "FromSetting", "Set" })
-                        manager.GetMethod(name, All).Invoke(null, new object[] { "invalid YAML: [" });
-                    manager.GetMethod(domain == "Spawn" ? "ApplySpawnData" : "ApplyTiming", All).Invoke(null, new object[] { null });
+                    Check(!HasOwner(typeof(ZoneSystem), "Start", upstream.Id) && !HasOwner(typeof(RandEventSystem), "Awake", upstream.Id) &&
+                        !HasOwner(typeof(ZNet), "Awake", upstream.Id), "EWD unconditional lifecycle hooks are removed");
+                    // A non-owned callback must still pass through the shared registry.
+                    registry.Invoke(null, new object[] { upstream, true, typeof(CompatibilityProbe), "RegistrySentinel",
+                        typeof(CompatibilityProbe), "ObserveEvent", HarmonyPatchType.Postfix, 400, null, false, null, null });
+                    Check(HasOwner(typeof(CompatibilityProbe), "RegistrySentinel", upstream.Id), "shared registry still installs non-owned patches");
+                    // Nonempty tables must not let later refreshes reinstall loot,
+                    // spawn customization or numeric-key consumption hooks either.
+                    var spawnRow = new SpawnSystem.SpawnData { m_requiredGlobalKey = "fixture 1" };
+                    ewd.GetType("ExpandWorld.Spawn.SpawnManager", true).GetField("Override").SetValue(null,
+                        new List<SpawnSystem.SpawnData> { spawnRow });
+                    var spawnData = (System.Collections.IDictionary)ewd.GetType("ExpandWorld.Spawn.Loader", true).GetField("Data").GetValue(null);
+                    spawnData.Add(spawnRow, Activator.CreateInstance(ewd.GetType("Data.DataEntry", true)));
+                    var dropData = (System.Collections.IDictionary)ewd.GetType("ExpandWorld.Drops.DropManager", true).GetField("DataByHash").GetValue(null);
+                    dropData.Add(1, FormatterServices.GetUninitializedObject(ewd.GetType("ExpandWorld.Drops.Data", true)));
+                    spawn.Invoke(null, new object[] { upstream });
+                    drops.Invoke(null, new object[] { upstream });
+                    Check(!HasOwner(typeof(SpawnSystem), "Spawn", upstream.Id) && !HasOwner(typeof(ZoneSystem), "RPC_SetGlobalKey", upstream.Id) &&
+                        !HasOwner(typeof(CharacterDrop), "GenerateDropList", upstream.Id) && !HasOwner(typeof(Container), "AddDefaultItems", upstream.Id),
+                        "nonempty EWD tables cannot reinstall spawn, key or drop hooks");
+                    spawnData.Remove(spawnRow);
+                    dropData.Clear();
+                    ewd.GetType("ExpandWorld.Spawn.SpawnManager", true).GetField("Override").SetValue(null, null);
+                    ewdServer = false;
+                    events.Invoke(null, new object[] { upstream });
+                    Check(!HasOwner(typeof(SpawnSystem), "Awake", upstream.Id) && !HasOwner(typeof(RandEventSystem), "Awake", upstream.Id),
+                        "client-side EWD lifecycle refresh stays suppressed");
+                }
+                foreach (string domain in syncedManagers ? new[] { "Spawn", "Event", "Drops" } : new[] { "Spawn", "Event" })
+                {
+                    Type manager = ewd.GetType("ExpandWorld." + domain + "." + (syncedManagers ? (domain == "Drops" ? "Drop" : domain) : "") + "Manager", true);
+                    if (syncedManagers)
+                    {
+                        foreach (string name in domain == "Spawn" ? new[] { "ReadConfigs", "CreateConfigs", "InitializeData" } :
+                            domain == "Event" ? new[] { "ReadConfigs", "CreateConfigs", "DelayClientLoad", "InitializeServerData", "InitializeClientData" } :
+                            new[] { "ReadConfigs", "ToReferenceFile", "InitializeData" })
+                            manager.GetMethod(name, All).Invoke(null, null);
+                        Check(!(bool)manager.GetMethod("Set", All).Invoke(null, new object[] { new Dictionary<string, string> { ["invalid.yaml"] = "invalid: [" } }),
+                            "EWD " + domain + " Set rejects without publishing data");
+                        if (domain == "Spawn") manager.GetMethod("InitializeSpawnSystem", All).Invoke(null, new object[] { null });
+                    }
+                    else
+                    {
+                        foreach (string name in new[] { "CreateConfig", "ReadConfig", "Toggle" })
+                            manager.GetMethod(name, All).Invoke(null, null);
+                        manager.GetMethod("Set", All).Invoke(null, new object[] { "invalid YAML: [" });
+                    }
+                    manager.GetMethod("FromSetting", All).Invoke(null, new object[] { "invalid YAML: [" });
+                    if (domain != "Drops") manager.GetMethod(domain == "Spawn" ? "ApplySpawnData" : "ApplyTiming", All).Invoke(null, new object[] { null });
                     Check(true, "EWD " + domain + " direct/reload/sync entrypoints skipped without scene access");
                 }
                 Type dtoType = ewd.GetType("ExpandWorld.Spawn.Data", true);
@@ -307,6 +369,12 @@ namespace DropNSpawn.Tests
                 object customData = ewd.GetType("ExpandWorld.Spawn.LoaderFields", true).GetMethod("HandleCustomData")
                     .Invoke(null, new[] { dto, (object)new SpawnSystem.SpawnData() });
                 Check(customData == null, "EWD drop conversion is disabled despite saved true setting");
+                Check((string)dtoType.GetField("drops").GetValue(dto) == "test_drop", "EWD source drop definition is not mutated");
+                dtoType.GetField("faction").SetValue(dto, "AnimalsVeg");
+                customData = ewd.GetType("ExpandWorld.Spawn.LoaderFields", true).GetMethod("HandleCustomData")
+                    .Invoke(null, new[] { dto, (object)new SpawnSystem.SpawnData() });
+                Check(customData != null && customData.GetType().GetField("Hashes").GetValue(customData) == null &&
+                    customData.GetType().GetField("Strings").GetValue(customData) != null, "EWD faction data survives while drop hashes stay absent");
                 foreach (string name in switches)
                     Check(((ConfigEntry<bool>)configType.GetField(name).GetValue(null)).Value, "EWD user setting preserved: " + name);
                 Check(!File.Exists(configPath), "EWD compatibility did not create/save config");
@@ -315,6 +383,7 @@ namespace DropNSpawn.Tests
             {
                 compatibility.UnpatchSelf();
                 upstream.UnpatchSelf();
+                isolation.UnpatchSelf();
             }
         }
 
@@ -325,6 +394,8 @@ namespace DropNSpawn.Tests
         }
 
         private static void ObserveEvent() { postfixCalls++; }
+        private static void RegistrySentinel() { }
+        private static bool EwdServerFixture(ref bool __result) { __result = ewdServer; return false; }
         private static void Check(bool ok, string label)
         {
             if (!ok) throw new InvalidOperationException("FAIL: " + label);

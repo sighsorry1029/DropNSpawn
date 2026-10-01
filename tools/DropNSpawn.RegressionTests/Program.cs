@@ -255,16 +255,18 @@ internal static partial class Program
     {
         private readonly string[] _searchPaths;
         private readonly string? _ewdPath;
+        private readonly bool _ewdFromMemory;
         internal bool WithoutEwd { get; }
         private readonly Assembly _assembly;
         internal Assembly Assembly => _assembly;
         internal string[] SearchPaths => _searchPaths;
-        internal ModContract(string assemblyPath, string gamePath, string projectPath, string? managedPath = null, string? ewdPath = null) : base(isCollectible: true)
+        internal ModContract(string assemblyPath, string gamePath, string projectPath, string? managedPath = null, string? ewdPath = null, bool ewdFromMemory = false) : base(isCollectible: true)
         {
             // Resolve game types only from original assemblies, never stale output
             // copies or publicized references. --managed-dir also supports server snapshots.
             WithoutEwd = ewdPath == "none";
             _ewdPath = ewdPath == null || WithoutEwd ? null : Path.GetFullPath(ewdPath);
+            _ewdFromMemory = ewdFromMemory;
             if (_ewdPath != null && !File.Exists(_ewdPath)) throw new FileNotFoundException("Requested EWD test input was not found.", _ewdPath);
             _searchPaths = new[] { Path.GetFullPath(managedPath ?? Path.Combine(gamePath, "valheim_Data", "Managed")),
                 Path.Combine(gamePath, "BepInEx", "core"),
@@ -280,7 +282,13 @@ internal static partial class Program
         {
             if (name.Name == "0Harmony") return typeof(HarmonyLib.AccessTools).Assembly;
             if (name.Name == "ExpandWorldData" && WithoutEwd) throw new FileNotFoundException("EWD deliberately unavailable in standalone test.");
-            if (name.Name == "ExpandWorldData" && _ewdPath != null) return LoadFromAssemblyPath(_ewdPath);
+            if (name.Name == "ExpandWorldData" && _ewdPath != null)
+            {
+                if (!_ewdFromMemory) return LoadFromAssemblyPath(_ewdPath);
+                // Mutable contract fixtures must not stay memory-mapped/locked on Windows.
+                using var stream = File.OpenRead(_ewdPath);
+                return LoadFromStream(stream);
+            }
             if (name.Name is null || name.Name is "mscorlib" or "netstandard" || name.Name.StartsWith("System", StringComparison.Ordinal)) return null;
             foreach (string directory in _searchPaths)
                 foreach (string filename in new[] { name.Name + ".dll" })

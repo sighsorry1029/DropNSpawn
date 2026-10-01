@@ -117,12 +117,14 @@ internal static partial class Program
         Assembly ewd = mod.LoadGameAssembly("ExpandWorldData");
         Type compat = mod.Type("ExpandWorldDataCompatibility");
         var plan = (IList)Invoke(compat, null, "GetPatchPlan", ewd)!;
+        CheckEwdCapabilitySelection(mod, ewd, plan.Count);
         if (ewd.GetType("ExpandWorld.Spawn.Patcher") == null)
         {
             Check(plan.Count == 0, "pre-integration EWD needs no ownership patches");
             return;
         }
-        Check(plan.Count == 18, "integrated EWD ownership/metadata contract resolves completely");
+        bool syncedManagers = ewd.GetType("ExpandWorld.Spawn.SpawnManager") != null;
+        Check(plan.Count == (syncedManagers ? 25 : 18), "integrated EWD ownership/metadata contract resolves completely");
         int transpilers = 0;
         foreach (object entry in plan)
         {
@@ -133,15 +135,39 @@ internal static partial class Program
             {
                 var original = PatchProcessor.GetOriginalInstructions(target);
                 int oldGates = original.Count(IsFeatureGate);
-                var rewritten = ((IEnumerable<CodeInstruction>)Invoke(compat, null, callback, original)!).ToList();
-                Check(oldGates > 0 && !rewritten.Any(IsFeatureGate), "EWD feature calls suppressed: " + target.DeclaringType!.FullName);
-                Check(rewritten.Count == original.Count, "EWD rewrite preserves instruction/branch layout: " + target.Name);
+                var rewritten = ((IEnumerable<CodeInstruction>)Invoke(compat, null, callback, original.Select(i => new CodeInstruction(i)))!).ToList();
+                if (callback == "DisableSpawnDrops")
+                {
+                    int reads = original.Count(IsDropRead);
+                    Check(reads > 0 && !rewritten.Any(IsDropRead), "EWD drop conversion cannot read the configured drop table");
+                    Check(rewritten.Count == original.Count + reads, "each drop value read is replaced by a stack-balanced pop/null");
+                    Check(original.Where(i => i.operand is FieldInfo field && field.Name is "faction" or "fields")
+                        .All(i => rewritten.Any(r => r.opcode == i.opcode && Equals(r.operand, i.operand))), "EWD faction/fields reads remain intact");
+                }
+                else
+                {
+                    Check(oldGates > 0 && !rewritten.Any(IsFeatureGate), "EWD feature calls suppressed: " + target.DeclaringType!.FullName);
+                    Check(rewritten.Count == original.Count, "EWD rewrite preserves instruction/branch layout: " + target.Name);
+                }
                 transpilers++;
+            }
+            else if (callback == "DisableOwnedPatch")
+            {
+                foreach (string typeName in new[] { "ExpandWorld.Spawn.SpawnManager", "ExpandWorld.Event.EventManager", "ExpandWorld.Drops.DropManager", "ExpandWorldData.AltBiomeManager", "Data.DataHelper" })
+                {
+                    Type patchType = ewd.GetType(typeName, true)!;
+                    foreach (bool enabled in new[] { false, true })
+                    {
+                        object?[] args = { enabled, patchType };
+                        Invoke(compat, null, callback, args);
+                        Check((bool)args[0]! == (enabled && !typeName.StartsWith("ExpandWorld.", StringComparison.Ordinal)), "registry ownership boundary: " + typeName + "/" + enabled);
+                    }
+                }
             }
             else if (kind == HarmonyPatchType.Prefix)
                 Check(!(bool)Invoke(compat, null, callback)!, "EWD owned entrypoint skipped: " + target.DeclaringType!.FullName + "." + target.Name);
         }
-        Check(transpilers == 4, "EWD patchers, event API and drop conversion are covered");
+        Check(transpilers == (syncedManagers ? 2 : 4), "EWD ownership, event API and drop conversion are covered");
 
         Type loader = ewd.GetType("ExpandWorld.Spawn.Loader", true)!;
         Type dtoType = ewd.GetType("ExpandWorld.Spawn.Data", true)!;
@@ -156,6 +182,7 @@ internal static partial class Program
         object spawn = Activator.CreateInstance(spawnType)!;
         object source = Activator.CreateInstance(dtoType)!;
         object exported = Activator.CreateInstance(dtoType)!;
+        object? originalDrops = dtoType.GetField("drops")!.GetValue(exported);
         object customData = Activator.CreateInstance(ewd.GetType("Data.DataEntry", true)!)!;
         var customObjects = (IList)Activator.CreateInstance(objects.GetType().GetGenericArguments()[1])!;
         customObjects.Add(RuntimeHelpers.GetUninitializedObject(ewd.GetType("ExpandWorldData.BlueprintObject", true)!));
@@ -177,7 +204,7 @@ internal static partial class Program
         foreach (FieldInfo field in extensions)
             Check(Equals(field.GetValue(exported), field.GetValue(source)), "AltBiome sync retains " + field.Name);
         Check((float)dtoType.GetField("spawnInterval")!.GetValue(exported)! == 12.5f, "AltBiome export retains current native interval");
-        Check((string)dtoType.GetField("drops")!.GetValue(exported)! == "", "AltBiome export does not enable EWD loot");
+        Check(Equals(dtoType.GetField("drops")!.GetValue(exported), originalDrops), "AltBiome export does not enable EWD loot");
         object nativeSpawn = Activator.CreateInstance(spawnType)!;
         object nativeExport = Activator.CreateInstance(dtoType)!;
         Invoke(compat, null, "RestoreSpawnData", nativeSpawn, nativeExport);
@@ -194,6 +221,84 @@ internal static partial class Program
 
         static bool IsFeatureGate(CodeInstruction instruction) => instruction.opcode == OpCodes.Call && instruction.operand is MethodInfo method &&
             method.DeclaringType?.FullName == "ExpandWorldData.Configuration" && method.Name is "get_DataSpawns" or "get_DataEvents" or "get_DataDrops";
+        static bool IsDropRead(CodeInstruction instruction) => instruction.opcode == OpCodes.Ldfld && instruction.operand is FieldInfo field &&
+            field.DeclaringType?.FullName == "ExpandWorld.Spawn.Data" && field.Name == "drops";
+    }
+
+    private static void CheckEwdCapabilitySelection(ModContract mod, Assembly ewd, int expectedPatches)
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "dns-ewd-contract-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string path = "";
+        try
+        {
+            foreach (string version in new[] { "0.1", "1.74-preview", "999.0" })
+            {
+                string variantDirectory = Path.Combine(directory, version);
+                Directory.CreateDirectory(variantDirectory);
+                path = Path.Combine(variantDirectory, "ExpandWorldData.dll");
+                using (var module = Mono.Cecil.ModuleDefinition.ReadModule(ewd.Location))
+                {
+                    var plugin = module.GetType("ExpandWorldData.EWD");
+                    plugin.Fields.Single(f => f.Name == "VERSION").Constant = version;
+                    plugin.CustomAttributes.Single(a => a.AttributeType.FullName == "BepInEx.BepInPlugin").ConstructorArguments[2] =
+                        new Mono.Cecil.CustomAttributeArgument(module.TypeSystem.String, version);
+                    module.Assembly.Name.Version = new Version(9, 8, 7, 6);
+                    module.Write(path);
+                }
+                using var variant = new ModContract(mod.Assembly.Location, Path.GetDirectoryName(Path.GetDirectoryName(mod.SearchPaths[1]))!,
+                    Directory.GetCurrentDirectory(), mod.SearchPaths[0], path, ewdFromMemory: true);
+                var plan = (IList)Invoke(variant.Type("ExpandWorldDataCompatibility"), null, "GetPatchPlan", variant.LoadGameAssembly("ExpandWorldData"))!;
+                Check(plan.Count == expectedPatches, "same EWD API accepted regardless of plugin/assembly version: " + version);
+            }
+            path = Path.Combine(directory, "ExpandWorldData.dll");
+            using (var module = Mono.Cecil.ModuleDefinition.ReadModule(ewd.Location))
+            {
+                var helper = module.GetType("Data.DataHelper");
+                helper.Methods.Single(m => m.Name == "Get" && m.Parameters.Count == 2).Name = "MissingGet";
+                module.Write(path);
+            }
+            try
+            {
+                using var incompatible = new ModContract(mod.Assembly.Location, Path.GetDirectoryName(Path.GetDirectoryName(mod.SearchPaths[1]))!,
+                    Directory.GetCurrentDirectory(), mod.SearchPaths[0], path, ewdFromMemory: true);
+                throw new InvalidOperationException("EWD with missing core API was accepted");
+            }
+            catch (TargetInvocationException ex) when (ex.InnerException is MissingMethodException)
+            {
+                Check(true, "same version with missing core API is rejected explicitly");
+            }
+            if (expectedPatches > 0)
+            {
+                using (var module = Mono.Cecil.ModuleDefinition.ReadModule(ewd.Location))
+                {
+                    var manager = module.GetType("ExpandWorld.Spawn.SpawnManager") ?? module.GetType("ExpandWorld.Spawn.Manager");
+                    manager.Methods.Single(m => m.Name is "ReadConfigs" or "ReadConfig").Name = "MissingReadConfig";
+                    module.Write(path);
+                }
+                using var changed = new ModContract(mod.Assembly.Location, Path.GetDirectoryName(Path.GetDirectoryName(mod.SearchPaths[1]))!,
+                    Directory.GetCurrentDirectory(), mod.SearchPaths[0], path, ewdFromMemory: true);
+                try
+                {
+                    Invoke(changed.Type("ExpandWorldDataCompatibility"), null, "GetPatchPlan", changed.LoadGameAssembly("ExpandWorldData"));
+                    throw new InvalidOperationException("EWD with missing ownership API was accepted");
+                }
+                catch (TargetInvocationException ex) when (ex.InnerException is MissingMethodException)
+                {
+                    Check(true, "same version with changed ownership API is rejected before installing patches");
+                }
+            }
+        }
+        finally
+        {
+            foreach (string variantDirectory in Directory.GetDirectories(directory))
+            {
+                File.Delete(Path.Combine(variantDirectory, "ExpandWorldData.dll"));
+                Directory.Delete(variantDirectory);
+            }
+            File.Delete(Path.Combine(directory, "ExpandWorldData.dll"));
+            Directory.Delete(directory);
+        }
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]

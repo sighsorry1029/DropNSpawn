@@ -2,6 +2,29 @@
 
 Reviewed and patched on 2026-09-24 for DropNSpawn 1.3.14 and the existing Valheim 1.0.15 target. This is a DNS compatibility boundary, not an EWD fork or a game-version upgrade. Legacy standalone Expand World Spawns / Expand World Events installations are outside this change's supported/tested scope.
 
+## EWD synced-manager layout update (2026-10-01)
+
+The supplied EWD 1.74 DLL (`adc/BepInEx/plugins/JereKuusela-Expand_World_Data/ExpandWorldData.dll`, SHA-256 `FA784B6DE84AE7F11BBDF5F992BB0F20B0B1CC56ED30D024B5BF827E6D7F349E`) replaces `Spawn.Manager` / `Event.Manager` with `SpawnManager` / `EventManager`, moves loading to per-domain synced managers, and introduces independent `Drops.DropManager`. The previous DNS build reproduces the reported `TypeLoadException` even though it builds successfully. This was an API-layout change, not a version-number rejection.
+
+DNS now selects ownership patches by the actual types and exact method signatures, not `EWD.VERSION`, plugin version or assembly version. The earlier numeric minimum check is replaced by core data-API checks. Known pre-integration EWD, the original integrated managers and the synced-manager layout remain supported; missing required APIs fail explicitly rather than silently permitting overlapping ownership. This is not a promise of compatibility with arbitrary future API changes.
+
+- New-layout `ExpandWorldData.Patches.Apply` receives `shouldPatch=false` only for Spawn/Event/Drops callback namespaces. Its native registry removes installed patches and executes cleanup callbacks; DNS verifies no overlapping EWD-owned patch remains. Subsequent refreshes cannot reinstall these patches, even with true saved settings or nonempty data tables.
+- Per-domain create/read/sync/set/initialization/apply entrypoints are skipped, including migration and automatic drop-reference generation. Shared world/AltBiome loading and registration remain untouched. No EWD config/YAML or DLL is rewritten.
+- Spawn drop conversion no longer checks `DataDrops` upstream. DNS replaces only reads of the spawn DTO's `drops` value with null; faction/fields still execute and the source DTO is unchanged. Existing weak payload handoff and export preservation for data/fields/objects/faction remain in place.
+- The compile reference remains pinned to EWD 1.71. No dependencies, YAML/wire schemas or game-version support policy changed. The initial implementation did not change the mod version or create release packages; the separately requested release is 1.3.17.
+
+Validation: Debug build with deployment and generated-code verification passes. With the supplied DLL, managed contract checks pass against original Valheim 1.0.15 client/server and 1.0.16 client/server assemblies, including unchanged five-domain wire/signatures against Release 1.3.16. Temporary DLL fixtures with changed version constants/plugin attributes/assembly versions retain the same patch plan; fixtures with missing core or ownership APIs are rejected. EWD 1.71, 1.73 and absence are also checked separately.
+
+Unity Mono isolation passes with EWD 1.74 on original 1.0.16 client/server assemblies, plus EWD 1.73 and absence on the client. This exercises real Harmony installation/removal, role-specific refreshes, nonempty-table suppression, skipped manager calls, preserved saved flags, source DTO and faction data. The new patcher always queries native ZNet state, so the scene-free probe supplies only that server/client role as a fixture. Existing Unity Time/Random/Quaternion internal-call warnings remain a harness limitation. Full plugin startup, removal of an already-active gameplay scheduler/loot hook, AltBiome spawn/sync, actual drops, reconnect and multiplayer remain in-game checks; they are not established by these tests.
+
+Release 1.3.17 validation:
+
+- Debug build with `DeployToGame=true` and generated-code verification, then ordinary Release packaging: zero warnings/errors. Final Debug/local installed DLL SHA-256: `4A9765066C5C851D7424315A4D83DB0A0DAA4CEA77DCB899797BCE2D2E4BAAB6`.
+- Final Release DLL with EWD 1.74: 1,220 managed checks per role on original 1.0.15 and 1.0.16 client/server assemblies. On 1.0.16, EWD absence passes 1,177 per role; EWD 1.71 and 1.73 pass 1,171 and 1,206 on the client. All compare five-domain wire/signatures with preserved Release 1.3.16.
+- Final Release DLL under Unity Mono: 43 checks per role with EWD 1.74 and original 1.0.16 client/server assemblies; 35 with EWD 1.73 and 26 without EWD on the client. The scene-free limitations above still apply; no actual game/multiplayer session was run.
+- Assembly/file/plugin/manifest versions agree on 1.3.17 (assembly version 1.3.17.0). Merged ServerSync/YamlDotNet and every Thunderstore/Nexus ZIP entry were verified against build/source inputs. Release DLL SHA-256: `6B3226BF72581E98EBA28E3E71817D281723CB8E37A5D2501E7ED70BF6947F4E`.
+- Thunderstore ZIP SHA-256: `16FC447C992E7A6BAF6442345ECCFA2743FA2815DC95BB93FD2C7B5EFE8D7E85`; Nexus ZIP SHA-256: `BC542A3CF28A6F6E8C67C2D92075C7282DCCD84611CF46D15B0EED18D6F065D6`. Site publication is outside this build verification.
+
 ## Optional dependency update (2026-09-25, DropNSpawn 1.3.15)
 
 DNS now declares EWD as a soft dependency and no longer requires it in the package manifest. EWD-present ownership and AltBiome behavior below are retained. BepInEx load order is preserved, and DNS checks the existing minimum EWD 1.71 before initializing domains; an unsupported installed EWD is not silently treated as absent. Compatibility patch failures still stop initialization rather than allowing overlapping owners.
