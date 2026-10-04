@@ -62,6 +62,8 @@ internal sealed class PluginRuntimeWorkCoordinator
 
     internal void QueueGameDataRefresh(DropNSpawnPlugin.ReloadDomain domains, string source)
     {
+        // Dungeon rules are server-owned scheduler data, not prefab reconciliation work.
+        domains &= ~DropNSpawnPlugin.ReloadDomain.Dungeon;
         if (domains == DropNSpawnPlugin.ReloadDomain.None)
         {
             return;

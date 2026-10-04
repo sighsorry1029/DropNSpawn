@@ -877,7 +877,7 @@ internal static partial class SpawnerManager
         return prefabName.Length > 0;
     }
 
-    private static string GetZoneLocationPrefabName(ZoneSystem.ZoneLocation? location)
+    internal static string GetZoneLocationPrefabName(ZoneSystem.ZoneLocation? location)
     {
         return (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
     }

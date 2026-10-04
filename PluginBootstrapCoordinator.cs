@@ -155,6 +155,7 @@ internal sealed class PluginBootstrapCoordinator
         NetworkPayloadSyncSupport.Initialize(_host);
         ExampleContentWriter.EnsureDefaultExampleFiles();
         DomainRegistry.InitializeRuntimeDomains();
+        DungeonSpawnManager.Initialize();
         DropNSpawnConsoleCommands.Register();
     }
 

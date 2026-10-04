@@ -1,3 +1,11 @@
+## 1.3.18 — Periodic dungeon encounters
+
+- Added server-owned `DNS_dungeon.yml` rules for location-based dungeon encounters: interval, per-player chance, weighted creature selection, spawn radius and a shared `maxAlive` limit per rule ID and dungeon instance. Each living player gets one roll per interval while capacity remains; installing the update creates an empty configuration and an inactive sample.
+- Count this feature's living creatures and pending placements toward the shared limit, including unloaded creatures through persistent ZDO tags. Preserve attribution across saves, release slots on death, and count revived identities again. Vanilla, EWP, Enforcer and other rule spawns do not consume this rule's limit.
+- Validate floor, clearance and reachability in the selected client's loaded dungeon, then validate the peer, character, current dungeon, distances and capacity on the server before creation. Reject duplicate/expired replies and simultaneous same-point placements; cancel reservations on departure, reload and world shutdown.
+- Honor CreatureManager's existing boss/Enforcer ordinary-spawn blockers through the optional API added in CreatureManager 1.2.5. Without CM, encounters run standalone; an installed incompatible CM pauses dungeon spawning with a warning. Spawned creatures retain ordinary level, modifier, loot and Karma policies.
+- Added scheduling, reservation, persistent-count and placement-response regression checks plus configuration documentation. Existing five-domain network schemas are unchanged. Update DNS to 1.3.18 on the server and all clients together; update CM to 1.2.5 too when installed. Actual dungeon physics, save/restart and multiplayer gameplay still require in-game verification.
+
 ## 1.3.17 — Expand World Data 1.74 compatibility
 
 - Fixed startup failure with EWD 1.74 after its Spawn/Event managers and loading APIs were reorganized. Added support for its shared patch registry and independent Drop domain while retaining existing EWD 1.71/1.73 and standalone DNS paths.

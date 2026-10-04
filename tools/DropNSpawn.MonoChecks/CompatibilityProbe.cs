@@ -54,6 +54,22 @@ namespace DropNSpawn.Tests
             Check(Path.GetFullPath(typeof(Character).Assembly.Location) == Path.Combine(managed, "assembly_valheim.dll"), "original game assembly");
             System.Console.WriteLine("Game: " + typeof(Character).Assembly.Location);
             System.Console.WriteLine("Harmony: " + typeof(Harmony).Assembly.FullName);
+            Type dungeonConfig = mod.GetType("DropNSpawn.DungeonSpawnConfiguration", true);
+            string dungeonSample = (string)dungeonConfig.GetField("Sample", All).GetRawConstantValue();
+            var dungeonRules = (System.Collections.IList)dungeonConfig.GetMethod("Parse", All).Invoke(null, new object[] { dungeonSample });
+            Check(dungeonRules.Count == 1, "dungeon merged YAML parser under Unity Mono");
+            Type dungeon = mod.GetType("DropNSpawn.DungeonSpawnManager", true);
+            Type scheduleType = dungeon.GetNestedType("Schedule", All);
+            object schedule = Activator.CreateInstance(scheduleType, true);
+            scheduleType.GetField("Due", All).SetValue(schedule, 60d);
+            MethodInfo due = scheduleType.GetMethod("BeginInterval", All);
+            Check((int)due.Invoke(schedule, new object[] { 0d, 60f, 4 }) == 0 && (int)due.Invoke(schedule, new object[] { 60d, 60f, 4 }) == 4 &&
+                (int)due.Invoke(schedule, new object[] { 60d, 60f, 4 }) == 0, "dungeon one per-player batch per interval under Unity Mono");
+            MethodInfo reserve = scheduleType.GetMethod("TryReserve", All);
+            Check((bool)reserve.Invoke(schedule, new object[] { 1, 3 }) && (bool)reserve.Invoke(schedule, new object[] { 1, 3 }) &&
+                !(bool)reserve.Invoke(schedule, new object[] { 1, 3 }), "multiple dungeon players share the living plus pending cap under Unity Mono");
+            int ruleTag = (int)dungeon.GetField("RuleTag", All).GetValue(null);
+            Check(ZDOExtraData.GetAllZDOIDsWithHash(ZDOExtraData.Type.String, ruleTag) != null, "original public ZDO metadata lookup for unloaded dungeon cap restore");
             foreach (string name in new[] { "EventManager+GameAccess", "CharacterDropKillerFilter", "RagdollSetupMonsterInstantLootDropPatch", "VneiCompatibility" })
             {
                 RuntimeHelpers.RunClassConstructor(mod.GetType("DropNSpawn." + name, true).TypeHandle);

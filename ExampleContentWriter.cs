@@ -17,6 +17,7 @@ internal static partial class ExampleContentWriter
         EnsureExampleFile(ObjectSampleFileName, ObjectConditionContent);
         EnsureExampleFile(SpawnerSampleFileName, SpawnerConditionContent);
         EnsureExampleFile(SpawnSystemSampleFileName, SpawnSystemContent);
+        EnsureExampleFile("DNS_dungeon.sample.yml", DungeonSpawnConfiguration.Sample);
     }
 
     private static void EnsureExampleFile(string fileName, string defaultContent)

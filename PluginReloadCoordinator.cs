@@ -156,6 +156,12 @@ internal sealed class PluginReloadCoordinator
             }
         }
 
+        if (DungeonSpawnManager.ShouldReloadForPath(e.FullPath) ||
+            (e is RenamedEventArgs renamed && DungeonSpawnManager.ShouldReloadForPath(renamed.OldFullPath)))
+        {
+            domains |= DropNSpawnPlugin.ReloadDomain.Dungeon;
+        }
+
         if (domains != DropNSpawnPlugin.ReloadDomain.None)
         {
             QueueRuleReload(domains);
@@ -378,6 +384,7 @@ internal sealed class PluginReloadCoordinator
 
     private static void ReloadDomains(DropNSpawnPlugin.ReloadDomain domains)
     {
+        if ((domains & DropNSpawnPlugin.ReloadDomain.Dungeon) != 0) DungeonSpawnManager.Reload();
         foreach (DomainDescriptor domain in DomainRegistry.RuntimeDomains)
         {
             if ((domains & domain.ReloadDomain) != 0)

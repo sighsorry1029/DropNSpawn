@@ -35,6 +35,7 @@ internal static class ZNetShutdownPatch
     private static void Prefix()
     {
         CharacterDropManager.ResetWorldRuntimeState();
+        DungeonSpawnManager.ResetWorld();
     }
 }
 

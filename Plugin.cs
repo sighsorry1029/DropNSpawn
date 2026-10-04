@@ -31,12 +31,13 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         Spawner = 1 << 2,
         SpawnSystem = 1 << 3,
         Event = 1 << 4,
-        All = Object | Character | Spawner | SpawnSystem | Event
+        Dungeon = 1 << 5,
+        All = Object | Character | Spawner | SpawnSystem | Event | Dungeon
     }
 
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
-    internal const string ModVersion = "1.3.17";
+    internal const string ModVersion = "1.3.18";
     internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
     private static string ConfigFileName = $"{ModGUID}.cfg";
@@ -69,6 +70,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
     private void Update()
     {
         _runtimeWorkCoordinator?.ProcessUpdateFrame();
+        DungeonSpawnManager.Tick();
     }
 
     private void OnDestroy()
@@ -95,6 +97,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
             PluginBoundSettings.Clear();
 
             EventManager.Dispose();
+            DungeonSpawnManager.Dispose();
             NetworkPayloadSyncSupport.Shutdown();
         }
     }

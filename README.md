@@ -62,6 +62,8 @@ Under `2 - Character`, `monster instant loot drop blacklist` defaults to `Dragon
 
 Both `.yml` and `.yaml` are supported. Loaded names are `DNS_<domain>` and `DNS_<domain>_*`, with either extension. Use `events` for raids, for example `DNS_events.yml`.
 
+`DNS_dungeon.yml` separately adds **periodic ordinary dungeon spawns** with per-player probability rolls and shared per-rule/per-dungeon living limits. It starts empty and uses server-owned rules; server and clients need DNS 1.3.18 or newer for safe placement checks. The optional CreatureManager 1.2.5 integration honors its boss/Enforcer spawn blockers. See the [dungeon spawn guide](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/dungeon-spawns.md) for the inactive sample, schema and multiplayer behavior.
+
 ### Scale spawn intervals per file
 
 Place this optional header before all prefab entries in a SpawnSystem override file:

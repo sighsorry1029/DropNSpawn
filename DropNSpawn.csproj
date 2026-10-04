@@ -545,6 +545,9 @@
         <Compile Include="PrefabOutputOrdering.cs"/>
         <Compile Include="PluginBootstrapCoordinator.cs"/>
         <Compile Include="Plugin.cs"/>
+        <Compile Include="DungeonSpawnConfiguration.cs"/>
+        <Compile Include="DungeonSpawnManager.cs"/>
+        <Compile Include="DungeonSpawnPlacement.cs"/>
         <Compile Include="PluginManifestCoordinator.cs"/>
         <Compile Include="PluginReloadCoordinator.cs"/>
         <Compile Include="PluginRuntimeWorkCoordinator.cs"/>
