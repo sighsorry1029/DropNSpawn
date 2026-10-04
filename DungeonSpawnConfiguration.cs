@@ -20,7 +20,7 @@ internal sealed class DungeonSpawnRule
 
 internal sealed class DungeonSpawnCreature
 {
-    public string Creature { get; set; } = "";
+    public string Prefab { get; set; } = "";
     public float Weight { get; set; } = 1;
 }
 
@@ -59,8 +59,8 @@ internal static class DungeonSpawnConfiguration
             double total = 0;
             foreach (DungeonSpawnCreature creature in rule.Creatures)
             {
-                if (creature == null || string.IsNullOrWhiteSpace(creature.Creature) || !Finite(creature.Weight) || creature.Weight <= 0)
-                    throw new FormatException($"Dungeon rule '{rule.Id}' requires creature names and positive finite weights.");
+                if (creature == null || string.IsNullOrWhiteSpace(creature.Prefab) || !Finite(creature.Weight) || creature.Weight <= 0)
+                    throw new FormatException($"Dungeon rule '{rule.Id}' requires nonempty prefab names and positive finite weights in creatures.");
                 total += creature.Weight;
             }
             if (total > float.MaxValue) throw new FormatException($"Dungeon rule '{rule.Id}' weight sum is too large.");
@@ -69,10 +69,36 @@ internal static class DungeonSpawnConfiguration
 
     internal static bool Finite(float value) => !float.IsNaN(value) && !float.IsInfinity(value);
 
+    internal static readonly string DefaultContent = """
+# DropNSpawn periodic dungeon encounters.
+# Active filenames: DNS_dungeon.yml/.yaml or DNS_dungeon_<name>.yml/.yaml.
+# Rules are read on the server/local host. Install the updated DNS on every client too.
+# locations contains exact location prefab names, not individual dungeon room names.
+# Each interval rolls spawnChance independently for each living player in that dungeon.
+# maxAlive is shared by this rule ID and dungeon instance, across all listed prefabs.
+# It counts this rule's living creatures (including unloaded ones) and pending spawns.
+# Vanilla, EWP, Enforcers and other rule IDs do not count toward this rule's limit.
+# Keep id stable to retain saved creature attribution across reloads and restarts.
+# weight is a relative choice weight after a successful roll, not a percentage.
+# A 100% chance still requires a safe floor, clearance, reachability and a free cap slot.
+# CreatureManager, when installed, must support the spawn API; its boss/Enforcer blocks apply.
+#
+# The active list starts empty: installing this file does not enable any encounters.
+# To enable the example, remove [] at the bottom and remove the leading '# ' from
+# the example lines below. Or copy the rule into a DNS_dungeon_<name>.yml file.
+# Existing configuration and sample files are not overwritten.
+#
+# Example (commented out):
+""" + "\n# " + Example.Replace("\r\n", "\n").Replace("\n", "\n# ") + "\n\n[]\n";
+
     internal const string Sample = """
 # Inactive example. Copy into DNS_dungeon.yml or rename to DNS_dungeon_crypt.yml.
+# Remove an existing [] before pasting rules into an empty configuration.
 # Server/local-host files only. Each interval rolls once per living player in the dungeon.
 # id is persisted on spawned creatures: keep it stable across reloads and restarts.
+""" + "\n" + Example;
+
+    private const string Example = """
 - id: sunkencrypt_ambush
   enabled: true
   locations: [SunkenCrypt4]
@@ -81,9 +107,9 @@ internal static class DungeonSpawnConfiguration
   maxAlive: 3            # this rule's living creatures + reservations, shared per dungeon
   spawnRadius: 6~12      # horizontal distance from the selected player, meters
   creatures:
-    - creature: BlobElite
+    - prefab: BlobElite
       weight: 2
-    - creature: DamnedOne_TW  # requires the supplying mod on server and clients
+    - prefab: DamnedOne_TW  # requires the supplying mod on server and clients
       weight: 1
 """;
 }

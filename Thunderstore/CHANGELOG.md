@@ -1,3 +1,10 @@
+## 1.3.19 — Dungeon prefab keys and configuration guidance
+
+- Rename dungeon `creatures` entries from `creature` to `prefab`. The old key is rejected without an alias or automatic migration; manually update existing dungeon rules and copied samples. Other domains, including fixed-spawner `creature` fields, are unchanged.
+- Include English instructions and a commented example when first creating `DNS_dungeon.yml`. Keep the active list empty (`[]`) until rules are enabled, and explain removing `[]` before uncommenting or pasting the example. Existing configuration and sample files are preserved.
+- Share the example between the default header and inactive sample, and update validation messages and documentation. Add checks for the empty default, the uncommented example, prefab selection and rejection of the old key, including mixed-key entries.
+- Preserve spawn scheduling, limits, placement checks, saved attribution and CreatureManager integration. Update DNS to 1.3.19 on the server and all clients together. Actual game and multiplayer execution remain separate verification steps.
+
 ## 1.3.18 — Periodic dungeon encounters
 
 - Added server-owned `DNS_dungeon.yml` rules for location-based dungeon encounters: interval, per-player chance, weighted creature selection, spawn radius and a shared `maxAlive` limit per rule ID and dungeon instance. Each living player gets one roll per interval while capacity remains; installing the update creates an empty configuration and an inactive sample.

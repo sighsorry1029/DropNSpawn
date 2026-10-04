@@ -76,7 +76,7 @@ internal static class DungeonSpawnManager
         Active = true;
         string path = Path.Combine(DropNSpawnPlugin.YamlConfigDirectoryPath, "DNS_dungeon.yml");
         if (!DomainConfigurationFileSupport.HasAnyOverrideConfigurationFile("dungeon", path, Path.ChangeExtension(path, ".yaml")))
-            GeneratedArtifactWriter.WriteTextAlways(path, "# Server-owned periodic dungeon spawns. See examples/DNS_dungeon.sample.yml.\n[]\n");
+            GeneratedArtifactWriter.WriteTextAlways(path, DungeonSpawnConfiguration.DefaultContent);
         Reload();
     }
 
@@ -234,9 +234,9 @@ internal static class DungeonSpawnManager
         foreach (DungeonSpawnCreature creature in rule.Creatures)
         {
             cursor -= creature.Weight;
-            if (cursor < 0) return creature.Creature;
+            if (cursor < 0) return creature.Prefab;
         }
-        return rule.Creatures[rule.Creatures.Count - 1].Creature;
+        return rule.Creatures[rule.Creatures.Count - 1].Prefab;
     }
 
     private static List<PlayerContext> ConnectedPlayers()

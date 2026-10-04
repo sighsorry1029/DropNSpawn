@@ -1,6 +1,8 @@
 # Periodic dungeon spawns
 
-`DNS_dungeon.yml`, `DNS_dungeon.yaml` and `DNS_dungeon_*.yml/.yaml` add ordinary creatures while players occupy a dungeon. This scheduler is separate from the native world SpawnSystem table, raids, existing fixed spawners and CreatureManager Karma/Enforcer encounters. The initial file is `[]`; installing the update adds no encounters. An inactive example is generated at `examples/DNS_dungeon.sample.yml`.
+`DNS_dungeon.yml`, `DNS_dungeon.yaml` and `DNS_dungeon_*.yml/.yaml` add ordinary creatures while players occupy a dungeon. This scheduler is separate from the native world SpawnSystem table, raids, existing fixed spawners and CreatureManager Karma/Enforcer encounters. The first-created file contains English instructions, a commented example and an active empty list (`[]`); installing the update adds no encounters. Remove `[]` and uncomment the example to enable it, or copy the example rule into an active split file. An inactive example is also generated at `examples/DNS_dungeon.sample.yml`.
+
+Starting with DNS 1.3.19, creature entries use `prefab`. The previous `creature` key is rejected, without an alias or automatic migration. Existing configuration and sample files are preserved, so change any old dungeon entry keys manually to `prefab`. The header is added only when creating a missing default configuration; existing files are not rewritten.
 
 The server (or local host) owns these files. **Install this updated DropNSpawn build on both the server and clients.** Remote clients validate the floor, clearance and reachability in their loaded dungeon; the server owns the probability, reservation, limits and final network-object creation. Clients do not need the server's YAML file. No new hard dependency is added.
 
@@ -13,9 +15,9 @@ The server (or local host) owns these files. **Install this updated DropNSpawn b
   maxAlive: 3
   spawnRadius: 6~12
   creatures:
-    - creature: BlobElite
+    - prefab: BlobElite
       weight: 2
-    - creature: DamnedOne_TW
+    - prefab: DamnedOne_TW
       weight: 1
 ```
 
@@ -30,7 +32,7 @@ The numbers above are examples, not measured balance recommendations. DamnedOne_
 | `spawnChance` | 0–100 percent per player per interval. Default 10; 0 disables attempts. |
 | `maxAlive` | 1–100 living creatures plus the rule's reservation per dungeon. Default 3. Counts only creatures created by this rule in that dungeon, including unloaded creatures. |
 | `spawnRadius` | Horizontal meters from the selected player, finite range within 2–64; default `6~12`. All connected living players must also be at least the minimum distance from the final point. |
-| `creatures` | Required nonempty list of `creature` prefab names and positive finite relative `weight` values (default 1). Selects exactly one creature after a successful chance roll. |
+| `creatures` | Required nonempty list of `prefab` names and positive finite relative `weight` values (default 1). Selects exactly one creature after a successful chance roll. |
 
 In the example, each living player in an occupied crypt gets one independent 10% roll every 60 seconds, then a 2:1 creature choice. Four players provide up to four rolls, each successful roll requesting one creature near that player. The starting player rotates randomly each interval so a nearly full cap does not always favor the first connected peer. Once living creatures plus pending reservations reach `maxAlive`, remaining attempts are skipped. Weights are not EWP-style absolute spawn probabilities. Separate crypts and separate rule IDs have independent timers and limits. All matching rules run; the fixed-spawner domain's most-specific-winner policy does not apply here.
 

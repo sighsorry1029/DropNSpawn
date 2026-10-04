@@ -14,11 +14,28 @@ internal static partial class Program
         object rule = rules[0]!;
         Check((float)Property(rule, "SpawnInterval")! == 60 && (float)Property(rule, "SpawnChance")! == 10,
             "dungeon interval seconds and percent chance remain distinct from weights");
+        Check((string)Property(((IList)Property(rule, "Creatures")!)[0]!, "Prefab")! == "BlobElite", "dungeon prefab key selects the actual creature prefab");
+        string initial = (string)config.GetField("DefaultContent", All)!.GetValue(null)!;
+        Check(((IList)Invoke(config, null, "Parse", initial)!).Count == 0, "first-created dungeon file contains only an active empty list");
+        int exampleStart = initial.IndexOf("# - id:", StringComparison.Ordinal);
+        Check(exampleStart >= 0, "first-created dungeon file includes a commented example");
+        string uncommented = string.Join("\n", initial[exampleStart..].Split('\n').TakeWhile(line => line.StartsWith("# ", StringComparison.Ordinal)).Select(line => line[2..]));
+        IList headerRules = (IList)Invoke(config, null, "Parse", uncommented)!;
+        Check(headerRules.Count == 1 && (string)Invoke(manager, null, "SelectCreature", headerRules[0], 0.9f)! == "DamnedOne_TW",
+            "uncommenting the generated example after removing [] produces a usable prefab rule");
+        foreach (string legacy in new[] { sample.Replace("prefab:", "creature:"), sample.Replace("prefab: BlobElite", "prefab: BlobElite\n      creature: BlobElite") })
+        {
+            bool rejected = false;
+            try { Invoke(config, null, "Parse", legacy); }
+            catch (TargetInvocationException ex) { rejected = ex.ToString().Contains("Property 'creature' not found", StringComparison.Ordinal); }
+            Check(rejected, "legacy creature key is rejected alone and alongside prefab; no migration or alias");
+        }
         foreach (string yaml in new[] {
             sample.Replace("spawnChance: 10", "spawnChance: .nan"), sample.Replace("spawnChance: 10", "spawnChance: 101"),
             sample.Replace("spawnInterval: 60", "spawnInterval: 0"), sample.Replace("spawnRadius: 6~12", "spawnRadius: 12~6"),
             sample.Replace("spawnRadius: 6~12", "spawnRadius: 6~.inf"), sample.Replace("maxAlive: 3", "maxAlive: 0"),
             sample.Replace("weight: 2", "weight: -2"), sample.Replace("locations: [SunkenCrypt4]", "locations: null"),
+            sample.Replace("prefab: BlobElite", "prefab: ''"),
             sample.Replace("enabled: true", "enabled: true\n  enabled: false"), sample.Replace("spawnChance:", "spwanChance:"),
             "- null", sample + "\n" + sample })
         {
