@@ -101,10 +101,23 @@ internal static class ExpandWorldDataCompatibility
         _objects = (IDictionary)RequireField(loader, "Objects").GetValue(null);
         _sourceFields = new[] { "data", "fields", "objects", "faction" }.Select(name => RequireField(source, name)).ToArray();
 
+        // The handoff immediately calls the code we patch below. StartupAccelerator
+        // normally defers executable wrapper updates until Chainloader has finished.
+        // Borrow only its in-memory gate exemptions, including rollback; never save
+        // settings or disable batching for the rest of the mod set.
+        HashSet<string>? passthrough = GetStartupAcceleratorPassthrough();
+        List<string> addedPassthrough = new();
         try
         {
             foreach (var patch in patches)
             {
+                if (passthrough != null &&
+                    (patch.Callback == nameof(DisableOwnedPatch) ||
+                     (patch.Callback == nameof(DisableOwnedFeatures) && patch.Target.Name == "Patch")))
+                {
+                    string name = patch.Target.DeclaringType!.FullName!;
+                    if (passthrough.Add(name)) addedPassthrough.Add(name);
+                }
                 var method = new HarmonyMethod(typeof(ExpandWorldDataCompatibility), patch.Callback);
                 harmony.Patch(patch.Target,
                     prefix: patch.Kind == HarmonyPatchType.Prefix ? method : null,
@@ -144,6 +157,28 @@ internal static class ExpandWorldDataCompatibility
             }
             throw;
         }
+        finally
+        {
+            foreach (string name in addedPassthrough) passthrough!.Remove(name);
+        }
+    }
+
+    private static HashSet<string>? GetStartupAcceleratorPassthrough()
+    {
+        // Inspect the active interceptor, not a DLL on disk or a version string.
+        // No optional assembly is loaded and Delay Patching=Off needs no interop.
+        Type? patchFunctions = typeof(Harmony).Assembly.GetType("HarmonyLib.PatchFunctions");
+        MethodInfo? updateWrapper = patchFunctions == null ? null : AccessTools.DeclaredMethod(patchFunctions, "UpdateWrapper");
+        Type? interceptor = updateWrapper == null ? null : Harmony.GetPatchInfo(updateWrapper)?.Prefixes
+            .Select(patch => patch.PatchMethod)
+            .FirstOrDefault(method => method.Name == "SkipUpdates" &&
+                method.DeclaringType?.FullName == "StartupAccelerator.StartupAccelerator+InterceptChainloader")?.DeclaringType;
+        if (interceptor == null) return null;
+
+        FieldInfo? field = AccessTools.DeclaredField(interceptor.DeclaringType, "passthroughClasses");
+        if (field is { IsStatic: true } && field.GetValue(null) is HashSet<string> classes) return classes;
+        throw new InvalidOperationException("StartupAccelerator is deferring Harmony patches, but its passthrough contract is unsupported. " +
+            "Set StartupAccelerator's Delay Patching to Off and restart; DNS cannot safely take ownership of EWD domains yet.");
     }
 
     private static void RefreshEwdPatches(Assembly assembly, Harmony ewdHarmony)

@@ -289,6 +289,9 @@ namespace DropNSpawn.Tests
             bool syncedManagers = ewd.GetType("ExpandWorld.Spawn.SpawnManager") != null;
             MethodInfo drops = ewd.GetType("ExpandWorld.Drops.Patcher")?.GetMethod("Patch");
             MethodInfo registry = ewd.GetType("ExpandWorldData.Patches")?.GetMethod("Apply");
+            Type accelerator = null;
+            HashSet<string> passthrough = null;
+            string[] savedPassthrough = null;
             try
             {
                 if (syncedManagers)
@@ -298,6 +301,19 @@ namespace DropNSpawn.Tests
                     ewdServer = true;
                     isolation.Patch(ewd.GetType("ExpandWorldData.Helper", true).GetMethod("IsServer"),
                         prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(EwdServerFixture)));
+                }
+                string acceleratorPath = Path.Combine(Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location), "StartupAccelerator.dll");
+                if (File.Exists(acceleratorPath))
+                {
+                    // Use the actual optional preloader's interceptor. Its config and
+                    // dependencies are confined to this disposable BepInEx test root.
+                    Type startup = Assembly.LoadFrom(acceleratorPath).GetType("StartupAccelerator.StartupAccelerator", true);
+                    accelerator = startup.GetNestedType("InterceptChainloader", All);
+                    passthrough = (HashSet<string>)startup.GetField("passthroughClasses", All).GetValue(null);
+                    passthrough.Add("DNS.test.user.setting");
+                    passthrough.Add("ExpandWorld.Spawn.Patcher"); // preexisting legacy gate exemption
+                    savedPassthrough = passthrough.ToArray();
+                    accelerator.GetMethod("Prefix", All).Invoke(null, null);
                 }
                 // Reproduce EWD.Awake-before-DNS order, including already JITted gates.
                 // No RandEventSystem scene exists here; avoid its native null check
@@ -311,6 +327,30 @@ namespace DropNSpawn.Tests
                 events.Invoke(null, new object[] { upstream });
                 drops?.Invoke(null, new object[] { upstream });
                 Check(HasOwner(typeof(SpawnSystem), "Awake", upstream.Id), "EWD normal spawn lifecycle initially enabled");
+                bool testFailure = File.Exists(Path.Combine(Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location), "ewd-handoff-failure"));
+                if (testFailure)
+                {
+                    Check(syncedManagers, "rollback fixture requires EWD synced-manager lifecycle");
+                    // Deliberately add an EWD-owned callback outside its registry so
+                    // the ownership guard must reject the handoff after refreshing.
+                    upstream.Patch(AccessTools.Method(typeof(CompatibilityProbe), nameof(RegistrySentinel)),
+                        prefix: new HarmonyMethod(ewd.GetType("ExpandWorld.Event.EventManager", true).GetMethod("DelayClientLoad", All)));
+                    bool rejected = false;
+                    try { compat.GetMethod("InstallPatches", All).Invoke(null, new object[] { compatibility, ewd, upstream }); }
+                    catch (TargetInvocationException error)
+                    {
+                        rejected = error.InnerException is InvalidOperationException && error.InnerException.Message.Contains("EWD still owns");
+                    }
+                    Check(rejected, "unregistered owned callback still rejects unsafe handoff");
+                    Check(passthrough.SetEquals(savedPassthrough), "failed handoff restores user passthrough entries");
+                    upstream.Unpatch(AccessTools.Method(typeof(CompatibilityProbe), nameof(RegistrySentinel)), HarmonyPatchType.All, upstream.Id);
+                    Check(!Harmony.GetAllPatchedMethods().Any(method => Harmony.GetPatchInfo(method).Owners.Contains(compatibility.Id)), "failed handoff removes all DNS compatibility callbacks");
+                    Check(HasOwner(typeof(SpawnSystem), "Awake", upstream.Id) && HasOwner(typeof(ZNet), "Awake", upstream.Id), "failed handoff restores EWD lifecycle registration");
+                    FlushStartupAccelerator(accelerator);
+                    Check(!Harmony.GetAllPatchedMethods().Any(method => Harmony.GetPatchInfo(method).Owners.Contains(compatibility.Id)), "deferred flush cannot resurrect failed DNS compatibility callbacks");
+                    Check(HasOwner(typeof(ZNet), "Awake", upstream.Id), "deferred flush preserves restored EWD ownership");
+                    return;
+                }
                 // Installing the upstream scheduler needs Player/Animator native
                 // initialization. Verify its disabled gates here; removal of an
                 // already-installed scheduler remains an in-game check.
@@ -319,6 +359,19 @@ namespace DropNSpawn.Tests
                 // Supply the EWD Harmony instance directly: full EWD/ServerSync
                 // startup needs Unity and is intentionally outside this probe.
                 compat.GetMethod("InstallPatches", All).Invoke(null, new object[] { compatibility, ewd, upstream });
+                if (accelerator != null)
+                {
+                    Check(passthrough.SetEquals(savedPassthrough), "successful handoff restores user passthrough entries");
+                    int calls = postfixCalls;
+                    isolation.Patch(AccessTools.Method(typeof(CompatibilityProbe), nameof(RegistrySentinel)),
+                        postfix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(ObserveEvent)));
+                    RegistrySentinel();
+                    Check(postfixCalls == calls, "unrelated patches remain deferred after EWD handoff");
+                    FlushStartupAccelerator(accelerator);
+                    RegistrySentinel();
+                    Check(postfixCalls == calls + 1, "queued unrelated wrapper applies at batch flush");
+                    Check(!HasOwner(typeof(ZNet), "Awake", upstream.Id), "batch flush cannot resurrect removed EWD ownership");
+                }
                 Check(!HasOwner(typeof(SpawnSystem), "Awake", upstream.Id), "DNS removes already-installed EWD spawn lifecycle");
                 Check(!HasOwner(typeof(RandEventSystem), "FixedUpdate", upstream.Id), "DNS keeps EWD scheduler disabled despite saved true setting");
                 spawn.Invoke(null, new object[] { upstream });
@@ -399,8 +452,32 @@ namespace DropNSpawn.Tests
             {
                 compatibility.UnpatchSelf();
                 upstream.UnpatchSelf();
+                if (accelerator != null) StopStartupAccelerator(accelerator);
                 isolation.UnpatchSelf();
             }
+        }
+
+        private static void StopStartupAccelerator(Type interceptor)
+        {
+            interceptor.GetField("doNotSkipUpdate", All).SetValue(null, true);
+            ((Harmony)interceptor.DeclaringType.GetField("delayedPatcherHarmony", All).GetValue(null)).UnpatchSelf();
+        }
+
+        private static void FlushStartupAccelerator(Type interceptor)
+        {
+            // Match the installed preloader's latest-PatchInfo rebuild without its
+            // Chainloader/FejdStartup hooks or a native Unity scene.
+            StopStartupAccelerator(interceptor);
+            var pending = (HashSet<MethodBase>)interceptor.GetField("methods", All).GetValue(null);
+            Type manager = typeof(Harmony).Assembly.GetType("HarmonyLib.Public.Patching.PatchManager", true);
+            MethodInfo update = (MethodInfo)interceptor.DeclaringType.GetField("harmonyPatcher", All).GetValue(null);
+            foreach (MethodBase method in pending.ToArray())
+            {
+                object info = manager.GetMethod("ToPatchInfo", All).Invoke(null, new object[] { method });
+                object replacement = update.Invoke(null, new[] { method, info });
+                manager.GetMethod("AddReplacementOriginal", All).Invoke(null, new[] { method, replacement });
+            }
+            pending.Clear();
         }
 
         private static bool HasOwner(Type type, string method, string owner)
@@ -410,6 +487,7 @@ namespace DropNSpawn.Tests
         }
 
         private static void ObserveEvent() { postfixCalls++; }
+        [MethodImpl(MethodImplOptions.NoInlining)]
         private static void RegistrySentinel() { }
         private static bool EwdServerFixture(ref bool __result) { __result = ewdServer; return false; }
         private static void Check(bool ok, string label)

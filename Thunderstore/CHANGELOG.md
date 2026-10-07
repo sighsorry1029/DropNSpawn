@@ -1,3 +1,9 @@
+## 1.3.20 — StartupAccelerator and Expand World Data compatibility
+
+- Fix DNS startup failing with an EWD patch-ownership error when StartupAccelerator delays Harmony patch application. Apply only the EWD handoff gates immediately, including the earlier integrated EWD layout.
+- Preserve StartupAccelerator's saved settings, existing passthrough entries and batching for unrelated patches. Temporary exemptions are restored after both successful and failed initialization; EWD world/AltBiome features and DNS ownership checks remain intact.
+- Add isolated checks using the actual StartupAccelerator DLL for deferred initialization, rollback and batch-flush behavior. Configuration formats and network schemas are unchanged. Update DNS to 1.3.20 on the server and all clients together and restart; full mod-pack startup and gameplay still require in-game verification.
+
 ## 1.3.19 — Dungeon prefab keys and configuration guidance
 
 - Rename dungeon `creatures` entries from `creature` to `prefab`. The old key is rejected without an alias or automatic migration; manually update existing dungeon rules and copied samples. Other domains, including fixed-spawner `creature` fields, are unchanged.

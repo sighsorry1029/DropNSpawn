@@ -54,6 +54,10 @@ The additional isolated Mono check uses the installed game's Mono runtime and Ha
 & .\tools\DropNSpawn.MonoChecks\Run.ps1 -EwdDll 'C:\path\to\ExpandWorldData.dll'
 # Truly absent optional dependency: no EWD DLL is copied to the isolated folder.
 & .\tools\DropNSpawn.MonoChecks\Run.ps1 -WithoutEwd
+# Actual StartupAccelerator wrapper deferral, isolated from the user's profile:
+& .\tools\DropNSpawn.MonoChecks\Run.ps1 -EwdDll 'C:\path\to\ExpandWorldData.dll' -StartupAcceleratorDll 'C:\path\to\StartupAccelerator.dll'
+# Deliberate failed ownership handoff and rollback (EWD synced-manager layout):
+& .\tools\DropNSpawn.MonoChecks\Run.ps1 -EwdDll 'C:\path\to\ExpandWorldData.dll' -StartupAcceleratorDll 'C:\path\to\StartupAccelerator.dll' -EwdHandoffFailure
 ```
 
 The hidden child process uses a disposable temporary folder and a 30-second timeout. It verifies private field/delegate access, cached delegates observing later Harmony detours and the native managed item-provenance initializer. Test artifacts are retained at the printed path. It starts no Unity scene, game session or networking. Localization targets are checked statically: its static constructor installs scene-related hooks and cannot run in this native-Unity-free harness.
@@ -65,6 +69,8 @@ Without EWD, the probe also enumerates all mod types and constructs their Harmon
 With EWD 1.73, the probe also installs the real DNS compatibility patches, removes an already-installed EWD Spawn lifecycle patch, exercises disabled manager entrypoints and patch refreshes, and checks that saved feature flags are unchanged. The EWD event scheduler starts disabled in this probe because installing it requires native Player/Animator initialization. Removal of an already-active EWD scheduler is therefore an in-game check, not a passing isolated scenario. The BepInEx work queue is a managed fixture and ServerSync's deferred startup is not run. Unity Time internal-call resolution warnings can occur while Harmony JITs original methods; those native methods are not executed by the assertions.
 
 The EWD 1.74 synced-manager probe also refreshes the independent Drops patcher, verifies nonempty tables cannot re-enable owned hooks, and leaves unrelated registry callbacks enabled. It supplies the native ZNet server/client role as a fixture while running the actual patch registry and manager methods. Both roles, unconditional lifecycle removal, source-drop immutability and faction preservation are covered; actual world/scheduler/drop execution is not.
+
+The optional StartupAccelerator check copies its original DLL only to the disposable folder and invokes its real wrapper interceptor. Config initialization stays in that folder. It verifies scoped passthrough restoration, preserved user exemptions, unrelated deferral, and queued wrapper rebuilding from current Harmony metadata. `-EwdHandoffFailure` injects an unregistered EWD-owned callback to exercise rejection, DNS cleanup and EWD restoration through batch flush. It does not launch the full preloader/Chainloader or FejdStartup; this is not a full mod-pack startup test.
 
 Build success and managed regression checks do not replace running the mod in Valheim. Use a disposable world/profile and record the game and optional-mod versions.
 
