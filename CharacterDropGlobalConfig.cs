@@ -53,7 +53,7 @@ internal static class CharacterDropGlobalConfig
             "2 - Character",
             "require player-aligned killer for character drops",
             DropNSpawnPlugin.Toggle.Off,
-            "If on, a non-player CharacterDrop is allowed only when the lethal source is a Player, a tamed character, or a character in the Players or PlayerSpawned faction. Hostile, environmental, self, unknown, and mixed player-aligned/hostile damage sources are denied. Applies to vanilla and YAML-driven CharacterDrop independently of Enable Character Overrides. Prefabs in player-aligned killer character drop blacklist are exempt.",
+            "If on, a non-player CharacterDrop requires a Player, a tamed character, or a character in the Players or PlayerSpawned faction as its lethal source. A lethal poison, fire, or spirit tick also qualifies if its active damage pool contains a confirmed player-aligned contribution, even mixed with hostile or unknown damage. Unrelated active effects do not qualify direct or environmental deaths; unknown-only damage is denied. Applies to vanilla and YAML-driven CharacterDrop independently of Enable Character Overrides. Prefabs in player-aligned killer character drop blacklist are exempt.",
             synchronizedSetting: true,
             configManagerOrder: 600);
         _requirePlayerAlignedKiller.SettingChanged += (_, _) =>
@@ -78,7 +78,7 @@ internal static class CharacterDropGlobalConfig
             "2 - Character",
             "monster instant loot drop",
             DropNSpawnPlugin.Toggle.Off,
-            "If on, monster ragdoll loot saved from CharacterDrop is spawned immediately while the ragdoll remains for its vanilla lifetime. The saved ragdoll loot list is consumed so vanilla ragdoll cleanup does not drop the same items again. Creature prefabs in monster instant loot drop blacklist keep their normal ragdoll loot timing.",
+            "If on, monster ragdoll loot saved from CharacterDrop is spawned immediately while the ragdoll remains for its vanilla lifetime. The saved ragdoll loot list is consumed so vanilla ragdoll cleanup does not drop the same items again. EpicLoot additional rewards keep normal ragdoll timing to avoid repeated rolls; if its compatibility guard is unavailable, all loot keeps normal timing. Creature prefabs in monster instant loot drop blacklist keep their normal ragdoll loot timing.",
             synchronizedSetting: true,
             configManagerOrder: 450);
         _monsterInstantLootDropBlacklistEntry = plugin.BindConfigEntry(

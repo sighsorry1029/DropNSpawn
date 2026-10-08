@@ -1,3 +1,11 @@
+## 1.3.21 — Damage-over-time drop credit and EpicLoot compatibility
+
+- When the player-aligned killer requirement is enabled, allow drops from lethal poison, fire or spirit pools with a confirmed player-aligned contribution, even when mixed with hostile or unknown damage. Unknown-only damage and unrelated active effects still do not qualify direct or environmental deaths. Preserve poison replacement and actual fire/spirit hit-channel rules.
+- Capture DoT contribution before damage callbacks can change the pool, and defer source-ledger lookups until actual damage ticks rather than every status-effect update.
+- Prevent DNS instant loot from rolling EpicLoot additional rewards twice. Ordinary CharacterDrop loot can remain instant, while EpicLoot rewards, including LuckyLoot bonus rolls, keep their normal ragdoll cleanup timing. Saved EpicLoot metadata is unchanged.
+- Detect the optional EpicLoot callback by its installed API, not a version number. If its guard cannot be verified or installed, keep normal delayed loot timing without changing saved settings. Add isolated Mono coverage for contribution tracking, the supplied EpicLoot callback, nested calls, exceptions and safe fallback.
+- Configuration keys/defaults, YAML formats and network schemas are unchanged. Update the server and all clients together; actual item spawning and multiplayer ownership remain gameplay checks. Partial item-spawning exception recovery is outside this compatibility fix.
+
 ## 1.3.20 — StartupAccelerator and Expand World Data compatibility
 
 - Fix DNS startup failing with an EWD patch-ownership error when StartupAccelerator delays Harmony patch application. Apply only the EWD handoff gates immediately, including the earlier integrated EWD layout.

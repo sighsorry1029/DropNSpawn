@@ -4,6 +4,7 @@ param(
     [string] $ModDll = "$PSScriptRoot\..\..\bin\Debug\DropNSpawn.dll",
     [string] $EwdDll = "$PSScriptRoot\..\..\Libs\ExpandWorldData.dll",
     [string] $StartupAcceleratorDll = '',
+    [string] $EpicLootDll = '',
     [switch] $EwdHandoffFailure,
     [switch] $WithoutEwd
 )
@@ -34,6 +35,7 @@ Copy-Item -LiteralPath $ModDll -Destination $isolatedMod
 Get-ChildItem -LiteralPath $core -Filter *.dll | Copy-Item -Destination $directory
 if (!$WithoutEwd) { Copy-Item -LiteralPath $EwdDll -Destination (Join-Path $directory 'ExpandWorldData.dll') }
 if ($StartupAcceleratorDll) { Copy-Item -LiteralPath $StartupAcceleratorDll -Destination (Join-Path $directory 'StartupAccelerator.dll') }
+if ($EpicLootDll) { Copy-Item -LiteralPath $EpicLootDll -Destination (Join-Path $directory 'EpicLoot.dll') }
 if ($EwdHandoffFailure) { New-Item -ItemType File -Path (Join-Path $directory 'ewd-handoff-failure') | Out-Null }
 # EWD 1.73 has an external YAML dependency; this remains a test-folder copy only.
 Copy-Item -LiteralPath "$PSScriptRoot\..\..\bin\Debug\YamlDotNet.dll" -Destination $directory

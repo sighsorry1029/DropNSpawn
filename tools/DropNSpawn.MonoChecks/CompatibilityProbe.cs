@@ -116,6 +116,7 @@ namespace DropNSpawn.Tests
             typeof(Character).GetField("m_lastHit", All).SetValue(character, hit);
             var lastHit = (AccessTools.FieldRef<Character, HitData>)killer.GetField("LastHit", All).GetValue(null);
             Check(ReferenceEquals(lastHit(character), hit), "protected death-credit field read");
+            CheckKillerAttribution(mod);
 
             var item = (ItemDrop)FormatterServices.GetUninitializedObject(typeof(ItemDrop));
             item.m_itemData = new ItemDrop.ItemData();
@@ -136,9 +137,315 @@ namespace DropNSpawn.Tests
             string ewdPath = Path.Combine(testRoot, "ExpandWorldData.dll");
             Type compatibilityType = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
             compatibilityType.GetMethod("ConfigureDependency", All).Invoke(null, new object[] { File.Exists(ewdPath) ? Assembly.LoadFrom(ewdPath) : null });
+            CheckEpicLootInstantCompatibility(mod, Path.Combine(testRoot, "EpicLoot.dll"));
             CheckCreatureSpawnerLimits(mod);
             if (File.Exists(ewdPath)) CheckEwdCompatibility(mod);
             else CheckStandalone(mod);
+        }
+
+        private static Action<Ragdoll> instantLootBody;
+        private static int instantVanillaCalls;
+        private static int epicLootCalls;
+        private static int epicLuckyRolls;
+
+        private static void CheckEpicLootInstantCompatibility(Assembly mod, string epicPath)
+        {
+            Type integration = mod.GetType("DropNSpawn.RagdollSetupMonsterInstantLootDropPatch", true);
+            MethodInfo configure = integration.GetMethod("ConfigureEpicLootCompatibility", All);
+            MethodInfo early = integration.GetMethod("SpawnInstantLoot", All);
+            FieldInfo enabled = integration.GetField("_instantLootCompatible", All);
+            FieldInfo scope = integration.GetField("_instantLootRagdoll", All);
+            object previousEnabled = enabled.GetValue(null);
+            var guard = new Harmony("DropNSpawn.isolated.epic.guard");
+            var fixture = new Harmony("DropNSpawn.isolated.epic.fixture");
+            MethodInfo spawn = AccessTools.Method(typeof(Ragdoll), "SpawnLoot", new[] { typeof(UnityEngine.Vector3) });
+            var normal = AccessTools.MethodDelegate<Action<Ragdoll, UnityEngine.Vector3>>(spawn);
+            var center = new UnityEngine.Vector3(1f, 2f, 3f);
+            void Configure(bool present, Assembly assembly) => configure.Invoke(null, new object[] { guard, present, assembly });
+            void Early(Ragdoll ragdoll) => early.Invoke(null, new object[] { ragdoll, center });
+            try
+            {
+                Configure(false, null);
+                Check((bool)enabled.GetValue(null), "EpicLoot absent keeps instant loot available without loading it");
+                Configure(true, null);
+                Check(!(bool)enabled.GetValue(null), "present but unavailable EpicLoot fails closed");
+                Configure(true, typeof(CompatibilityProbe).Assembly);
+                Check(!(bool)enabled.GetValue(null), "missing EpicLoot callback falls back to normal loot timing");
+                // The actual Setup postfix must return before scene/config access on fallback.
+                integration.GetMethod("Postfix", All).Invoke(null, new object[] { null, null, null });
+                Check(true, "unavailable guard bypasses the actual DNS immediate-loot entry");
+                if (!File.Exists(epicPath)) return;
+
+                Assembly epic = Assembly.LoadFrom(epicPath);
+                MethodInfo callback = epic.GetType("EpicLoot.Ragdoll_SpawnLoot_Patch", true).GetMethod("Postfix", All);
+                Configure(true, epic);
+                Check(!(bool)enabled.GetValue(null), "matching but unregistered EpicLoot callback is not accepted");
+                fixture.Patch(spawn,
+                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateRagdollLootBody)),
+                    postfix: new HarmonyMethod(callback));
+                // JIT the unmodified callback in the parent wrapper first. Missing
+                // metadata keeps this warmup off the native item-creation path.
+                Ragdoll unprepared = EpicRagdoll(94000, saveName: false);
+                normal(unprepared, center);
+                Check(true, "unmodified EpicLoot callback runs before DNS guard installation");
+                // Keep that callback's body, replacing only item creation. Real
+                // Ragdoll/ZDO reads and the existing parent wrapper still execute.
+                fixture.Patch(callback, transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateEpicLootSpawning)));
+                Ragdoll outer = EpicRagdoll(94001), other = EpicRagdoll(94002);
+                instantVanillaCalls = epicLootCalls = epicLuckyRolls = 0;
+                // Warm up the existing parent wrapper before installing the callback guard.
+                normal(outer, center);
+                Check(epicLootCalls == 1 && epicLuckyRolls == 3, "actual EpicLoot callback rolls after skipped vanilla body");
+                Configure(true, epic);
+                Check((bool)enabled.GetValue(null), "verified EpicLoot callback guard installs under game Mono");
+                Configure(true, epic);
+                Check(Harmony.GetPatchInfo(callback).Prefixes.Count(p => p.owner == guard.Id) == 1, "reinitialization does not duplicate the guard");
+                Early(outer);
+                Check(instantVanillaCalls == 2 && epicLootCalls == 1 && epicLuckyRolls == 3,
+                    "DNS early call keeps ordinary path but suppresses both EpicLoot rolls in the warmed wrapper");
+                normal(outer, center);
+                Check(epicLootCalls == 2 && epicLuckyRolls == 6, "normal cleanup still executes EpicLoot and LuckyLoot once");
+                Check(scope.GetValue(null) == null, "normal early return restores scope");
+
+                int before = epicLootCalls;
+                instantLootBody = ragdoll =>
+                {
+                    if (!ReferenceEquals(ragdoll, outer)) return;
+                    normal(other, center);
+                    Check(epicLootCalls == before + 1, "unrelated ragdoll remains eligible inside early scope");
+                    Early(other);
+                    Check(ReferenceEquals(scope.GetValue(null), outer), "nested early call restores the outer ragdoll");
+                };
+                Early(outer);
+                Check(epicLootCalls == before + 1 && scope.GetValue(null) == null, "nested early calls do not leak or duplicate EpicLoot rolls");
+
+                instantLootBody = ragdoll =>
+                {
+                    if (ReferenceEquals(ragdoll, other)) throw new InvalidOperationException("instant fixture failure");
+                    try { Early(other); throw new Exception("Expected nested failure"); }
+                    catch (TargetInvocationException ex) when (ex.InnerException is InvalidOperationException) { }
+                    Check(ReferenceEquals(scope.GetValue(null), outer), "nested failure restores outer scope");
+                };
+                Early(outer);
+                try { Early(other); throw new Exception("Expected early failure"); }
+                catch (TargetInvocationException ex) when (ex.InnerException is InvalidOperationException) { }
+                Check(scope.GetValue(null) == null, "early exception propagates but clears the guard scope");
+                instantLootBody = null;
+                before = epicLootCalls;
+                normal(outer, center);
+                Check(epicLootCalls == before + 1, "normal EpicLoot path remains usable after an early exception");
+                ZDO data = (ZDO)AccessTools.Field(typeof(ZNetView), "m_zdo").GetValue(AccessTools.Field(typeof(Ragdoll), "m_nview").GetValue(outer));
+                Check(data.GetString("characterName", "") == "Eikthyr" && data.GetInt("level", 0) == 2 && data.GetInt("el-lky-rolls", 0) == 3,
+                    "integration preserves EpicLoot saved metadata and bonus rolls");
+                System.Console.WriteLine("EpicLoot instant compatibility: actual callback/parent wrapper, early vs delayed, independent/nested ragdolls, exceptions and fallback passed. Item creation and vanilla body substituted; no scene/network.");
+            }
+            finally
+            {
+                instantLootBody = null;
+                guard.UnpatchSelf();
+                fixture.UnpatchSelf();
+                enabled.SetValue(null, previousEnabled);
+                scope.SetValue(null, null);
+            }
+        }
+
+        private static Ragdoll EpicRagdoll(uint id, bool saveName = true)
+        {
+            var ragdoll = (Ragdoll)FormatterServices.GetUninitializedObject(typeof(Ragdoll));
+            var view = (ZNetView)FormatterServices.GetUninitializedObject(typeof(ZNetView));
+            var data = (ZDO)FormatterServices.GetUninitializedObject(typeof(ZDO));
+            data.m_uid = new ZDOID(9812346L, id);
+            AccessTools.Field(typeof(Ragdoll), "m_nview").SetValue(ragdoll, view);
+            AccessTools.Field(typeof(ZNetView), "m_zdo").SetValue(view, data);
+            if (saveName)
+                AccessTools.Method(typeof(ZDOExtraData), "Set", new[] { typeof(ZDOID), typeof(int), typeof(string) })
+                    .Invoke(null, new object[] { data.m_uid, "characterName".GetStableHashCode(), "Eikthyr" });
+            MethodInfo setInt = AccessTools.Method(typeof(ZDOExtraData), "Set", new[] { typeof(ZDOID), typeof(int), typeof(int) });
+            setInt.Invoke(null, new object[] { data.m_uid, "level".GetStableHashCode(), 2 });
+            setInt.Invoke(null, new object[] { data.m_uid, "el-lky-rolls".GetStableHashCode(), 3 });
+            return ragdoll;
+        }
+
+        private static bool IsolateRagdollLootBody(Ragdoll __instance)
+        {
+            instantVanillaCalls++;
+            instantLootBody?.Invoke(__instance);
+            return false;
+        }
+
+        private static void ObserveEpicLootRoll(string name, int level, UnityEngine.Vector3 point) { epicLootCalls++; }
+        private static void ObserveLuckyRolls(string name, int level, UnityEngine.Vector3 point, int count) { epicLuckyRolls += count; }
+        private static IEnumerable<CodeInstruction> IsolateEpicLootSpawning(IEnumerable<CodeInstruction> instructions)
+        {
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (instruction.operand is MethodInfo method)
+                {
+                    string replacement = method.DeclaringType.FullName == "EpicLoot.EpicLootDropsHelper" && method.Name == "OnCharacterDeath"
+                        ? nameof(ObserveEpicLootRoll)
+                        : method.DeclaringType.FullName == "EpicLoot.MagicItemEffects.Shards.LuckyLoot" && method.Name == "RollBonusEpicLootDrops"
+                        ? nameof(ObserveLuckyRolls) : null;
+                    if (replacement != null) instruction.operand = typeof(CompatibilityProbe).GetMethod(replacement, All);
+                }
+                yield return instruction;
+            }
+        }
+
+        private static Character attributionTarget;
+        private static Character attributionAttacker;
+        private static Character attributionPlayer;
+        private static Type attributionFilter;
+        private static float attributionHealth;
+        private static int attributionIdentityReads;
+
+        private static void CheckKillerAttribution(Assembly mod)
+        {
+            Type type = mod.GetType("DropNSpawn.CharacterDropKillerFilter", true);
+            attributionFilter = type;
+            Type outcome = type.GetNestedType("Attribution", All);
+            object allowed = Enum.Parse(outcome, "Allowed");
+            object rejected = Enum.Parse(outcome, "Rejected");
+            object unknown = Enum.Parse(outcome, "Unknown");
+            object Call(string name, params object[] args) => type.GetMethod(name, All).Invoke(null, args);
+            object Read(object value, string name) => value.GetType().GetProperty(name, All).GetValue(value);
+            var isolation = new Harmony("DropNSpawn.isolated.dot");
+            try
+            {
+                // Execute the shipped methods; Unity identity/health/source lookup and the
+                // enabled setting are fixtures. No game assemblies or source algorithms are copied.
+                foreach (MethodInfo method in type.GetMethods(All | BindingFlags.DeclaredOnly).Where(m => m.IsStatic &&
+                    m.Name != "ClassifySource" && m.Name != "GetPrefabName" && m.Name != "BeginDeathScope" && m.Name != "ShouldSuppressDeathCallback"))
+                    isolation.Patch(method, transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateAttributionCalls)));
+                isolation.Patch(type.GetMethod("EnsureEnabled", All),
+                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(AttributionEnabled)));
+                attributionTarget = (Character)FormatterServices.GetUninitializedObject(typeof(Character));
+                var player = (Character)FormatterServices.GetUninitializedObject(typeof(Character));
+                attributionPlayer = player;
+                var hostile = (Character)FormatterServices.GetUninitializedObject(typeof(Character));
+                hostile.m_faction = Character.Faction.ForestMonsters;
+                var summon = (Character)FormatterServices.GetUninitializedObject(typeof(Character));
+                summon.m_faction = Character.Faction.PlayerSpawned;
+                var poison = (SE_Poison)FormatterServices.GetUninitializedObject(typeof(SE_Poison));
+                poison.m_character = attributionTarget;
+                var burning = (SE_Burning)FormatterServices.GetUninitializedObject(typeof(SE_Burning));
+                burning.m_character = attributionTarget;
+                attributionHealth = 100f;
+                void Source(Character source, string method, StatusEffect status, params object[] rest)
+                {
+                    attributionAttacker = source;
+                    object scope = Call("BeginRpcDamageScope", attributionTarget, new HitData());
+                    try { Call(method, new object[] { status }.Concat(rest).ToArray()); }
+                    finally { Call("EndRpcDamageScope", scope); }
+                }
+                object Tick(StatusEffect status, HitData hit)
+                {
+                    object scope = Call(status is SE_Poison ? "BeginPoisonDamageTick" : "BeginBurningDamageTick", status);
+                    try { return Call("BeginApplyDamage", attributionTarget, hit); }
+                    finally { Call("EndDelayedDamageTick", scope); }
+                }
+                var poisonHit = new HitData { m_hitType = HitData.HitType.Poisoned };
+                poisonHit.m_damage.m_poison = 5f;
+                var fireHit = new HitData { m_hitType = HitData.HitType.Burning };
+                fireHit.m_damage.m_fire = 5f;
+                Check(Call("MergeAttribution", allowed, rejected).Equals(allowed) &&
+                      Call("MergeAttribution", unknown, allowed).Equals(allowed), "known contribution survives hostile/unknown mixture");
+                Check((bool)Call("ShouldSuppress", true, false, false, Call("MergeAttribution", unknown, rejected)), "unknown/hostile alone stays denied");
+                Source(player, "RecordPoisonSource", poison, true);
+                typeof(SE_Poison).GetField("m_damageLeft", All).SetValue(poison, 10f);
+                bool weaker = (bool)Call("WillPoisonReplaceCurrentPool", poison, 4f);
+                Source(hostile, "RecordPoisonSource", poison, weaker);
+                Check(Read(Tick(poison, poisonHit), "Attribution").Equals(allowed), "rejected weaker poison preserves player's pool");
+                Source(hostile, "RecordPoisonSource", poison, (bool)Call("WillPoisonReplaceCurrentPool", poison, 12f));
+                Check(Read(Tick(poison, poisonHit), "Attribution").Equals(rejected), "replacement poison discards past player contribution");
+                Source(summon, "RecordPoisonSource", poison, true);
+                typeof(SE_Poison).GetField("m_damageLeft", All).SetValue(poison, 0f);
+                Check(Read(Tick(poison, poisonHit), "Attribution").Equals(allowed), "PlayerSpawned last poison tick still qualifies at zero remaining damage");
+
+                attributionIdentityReads = 0;
+                for (int i = 0; i < 100; i++)
+                    Call("EndDelayedDamageTick", Call("BeginPoisonDamageTick", poison));
+                Check(attributionIdentityReads == 0, "100 non-damaging status updates perform zero ledger identity lookups");
+                object frozen = Tick(poison, poisonHit);
+                Check(attributionIdentityReads == 1, "actual DoT hit performs one ledger identity lookup");
+                Source(hostile, "RecordPoisonSource", poison, true);
+                // Nested/unrelated scopes and later source replacement cannot change this hit.
+                object outer = Call("BeginPoisonDamageTick", poison);
+                try
+                {
+                    object inner = Tick(burning, fireHit);
+                    object restored = Call("BeginApplyDamage", attributionTarget, poisonHit);
+                    Check(Read(inner, "Attribution").Equals(unknown) && (bool)Read(restored, "Delayed") &&
+                          Read(restored, "Attribution").Equals(rejected), "nested burning scope restores outer poison attribution");
+                }
+                finally { Call("EndDelayedDamageTick", outer); }
+                attributionHealth = 0f;
+                typeof(Character).GetField("m_lastHit", All).SetValue(attributionTarget, poisonHit);
+                Call("CompleteApplyDamage", attributionTarget, poisonHit, frozen);
+                Check(Call("GetPendingDeathAttribution", attributionTarget).Equals(allowed), "lethal credit consumes the pre-damage snapshot");
+                attributionHealth = 100f;
+                Call("ClearRecoveredDeathCredit", attributionTarget);
+                Check(Call("GetPendingDeathAttribution", attributionTarget).Equals(unknown), "recovery clears lethal credit");
+
+                Source(hostile, "RecordFireSource", burning, true, true);
+                Source(player, "RecordSpiritSource", burning, true, true);
+                Check(Read(Tick(burning, fireHit), "Attribution").Equals(rejected), "fire-only hit cannot borrow an unrelated player's spirit pool");
+                Source(player, "RecordFireSource", burning, false, true);
+                Check(Read(Tick(burning, fireHit), "Attribution").Equals(allowed), "lethal mixed fire retains a confirmed contribution");
+                Source(hostile, "RecordFireSource", burning, true, true);
+                Check(Read(Tick(burning, fireHit), "Attribution").Equals(rejected), "empty/restarted fire pool forgets previous contributions");
+                var replacement = (SE_Burning)FormatterServices.GetUninitializedObject(typeof(SE_Burning));
+                replacement.m_character = attributionTarget;
+                Check(Read(Tick(replacement, fireHit), "Attribution").Equals(unknown), "replacement status cannot inherit stale evidence");
+                var direct = new HitData();
+                attributionAttacker = hostile;
+                object directState = Call("BeginApplyDamage", attributionTarget, direct);
+                attributionHealth = 0f;
+                typeof(Character).GetField("m_lastHit", All).SetValue(attributionTarget, direct);
+                Call("CompleteApplyDamage", attributionTarget, direct, directState);
+                Check(Call("GetPendingDeathAttribution", attributionTarget).Equals(rejected), "direct hostile lethal hit ignores other active player DoT");
+                Call("ForgetCharacter", attributionTarget);
+                Check(Call("GetPendingDeathAttribution", attributionTarget).Equals(unknown), "destroy/death cleanup removes attribution");
+            }
+            finally
+            {
+                ((System.Collections.IDictionary)type.GetField("DelayedDamageLedgers", All).GetValue(null)).Clear();
+                ((System.Collections.IDictionary)type.GetField("PendingDeathCredits", All).GetValue(null)).Clear();
+                isolation.UnpatchSelf();
+                attributionTarget = attributionAttacker = attributionPlayer = null;
+            }
+        }
+
+        private static bool AttributionEnabled(ref bool __result) { __result = true; return false; }
+        private static int AttributionIdentity(UnityEngine.Object value) { attributionIdentityReads++; return RuntimeHelpers.GetHashCode(value); }
+        private static bool AttributionEqual(UnityEngine.Object a, UnityEngine.Object b) => ReferenceEquals(a, b);
+        private static bool AttributionDifferent(UnityEngine.Object a, UnityEngine.Object b) => !ReferenceEquals(a, b);
+        private static float AttributionHealth(Character value) => ReferenceEquals(value, attributionTarget) ? attributionHealth : 100f;
+        private static bool AttributionPlayer(Character value) => ReferenceEquals(value, attributionPlayer);
+        private static bool AttributionTamed(Character value) => false;
+        private static Character AttributionAttacker(HitData hit) => attributionAttacker;
+        private static int AttributionSource(HitData hit, Character target) => (int)attributionFilter.GetMethod("ClassifySourceSnapshot", All).Invoke(null,
+            new object[] { ReferenceEquals(attributionAttacker, null), ReferenceEquals(attributionAttacker, target),
+                AttributionPlayer(attributionAttacker), false, attributionAttacker.m_faction });
+        private static IEnumerable<CodeInstruction> IsolateAttributionCalls(IEnumerable<CodeInstruction> instructions)
+        {
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (instruction.operand is MethodInfo method)
+                {
+                    string replacement = method.DeclaringType == typeof(UnityEngine.Object)
+                        ? method.Name == "GetInstanceID" ? nameof(AttributionIdentity) :
+                          method.Name == "op_Equality" ? nameof(AttributionEqual) :
+                          method.Name == "op_Inequality" ? nameof(AttributionDifferent) : null
+                        : method.DeclaringType == typeof(Character)
+                        ? method.Name == "GetHealth" ? nameof(AttributionHealth) :
+                          method.Name == "IsPlayer" ? nameof(AttributionPlayer) :
+                          method.Name == "IsTamed" ? nameof(AttributionTamed) : null
+                        : method.DeclaringType == typeof(HitData) && method.Name == "GetAttacker" ? nameof(AttributionAttacker)
+                        : method.DeclaringType == attributionFilter && method.Name == "ClassifySource" ? nameof(AttributionSource) : null;
+                    if (replacement != null) { instruction.opcode = OpCodes.Call; instruction.operand = typeof(CompatibilityProbe).GetMethod(replacement, All); }
+                }
+                yield return instruction;
+            }
         }
 
         private static void CheckCreatureSpawnerLimits(Assembly mod)

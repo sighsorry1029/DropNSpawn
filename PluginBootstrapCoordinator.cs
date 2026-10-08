@@ -164,6 +164,7 @@ internal sealed class PluginBootstrapCoordinator
         ExpandWorldDataCompatibility.Initialize(_host.HarmonyInstance);
         Assembly assembly = Assembly.GetExecutingAssembly();
         _host.HarmonyInstance.PatchAll(assembly);
+        RagdollSetupMonsterInstantLootDropPatch.InitializeEpicLootCompatibility(_host.HarmonyInstance);
         EspSpawnSystemCompatibility.Initialize(_host.HarmonyInstance);
         VneiCompatibility.Initialize(_host.HarmonyInstance);
         _host.ReloadCoordinator!.InitializeWatchers();

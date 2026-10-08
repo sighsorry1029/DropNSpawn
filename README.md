@@ -52,6 +52,8 @@ Global options live in `BepInEx/config/sighsorry.DropNSpawn.cfg`. All five domai
 
 Under `2 - Character`, `monster instant loot drop blacklist` defaults to `Dragon, Hatchling`. These creature prefabs keep normal ragdoll loot timing even when instant loot is enabled. Use comma-separated names, or leave it empty for no exclusions; changes affect new ragdolls.
 
+With EpicLoot, ordinary CharacterDrop loot can still drop instantly, but EpicLoot's additional rewards (including LuckyLoot bonus rolls) stay at normal ragdoll cleanup time. This avoids rolling those rewards twice. If DNS cannot verify/install the optional EpicLoot guard, instant loot falls back to normal timing without changing your settings. EpicLoot reward amounts and its saved ragdoll data are not changed.
+
 ## Know before editing
 
 - **SpawnSystem replaces the main world spawn table.** Keep every row you still want across your loaded SpawnSystem files. Unlike the other domains, it is not a set of small patches to existing rows. Valheim's separate AltBiome lists remain native.

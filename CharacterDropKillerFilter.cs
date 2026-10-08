@@ -11,8 +11,6 @@ internal static class CharacterDropKillerFilter
     private static readonly AccessTools.FieldRef<SE_Poison, float> PoisonDamageLeft = AccessTools.FieldRefAccess<SE_Poison, float>("m_damageLeft");
     private static readonly AccessTools.FieldRef<SE_Burning, float> FireDamageLeft = AccessTools.FieldRefAccess<SE_Burning, float>("m_fireDamageLeft");
     private static readonly AccessTools.FieldRef<SE_Burning, float> SpiritDamageLeft = AccessTools.FieldRefAccess<SE_Burning, float>("m_spiritDamageLeft");
-    private static readonly AccessTools.FieldRef<SE_Burning, float> FireDamagePerHit = AccessTools.FieldRefAccess<SE_Burning, float>("m_fireDamagePerHit");
-    private static readonly AccessTools.FieldRef<SE_Burning, float> SpiritDamagePerHit = AccessTools.FieldRefAccess<SE_Burning, float>("m_spiritDamagePerHit");
     private static readonly AccessTools.FieldRef<Character, HitData> LastHit = AccessTools.FieldRefAccess<Character, HitData>("m_lastHit");
     private static readonly AccessTools.FieldRef<Character, ZNetView> NetView = AccessTools.FieldRefAccess<Character, ZNetView>("m_nview");
 
@@ -59,7 +57,7 @@ internal static class CharacterDropKillerFilter
     {
         internal Character? Target;
         internal HitData.HitType HitType;
-        internal Attribution Attribution;
+        internal StatusEffect? Status;
     }
 
     internal struct DeathContext
@@ -94,14 +92,18 @@ internal static class CharacterDropKillerFilter
 
     internal readonly struct ApplyDamageState
     {
-        internal ApplyDamageState(Character target)
+        internal ApplyDamageState(Character target, bool delayed, Attribution attribution)
         {
             Target = target;
             Tracking = true;
+            Delayed = delayed;
+            Attribution = attribution;
         }
 
         internal Character? Target { get; }
         internal bool Tracking { get; }
+        internal bool Delayed { get; }
+        internal Attribution Attribution { get; }
     }
 
     internal readonly struct DeathScopeState
@@ -230,19 +232,11 @@ internal static class CharacterDropKillerFilter
         }
 
         DelayedDamageTickContext previous = _currentDelayedDamageTick;
-        Attribution attribution = Attribution.Unknown;
-        if (DelayedDamageLedgers.TryGetValue(target.GetInstanceID(), out DelayedDamageLedger ledger) &&
-            ReferenceEquals(ledger.Target, target) &&
-            ReferenceEquals(ledger.PoisonStatus, status))
-        {
-            attribution = ledger.Poison;
-        }
-
         _currentDelayedDamageTick = new DelayedDamageTickContext
         {
             Target = target,
             HitType = HitData.HitType.Poisoned,
-            Attribution = attribution
+            Status = status
         };
         return new DelayedDamageTickScopeState(previous);
     }
@@ -261,29 +255,11 @@ internal static class CharacterDropKillerFilter
         }
 
         DelayedDamageTickContext previous = _currentDelayedDamageTick;
-        Attribution fire = Attribution.Unknown;
-        Attribution spirit = Attribution.Unknown;
-        if (DelayedDamageLedgers.TryGetValue(target.GetInstanceID(), out DelayedDamageLedger ledger) &&
-            ReferenceEquals(ledger.Target, target))
-        {
-            if (ReferenceEquals(ledger.FireStatus, status))
-            {
-                fire = ledger.Fire;
-            }
-
-            if (ReferenceEquals(ledger.SpiritStatus, status))
-            {
-                spirit = ledger.Spirit;
-            }
-        }
-
-        bool hasFire = status != null && FireDamagePerHit(status) > 0f;
-        bool hasSpirit = status != null && SpiritDamagePerHit(status) > 0f;
         _currentDelayedDamageTick = new DelayedDamageTickContext
         {
             Target = target,
             HitType = HitData.HitType.Burning,
-            Attribution = CombineBurningAttribution(fire, hasFire, spirit, hasSpirit)
+            Status = status
         };
         return new DelayedDamageTickScopeState(previous);
     }
@@ -296,16 +272,17 @@ internal static class CharacterDropKillerFilter
         }
     }
 
-    internal static ApplyDamageState BeginApplyDamage(Character target)
+    internal static ApplyDamageState BeginApplyDamage(Character target, HitData hit)
     {
-        if (!EnsureEnabled() || target == null || target.IsPlayer() || IsRemoteOwned(target))
+        if (!EnsureEnabled() || target == null || hit == null || target.IsPlayer() || IsRemoteOwned(target) || target.GetHealth() <= 0f)
         {
             return default;
         }
 
-        return target.GetHealth() > 0f
-            ? new ApplyDamageState(target)
-            : default;
+        // Resolve only on an actual damage tick, before other damage callbacks can
+        // mutate a pool. The snapshot belongs to this hit, including nested calls.
+        bool delayed = TryGetCurrentDelayedDamageAttribution(target, hit, out Attribution attribution);
+        return new ApplyDamageState(target, delayed, attribution);
     }
 
     internal static void CompleteApplyDamage(Character target, HitData hit, ApplyDamageState state)
@@ -320,8 +297,8 @@ internal static class CharacterDropKillerFilter
             return;
         }
 
-        Attribution attribution = TryGetCurrentDelayedDamageAttribution(target, hit, out Attribution delayed)
-            ? delayed
+        Attribution attribution = state.Delayed
+            ? state.Attribution
             : ClassifySource(hit, target);
         PendingDeathCredits[target.GetInstanceID()] = new DeathCredit(target, attribution);
     }
@@ -452,6 +429,13 @@ internal static class CharacterDropKillerFilter
 
     internal static Attribution MergeAttribution(Attribution current, Attribution incoming)
     {
+        // A confirmed player-side contribution is enough in the lethal DoT pool.
+        // Unknown alone is never evidence, and poison replacement does not merge.
+        if (current == Attribution.Allowed || incoming == Attribution.Allowed)
+        {
+            return Attribution.Allowed;
+        }
+
         return current == incoming ? current : Attribution.Ambiguous;
     }
 
@@ -560,7 +544,26 @@ internal static class CharacterDropKillerFilter
             _currentDelayedDamageTick.HitType == hit.m_hitType &&
             (hit.m_hitType == HitData.HitType.Poisoned || hit.m_hitType == HitData.HitType.Burning))
         {
-            attribution = _currentDelayedDamageTick.Attribution;
+            attribution = Attribution.Unknown;
+            if (DelayedDamageLedgers.TryGetValue(target.GetInstanceID(), out DelayedDamageLedger ledger) &&
+                ReferenceEquals(ledger.Target, target))
+            {
+                StatusEffect? status = _currentDelayedDamageTick.Status;
+                if (hit.m_hitType == HitData.HitType.Poisoned)
+                {
+                    if (ReferenceEquals(ledger.PoisonStatus, status)) attribution = ledger.Poison;
+                }
+                else
+                {
+                    // Vanilla has already subtracted this tick from the remaining
+                    // pools. Use this hit's channels, not the remaining amounts.
+                    attribution = CombineBurningAttribution(
+                        ReferenceEquals(ledger.FireStatus, status) ? ledger.Fire : Attribution.Unknown,
+                        hit.m_damage.m_fire > 0f,
+                        ReferenceEquals(ledger.SpiritStatus, status) ? ledger.Spirit : Attribution.Unknown,
+                        hit.m_damage.m_spirit > 0f);
+                }
+            }
             return true;
         }
 
@@ -771,9 +774,10 @@ internal static class CharacterDropKillerFilterApplyDamagePatch
 {
     private static void Prefix(
         Character __instance,
+        HitData hit,
         out CharacterDropKillerFilter.ApplyDamageState __state)
     {
-        __state = CharacterDropKillerFilter.BeginApplyDamage(__instance);
+        __state = CharacterDropKillerFilter.BeginApplyDamage(__instance, hit);
     }
 
     [HarmonyPriority(Priority.Last)]
