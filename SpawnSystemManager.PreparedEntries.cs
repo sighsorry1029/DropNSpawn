@@ -164,6 +164,7 @@ internal static partial class SpawnSystemManager
             QueueEspRefreshForLiveSystems = request.QueueEspRefreshForLiveSystems
         };
 
+        SpawnSystemTimers.TimerId[] timerIds = SpawnSystemTimers.CreateIds(request.ConfigurationSnapshot);
         for (int index = 0; index < request.ConfigurationSnapshot.Count; index++)
         {
             if (!IsPreparedEntriesBuildCurrent(request.BuildVersion, request.ApplyTargetSignature))
@@ -174,6 +175,7 @@ internal static partial class SpawnSystemManager
             CanonicalSpawnSystemEntry entry = request.ConfigurationSnapshot[index];
             result.Models.Add(new PreparedSpawnSystemModel
             {
+                TimerId = timerIds[index],
                 Entry = entry,
                 EntrySignature = NetworkPayloadSyncSupport.ComputeSpawnSystemEntrySignature(entry),
                 Context = CreateConfigurationContext(index, entry),
@@ -262,6 +264,7 @@ internal static partial class SpawnSystemManager
 
             finalizedEntry = new PreparedSpawnSystemEntry
             {
+                TimerId = model.TimerId,
                 Entry = model.Entry,
                 Data = cachedEntry.Data.Clone(),
                 CustomDataPayload = cachedEntry.CustomDataPayload,
@@ -294,6 +297,7 @@ internal static partial class SpawnSystemManager
 
         finalizedEntry = new PreparedSpawnSystemEntry
         {
+            TimerId = model.TimerId,
             Entry = model.Entry,
             Data = data,
             CustomDataPayload = customDataPayload,

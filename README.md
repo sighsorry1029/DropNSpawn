@@ -80,6 +80,8 @@ Place this optional header before all prefab entries in a SpawnSystem override f
 
 This sets an effective interval of **72 seconds**. `0.5` halves intervals; `2.0` doubles them. The multiplier must be finite and greater than zero, defaults to `1.0`, and affects only that file—not event spawns. Decimal intervals are preserved. Keep the other world spawn rows you want; this is only a header example.
 
+World-spawn timers use internal content-based IDs: no `name` or `timerId` is required, and different rules for the same prefab remain independent. Reordering rows or moving them between files preserves timers when their parsed settings stay the same. Editing a rule's spawn settings starts that rule's timer again at its first eligible check. DNS stores these timers together and removes retired records as zones are processed. Old timers are **not migrated or deleted**, so existing save warnings may remain. Event and AltBiome timers are unchanged; update DNS on both the server and all clients.
+
 ## References and commands
 
 Reference files are generated automatically and refreshed when source data changes. Object and Spawner also provide `.locations.reference.yml` files for location lookup.

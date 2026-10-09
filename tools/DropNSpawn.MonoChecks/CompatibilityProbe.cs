@@ -71,6 +71,7 @@ namespace DropNSpawn.Tests
             int ruleTag = (int)dungeon.GetField("RuleTag", All).GetValue(null);
             Check(ZDOExtraData.GetAllZDOIDsWithHash(ZDOExtraData.Type.String, ruleTag) != null, "original public ZDO metadata lookup for unloaded dungeon cap restore");
             CheckDungeonRpcLifecycle(dungeon);
+            CheckSpawnSystemTimers(mod);
             foreach (string name in new[] { "EventManager+GameAccess", "CharacterDropKillerFilter", "RagdollSetupMonsterInstantLootDropPatch", "VneiCompatibility" })
             {
                 RuntimeHelpers.RunClassConstructor(mod.GetType("DropNSpawn." + name, true).TypeHandle);
@@ -145,6 +146,231 @@ namespace DropNSpawn.Tests
         }
 
         private static bool dungeonNetEnabled, dungeonSceneEnabled;
+
+        private static void CheckSpawnSystemTimers(Assembly mod)
+        {
+            Type timers = mod.GetType("DropNSpawn.SpawnSystemTimers", true);
+            Type entryType = mod.GetType("DropNSpawn.CanonicalSpawnSystemEntry", true);
+            Type definitionType = mod.GetType("DropNSpawn.SpawnSystemSpawnDefinition", true);
+            Type idType = timers.GetNestedType("TimerId", All);
+            MethodInfo attach = timers.GetMethod("Attach", All), begin = timers.GetMethod("Begin", All), end = timers.GetMethod("End", All),
+                read = timers.GetMethod("ReadTime", All), write = timers.GetMethod("WriteTime", All), elapsed = timers.GetMethod("TryGetElapsed", All);
+            var entries = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(entryType));
+            foreach (float chance in new[] { 40f, 60f })
+            {
+                object entry = Activator.CreateInstance(entryType), definition = Activator.CreateInstance(definitionType);
+                entryType.GetProperty("Prefab").SetValue(entry, "Gjall");
+                definitionType.GetProperty("SpawnChance").SetValue(definition, chance);
+                entryType.GetProperty("SpawnSystem").SetValue(entry, definition);
+                entries.Add(entry);
+            }
+            Array ids = (Array)timers.GetMethod("CreateIds", All).Invoke(null, new object[] { entries });
+            object configuredIds = Activator.CreateInstance(typeof(HashSet<>).MakeGenericType(idType), new object[] { ids });
+            var rows = (System.Collections.IDictionary)Activator.CreateInstance(typeof(Dictionary<,>).MakeGenericType(typeof(SpawnSystem.SpawnData), idType));
+            SpawnSystem.SpawnData first = new SpawnSystem.SpawnData(), second = new SpawnSystem.SpawnData();
+            rows.Add(first, ids.GetValue(0)); rows.Add(second, ids.GetValue(1));
+            var list = (SpawnSystemList)FormatterServices.GetUninitializedObject(typeof(SpawnSystemList));
+            list.m_spawners = new List<SpawnSystem.SpawnData> { first, second };
+            var system = (SpawnSystem)FormatterServices.GetUninitializedObject(typeof(SpawnSystem));
+            system.m_spawnLists = new List<SpawnSystemList> { list };
+            var view = (ZNetView)FormatterServices.GetUninitializedObject(typeof(ZNetView));
+            AccessTools.Field(typeof(SpawnSystem), "m_nview").SetValue(system, view);
+            var zdo = (ZDO)FormatterServices.GetUninitializedObject(typeof(ZDO));
+            zdo.m_uid = new ZDOID(9812346L, 94001);
+            AccessTools.Property(typeof(ZDO), "Owner").SetValue(zdo, true);
+            AccessTools.Property(typeof(ZDO), "Valid").SetValue(zdo, true);
+            AccessTools.Field(typeof(ZNetView), "m_zdo").SetValue(view, zdo);
+            FieldInfo net = AccessTools.Field(typeof(ZNet), "m_instance"), world = AccessTools.Field(typeof(ZDOMan), "s_instance");
+            object oldNet = net.GetValue(null), oldWorld = world.GetValue(null);
+            var fakeNet = (ZNet)FormatterServices.GetUninitializedObject(typeof(ZNet));
+            AccessTools.Field(typeof(ZNet), "m_isServer").SetValue(fakeNet, true);
+            var production = new Harmony("DropNSpawn.isolated.spawn.timers");
+            var isolation = new Harmony("DropNSpawn.isolated.spawn.timer.fixtures");
+            int key = (int)timers.GetField("StorageKey", All).GetValue(null);
+            int legacy = "b_Gjall1".GetStableHashCode();
+            DateTime now = new DateTime(TimeSpan.FromHours(20).Ticks);
+            object Start(bool isEvent = false, string salt = "b_")
+            {
+                object[] args = { system, list.m_spawners, isEvent, salt, view, null };
+                bool run = (bool)begin.Invoke(null, args);
+                Check(run, "owner SpawnSystem timer batch may execute");
+                return args[5];
+            }
+            long Read(SpawnSystem.SpawnData row) => (long)read.Invoke(null, new object[] { zdo, legacy, 0L, system, row, now, false, "b_" });
+            void Write(SpawnSystem.SpawnData row, long ticks) => write.Invoke(null, new object[] { zdo, legacy, ticks, system, row, false, "b_" });
+            void Attach() => attach.Invoke(null, new object[] { system, configuredIds, rows, system.m_spawnLists });
+            MethodInfo setBytes = AccessTools.Method(typeof(ZDOExtraData), "Set", new[] { typeof(ZDOID), typeof(int), typeof(byte[]) });
+            try
+            {
+                net.SetValue(null, fakeNet);
+                var timerWorld = (ZDOMan)FormatterServices.GetUninitializedObject(typeof(ZDOMan));
+                var changeQueue = new HashSet<ZDOID>();
+                AccessTools.Field(typeof(ZDOMan), "m_clientChangeQueue").SetValue(timerWorld, changeQueue);
+                world.SetValue(null, timerWorld);
+                // Only Unity's native Object equality is substituted. Real ZDO,
+                // ownership flags, revision increments and byte-array APIs run.
+                isolation.Patch(begin, transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateTimerIdentity)));
+                production.CreateClassProcessor(mod.GetType("DropNSpawn.SpawnSystemTimerPatch", true)).Patch();
+                Check(true, "original private UpdateSpawnList timer patch installs under Unity Mono");
+                Type manager = mod.GetType("DropNSpawn.SpawnSystemManager", true);
+                Type compiledType = manager.GetNestedType("CompiledSpawnSystemTable", All);
+                object compiled = Activator.CreateInstance(compiledType, true);
+                compiledType.GetProperty("TimerIds").SetValue(compiled, configuredIds);
+                var compiledIds = (System.Collections.IDictionary)compiledType.GetProperty("TimerIdsBySpawnData").GetValue(compiled);
+                compiledIds.Add(first, ids.GetValue(0)); compiledIds.Add(second, ids.GetValue(1));
+                ((List<SpawnSystemList>)compiledType.GetProperty("Lists").GetValue(compiled)).Add(list);
+                isolation.Patch(manager.GetMethod("CreateAttachedSpawnList", All), prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(TimerFixtureList)));
+                object[] cloneArgs = { compiled, null };
+                system.m_spawnLists = (List<SpawnSystemList>)manager.GetMethod("CloneAttachedSpawnLists", All).Invoke(null, cloneArgs);
+                rows = (System.Collections.IDictionary)cloneArgs[1];
+                list = system.m_spawnLists[0];
+                Check(!ReferenceEquals(first, list.m_spawners[0]) && rows[list.m_spawners[0]].Equals(ids.GetValue(0)) &&
+                    rows[list.m_spawners[1]].Equals(ids.GetValue(1)), "real per-zone cloning carries timer identities to both independent live rows");
+                first = list.m_spawners[0]; second = list.m_spawners[1];
+                zdo.Set(legacy, 123L);
+                uint revision = zdo.DataRevision;
+                Attach();
+                object state = Start();
+                Check(Read(first) == now.Ticks && Read(second) == now.Ticks, "fresh timers ignore legacy values and start at current game time");
+                Write(first, now.Ticks + 100);
+                Check(zdo.DataRevision == revision && zdo.GetByteArray(key) == null, "row writes are batched, not individually synchronized");
+                end.Invoke(null, new[] { state });
+                byte[] saved = zdo.GetByteArray(key);
+                Check(saved != null && zdo.DataRevision == revision + 1 && zdo.GetLong(legacy) == 123L,
+                    "batch writes one new array, marks revision and preserves old long keys");
+                isolation.Patch(AccessTools.PropertyGetter(typeof(UnityEngine.Application), "persistentDataPath"),
+                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(TimerFixtureDataPath)));
+                ZDOExtraData.PrepareSave();
+                ZPackage package = new ZPackage();
+                zdo.Clone().Save(package);
+                var loaded = (ZDO)FormatterServices.GetUninitializedObject(typeof(ZDO));
+                loaded.Load(new ZPackage(package.GetArray()), global::Version.c_WorldVersion);
+                Check(loaded.GetByteArray(key).SequenceEqual(saved) && loaded.GetLong(legacy) == 123L,
+                    "original ZDO save/load format preserves new timer bytes and untouched legacy values");
+                revision = zdo.DataRevision;
+                state = Start();
+                Check(Read(first) == now.Ticks + 100 && Read(second) == now.Ticks, "independent timer state survives the next attempt");
+                end.Invoke(null, new[] { state });
+                Check(zdo.DataRevision == revision && ReferenceEquals(zdo.GetByteArray(key), saved), "unchanged attempt performs no write");
+                AccessTools.Field(typeof(ZNet), "m_isServer").SetValue(fakeNet, false);
+                state = Start(); Write(first, now.Ticks + 150);
+                Exception sentinel = new InvalidOperationException("fixture spawn failure");
+                object exceptionResult = mod.GetType("DropNSpawn.SpawnSystemTimerPatch", true).GetMethod("Finalizer", All)
+                    .Invoke(null, new object[] { state, sentinel });
+                Check(ReferenceEquals(exceptionResult, sentinel) && changeQueue.Contains(zdo.m_uid) && zdo.DataRevision == revision + 1,
+                    "client owner consumes and queues the timer even on a later spawn exception, preserving the original exception");
+                AccessTools.Field(typeof(ZNet), "m_isServer").SetValue(fakeNet, true);
+                setBytes.Invoke(null, new object[] { zdo.m_uid, key, saved });
+                revision = zdo.DataRevision;
+                Attach(); // new in-memory binding, same saved ZDO
+                state = Start();
+                Check(Read(first) == now.Ticks + 100, "reattachment reconstructs timer state from the ZDO");
+                end.Invoke(null, new[] { state });
+                Check(Start(isEvent: true, salt: "e_") == null && Start(salt: "m0") == null, "events and AltBiomes do not enter DNS storage");
+                Check((long)read.Invoke(null, new object[] { zdo, legacy, 0L, system, first, now, true, "e_" }) == 123L,
+                    "event timer reads retain the native path even for a shared row object");
+
+                state = Start(); Write(first, now.Ticks + 200);
+                AccessTools.Property(typeof(ZDO), "Owner").SetValue(zdo, false);
+                end.Invoke(null, new[] { state });
+                Check(ReferenceEquals(zdo.GetByteArray(key), saved), "lost owner never flushes its stale timer batch");
+                object[] denied = { system, list.m_spawners, false, "b_", view, null };
+                Check(!(bool)begin.Invoke(null, denied) && denied[5] == null, "non-owner cannot begin a timer write batch");
+                object[] hover = { system, first, zdo, now.AddSeconds(5), 0d };
+                Check((bool)elapsed.Invoke(null, hover) && Math.Abs((double)hover[4] - 4.99999) < 0.000001 && zdo.DataRevision == revision,
+                    "non-owner ESP reads saved time without initializing or writing timers");
+                string espPath = Path.Combine(Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location), "ESP.dll");
+                if (File.Exists(espPath))
+                {
+                    Assembly esp = Assembly.LoadFrom(espPath);
+                    Type compat = mod.GetType("DropNSpawn.EspSpawnSystemCompatibility", true);
+                    MethodInfo text = esp.GetType("ESP.Texts", true).GetMethod("Get", new[] { typeof(SpawnSystem), typeof(SpawnSystem.SpawnData), typeof(int) });
+                    // Preparing ESP's full UI detour initializes Player/Animator,
+                    // which requires Unity native services. Validate its real IL
+                    // rewrite here, then execute only the production read adapter.
+                    List<CodeInstruction> originalText = PatchProcessor.GetOriginalInstructions(text);
+                    var rewrittenText = ((IEnumerable<CodeInstruction>)compat.GetMethod("SpawnSystemTextTimerTranspiler", All)
+                        .Invoke(null, new object[] { originalText })).ToList();
+                    Check(rewrittenText.Count == originalText.Count + 1 && rewrittenText.Count(i => i.operand is MethodInfo method && method.Name == "GetSpawnSystemElapsed") == 1 &&
+                        !rewrittenText.Any(i => i.operand is MethodInfo method && method.DeclaringType.FullName == "Service.Helper" && method.Name == "GetElapsed"),
+                        "actual ESP IL replaces only its SpawnSystem elapsed-time read");
+                    MethodInfo wrapper = compat.GetMethod("GetSpawnSystemElapsed", All);
+                    isolation.Patch(wrapper, transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateTimerIdentity)));
+                    AccessTools.Field(typeof(ZNet), "m_netTime").SetValue(fakeNet, now.AddSeconds(5).Ticks / (double)TimeSpan.TicksPerSecond);
+                    Check(Math.Abs((double)wrapper.Invoke(null, new object[] { system, legacy, 0L, first }) - 4.99999) < 0.000001 && zdo.DataRevision == revision,
+                        "ESP wrapper reads DNS time through the original private view accessor without writing");
+                    FieldInfo originalElapsed = compat.GetField("_originalGetElapsed", All);
+                    object oldElapsed = originalElapsed.GetValue(null);
+                    try
+                    {
+                        originalElapsed.SetValue(null, new Func<UnityEngine.MonoBehaviour, int, long, double>((obj, hash, fallback) => 777d));
+                        Check((double)wrapper.Invoke(null, new object[] { system, legacy, 0L, new SpawnSystem.SpawnData() }) == 777d,
+                            "ESP delegates unmanaged and AltBiome rows to its unchanged native reader");
+                    }
+                    finally { originalElapsed.SetValue(null, oldElapsed); }
+                }
+                AccessTools.Property(typeof(ZDO), "Owner").SetValue(zdo, true);
+                state = Start(); Write(first, now.Ticks + 300);
+                zdo.OwnerRevision++;
+                end.Invoke(null, new[] { state });
+                Check(ReferenceEquals(zdo.GetByteArray(key), saved), "ownership generation change discards stale writes even after regaining owner");
+                state = Start(); Write(first, now.Ticks + 400);
+                byte[] incoming = (byte[])saved.Clone(); BitConverter.GetBytes(now.Ticks + 777).CopyTo(incoming, 44);
+                setBytes.Invoke(null, new object[] { zdo.m_uid, key, incoming });
+                end.Invoke(null, new[] { state });
+                Check(ReferenceEquals(zdo.GetByteArray(key), incoming), "received replacement wins over a local pending batch");
+                setBytes.Invoke(null, new object[] { zdo.m_uid, key, saved });
+
+                // Removing the second accepted definition prunes only its new record.
+                Array onlyFirst = Array.CreateInstance(idType, 1); onlyFirst.SetValue(ids.GetValue(0), 0);
+                configuredIds = Activator.CreateInstance(typeof(HashSet<>).MakeGenericType(idType), new object[] { onlyFirst });
+                rows.Remove(second); list.m_spawners.Remove(second);
+                Attach(); state = Start(); end.Invoke(null, new[] { state });
+                Check(zdo.GetByteArray(key).Length == 52 && zdo.GetLong(legacy) == 123L, "new table prunes retired records without deleting legacy keys");
+                byte[] valid = zdo.GetByteArray(key), unknown = (byte[])valid.Clone(); unknown[0] = 2;
+                setBytes.Invoke(null, new object[] { zdo.m_uid, key, unknown });
+                denied = new object[] { system, list.m_spawners, false, "b_", view, null };
+                Check(!(bool)begin.Invoke(null, denied) && ReferenceEquals(zdo.GetByteArray(key), unknown), "unsupported storage pauses normal spawning without destructive fallback");
+                setBytes.Invoke(null, new object[] { zdo.m_uid, key, valid });
+                state = Start(); Check(Read(first) == now.Ticks + 100, "valid replacement recovers a previously unreadable store"); end.Invoke(null, new[] { state });
+                timers.GetMethod("Detach", All).Invoke(null, new object[] { system });
+                hover = new object[] { system, first, zdo, now, 0d };
+                Check(!(bool)elapsed.Invoke(null, hover), "destroy/detach releases timer binding and ESP override");
+            }
+            finally
+            {
+                timers.GetMethod("Detach", All).Invoke(null, new object[] { system });
+                production.UnpatchSelf(); isolation.UnpatchSelf();
+                net.SetValue(null, oldNet); world.SetValue(null, oldWorld);
+            }
+        }
+
+        private static IEnumerable<CodeInstruction> IsolateTimerIdentity(IEnumerable<CodeInstruction> instructions)
+        {
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (instruction.operand is MethodInfo method && method.DeclaringType == typeof(UnityEngine.Object) &&
+                    (method.Name == "op_Equality" || method.Name == "op_Inequality"))
+                {
+                    instruction.opcode = OpCodes.Call;
+                    instruction.operand = AccessTools.Method(typeof(CompatibilityProbe), method.Name == "op_Equality" ? nameof(AttributionEqual) : nameof(AttributionDifferent));
+                }
+                yield return instruction;
+            }
+        }
+
+        private static bool TimerFixtureList(List<SpawnSystem.SpawnData> spawners, ref SpawnSystemList __result)
+        {
+            __result = (SpawnSystemList)FormatterServices.GetUninitializedObject(typeof(SpawnSystemList));
+            __result.m_spawners = spawners;
+            return false;
+        }
+
+        private static bool TimerFixtureDataPath(ref string __result)
+        {
+            __result = Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location);
+            return false;
+        }
 
         private static void CheckDungeonRpcLifecycle(Type dungeon)
         {

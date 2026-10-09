@@ -65,7 +65,8 @@ internal static partial class SpawnSystemManager
         ClearAttachedRuntimeState(system);
         SnapshotsBySystemId.Remove(system.GetInstanceID());
         _templateSnapshot = null;
-        system.m_spawnLists = CloneAttachedSpawnLists(table);
+        system.m_spawnLists = CloneAttachedSpawnLists(table, out var timerRows);
+        SpawnSystemTimers.Attach(system, table.TimerIds, timerRows, system.m_spawnLists);
     }
 
     private static bool IsSystemAttachedToCompiledTable(SpawnSystem? system, CompiledSpawnSystemTable? table)
@@ -89,8 +90,10 @@ internal static partial class SpawnSystemManager
                liveSummary.ContentHash == expectedHash;
     }
 
-    private static List<SpawnSystemList> CloneAttachedSpawnLists(CompiledSpawnSystemTable table)
+    private static List<SpawnSystemList> CloneAttachedSpawnLists(CompiledSpawnSystemTable table,
+        out Dictionary<SpawnSystem.SpawnData, SpawnSystemTimers.TimerId> timerRows)
     {
+        timerRows = new Dictionary<SpawnSystem.SpawnData, SpawnSystemTimers.TimerId>();
         List<SpawnSystemList> attachedLists = new(table.Lists.Count);
         foreach (SpawnSystemList sourceList in table.Lists)
         {
@@ -105,6 +108,8 @@ internal static partial class SpawnSystemManager
                     }
 
                     SpawnSystem.SpawnData attachedSpawnData = templateSpawnData.Clone();
+                    if (table.TimerIdsBySpawnData.TryGetValue(templateSpawnData, out var timerId))
+                        timerRows.Add(attachedSpawnData, timerId);
                     table.RuntimeTimeOfDayBySpawnData.TryGetValue(templateSpawnData, out TimeOfDayDefinition? timeOfDay);
                     table.CustomPayloadsBySpawnData.TryGetValue(templateSpawnData, out SpawnSystemCustomDataSupport.PreparedPayload? payload);
                     SpawnSystemCustomDataSupport.ApplyPreparedPayload(attachedSpawnData, payload);
@@ -254,6 +259,7 @@ internal static partial class SpawnSystemManager
             return;
         }
 
+        SpawnSystemTimers.Detach(system);
         ClearRuntimeMetadata(system);
         SpawnSystemCustomDataSupport.ClearCustomData(system);
         DestroyAttachedSpawnLists(system.m_spawnLists);

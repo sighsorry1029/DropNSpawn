@@ -28,7 +28,57 @@ internal static class SpawnSystemOnDestroyPatch
 {
     private static void Prefix(SpawnSystem __instance)
     {
+        SpawnSystemTimers.Detach(__instance);
         SpawnSystemManager.UntrackLiveSystem(__instance);
+    }
+}
+
+[HarmonyPatch(typeof(SpawnSystem), "UpdateSpawnList", typeof(List<SpawnSystem.SpawnData>), typeof(DateTime), typeof(bool), typeof(string))]
+internal static class SpawnSystemTimerPatch
+{
+    private static bool Prefix(SpawnSystem __instance, List<SpawnSystem.SpawnData> spawners, bool eventSpawners,
+        string groupSalt, ZNetView ___m_nview, out SpawnSystemTimers.ZoneState? __state)
+        => SpawnSystemTimers.Begin(__instance, spawners, eventSpawners, groupSalt, ___m_nview, out __state);
+
+    private static Exception? Finalizer(SpawnSystemTimers.ZoneState? __state, Exception? __exception)
+    {
+        // Native timers are consumed before conditions/spawning; persist that
+        // reservation even when another mod throws later in the spawn attempt.
+        try { SpawnSystemTimers.End(__state); }
+        catch (Exception ex)
+        {
+            DropNSpawnPlugin.DropNSpawnLogger.LogError($"Failed to persist SpawnSystem timer batch: {ex}");
+            return __exception ?? ex;
+        }
+        return __exception;
+    }
+
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
+    {
+        List<CodeInstruction> input = instructions.ToList();
+        LocalVariableInfo[] rows = __originalMethod.GetMethodBody()!.LocalVariables
+            .Where(local => local.LocalType == typeof(SpawnSystem.SpawnData)).ToArray();
+        MethodInfo get = AccessTools.Method(typeof(ZDO), nameof(ZDO.GetLong), new[] { typeof(int), typeof(long) });
+        MethodInfo set = AccessTools.Method(typeof(ZDO), nameof(ZDO.Set), new[] { typeof(int), typeof(long) });
+        if (rows.Length != 1 || input.Count(i => i.Calls(get)) != 1 || input.Count(i => i.Calls(set)) != 1)
+            throw new InvalidOperationException("SpawnSystem.UpdateSpawnList timer contract changed; refusing a partial timer replacement.");
+        List<CodeInstruction> output = new(input.Count + 9);
+        foreach (CodeInstruction instruction in input)
+        {
+            bool read = instruction.Calls(get);
+            if (!read && !instruction.Calls(set)) { output.Add(instruction); continue; }
+            CodeInstruction first = new(OpCodes.Ldarg_0);
+            first.labels.AddRange(instruction.labels);
+            first.blocks.AddRange(instruction.blocks);
+            output.Add(first);
+            output.Add(new CodeInstruction(OpCodes.Ldloc, rows[0].LocalIndex));
+            if (read) output.Add(new CodeInstruction(OpCodes.Ldarg_2));
+            output.Add(new CodeInstruction(OpCodes.Ldarg_3));
+            output.Add(new CodeInstruction(OpCodes.Ldarg_S, (byte)4));
+            output.Add(new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(SpawnSystemTimers),
+                read ? nameof(SpawnSystemTimers.ReadTime) : nameof(SpawnSystemTimers.WriteTime))));
+        }
+        return output;
     }
 }
 

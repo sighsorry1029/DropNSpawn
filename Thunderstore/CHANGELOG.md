@@ -1,3 +1,13 @@
+## 1.4.0 — Content-based SpawnSystem timers and consolidated storage
+
+- Store DNS-owned normal SpawnSystem timers in one versioned ZDO table per zone instead of adding a long key for every rule. Remove retired records from the new table when the owning zone next updates; disabled or currently ineligible accepted rules retain their records.
+- Derive internal timer identities from normalized prefab and spawn settings. Unchanged rules keep their timers across YAML entry reordering, file moves and reloads. Different conditions for the same prefab remain independent; identical copies use separate duplicate ordinals. Existing YAML needs no changes, unique names or exposed timer IDs.
+- Changing spawn settings, including name, interval, chance or the applied file multiplier, starts a new timer at its first eligible check and waits one interval. Toggling an entry's enabled flag does not change its identity.
+- Batch timer writes on the zone owner and reject stale writes after ownership or stored-data replacement. Keep non-owner reads read-only, preserve unreadable or newer-format data, and pause that zone's managed normal spawning until valid data is available.
+- Update the optional ESP timer reader to use the new table. Event, AltBiome and unmanaged SpawnSystem timers retain their native storage and behavior.
+- Upgrade note: old timers are not migrated or read, so normal SpawnSystem timer progress restarts on first use. Old saved keys are not scanned or deleted, and existing save warnings may remain. Downgrading or removing DNS does not convert the new table back. Update the server and all clients to 1.4.0 together and restart; configuration and network schemas are unchanged.
+- Add regression coverage for unchanged YAML, timer identities, duplicate rules, record cleanup, invalid data and ESP lookup, plus original-game-DLL Mono checks for owner writes, patch installation and single-ZDO save/load. Actual world restart, HUD and multiplayer ownership behavior remain in-game verification steps.
+
 ## 1.3.22 — Dungeon RPC shutdown and reconnect fix
 
 - Fix duplicate dungeon RPC registration after world shutdown, including failed connections and lobby transitions. Keep registration tied to the existing RPC instance instead of clearing its record with world state; register normally when a new connection creates a new instance.

@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using UnityEngine;
 
@@ -30,6 +32,10 @@ internal static class EspSpawnSystemCompatibility
     private static readonly HashSet<int> PendingRefreshIds = new();
     private static Harmony? _harmony;
     private static bool _hoverGuardPatchAttempted;
+    private static bool _timerReaderPatchAttempted;
+    private static Func<MonoBehaviour, int, long, double>? _originalGetElapsed;
+    private static readonly AccessTools.FieldRef<SpawnSystem, ZNetView> SpawnSystemView =
+        AccessTools.FieldRefAccess<SpawnSystem, ZNetView>("m_nview");
     private static bool _typesResolved;
     private static Type? _spawnSystemTextType;
     private static MethodInfo? _drawSpawnSystemsMethod;
@@ -46,6 +52,7 @@ internal static class EspSpawnSystemCompatibility
 
     private static void TryInstallHoverGuard()
     {
+        TryInstallTimerReader();
         if (_hoverGuardPatchAttempted || _harmony == null || _spawnSystemTextType == null)
         {
             return;
@@ -73,6 +80,61 @@ internal static class EspSpawnSystemCompatibility
         {
             LogCompatibilityFailureOnce($"Failed to install the ESP SpawnSystem hover guard. {ex}");
         }
+    }
+
+    private static void TryInstallTimerReader()
+    {
+        if (_timerReaderPatchAttempted || _harmony == null || _spawnSystemTextType == null) return;
+        _timerReaderPatchAttempted = true;
+        Assembly assembly = _spawnSystemTextType.Assembly;
+        MethodInfo? text = assembly.GetType("ESP.Texts")?.GetMethod("Get", BindingFlags.Public | BindingFlags.Static,
+            null, new[] { typeof(SpawnSystem), typeof(SpawnSystem.SpawnData), typeof(int) }, null);
+        MethodInfo? elapsed = assembly.GetType("Service.Helper")?.GetMethod("GetElapsed", BindingFlags.Public | BindingFlags.Static,
+            null, new[] { typeof(MonoBehaviour), typeof(int), typeof(long) }, null);
+        if (text == null || elapsed == null || elapsed.ReturnType != typeof(double))
+        {
+            LogCompatibilityFailureOnce("ESP timer reader contract was not found; SpawnSystem elapsed times may be inaccurate.");
+            return;
+        }
+        try
+        {
+            _originalGetElapsed = (Func<MonoBehaviour, int, long, double>)Delegate.CreateDelegate(typeof(Func<MonoBehaviour, int, long, double>), elapsed);
+            _harmony.Patch(text, transpiler: new HarmonyMethod(typeof(EspSpawnSystemCompatibility), nameof(SpawnSystemTextTimerTranspiler)));
+        }
+        catch (Exception ex)
+        {
+            LogCompatibilityFailureOnce($"Failed to install ESP SpawnSystem timer reading. {ex}");
+        }
+    }
+
+    private static IEnumerable<CodeInstruction> SpawnSystemTextTimerTranspiler(IEnumerable<CodeInstruction> instructions)
+    {
+        List<CodeInstruction> result = instructions.ToList();
+        int[] reads = result.Select((instruction, index) => (instruction, index)).Where(item =>
+            item.instruction.operand is MethodInfo method && method.DeclaringType?.FullName == "Service.Helper" &&
+            method.Name == "GetElapsed" && method.ReturnType == typeof(double) &&
+            method.GetParameters().Select(parameter => parameter.ParameterType).SequenceEqual(new[] { typeof(MonoBehaviour), typeof(int), typeof(long) }))
+            .Select(item => item.index).ToArray();
+        if (reads.Length != 1) throw new InvalidOperationException("ESP SpawnSystem timer lookup changed.");
+        int index = reads[0];
+        CodeInstruction loadRow = new(OpCodes.Ldarg_1);
+        loadRow.labels.AddRange(result[index].labels);
+        loadRow.blocks.AddRange(result[index].blocks);
+        result[index] = new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(EspSpawnSystemCompatibility), nameof(GetSpawnSystemElapsed)));
+        result.Insert(index, loadRow);
+        return result;
+    }
+
+    private static double GetSpawnSystemElapsed(MonoBehaviour obj, int key, long defaultValue, SpawnSystem.SpawnData row)
+    {
+        if (obj is SpawnSystem system && system != null && ZNet.instance != null)
+        {
+            ZNetView view = SpawnSystemView(system);
+            if (view != null && view.IsValid() &&
+                SpawnSystemTimers.TryGetElapsed(system, row, view.GetZDO(), ZNet.instance.GetTime(), out double elapsed))
+                return elapsed;
+        }
+        return _originalGetElapsed!(obj, key, defaultValue);
     }
 
     internal static bool HasPendingRefreshes()

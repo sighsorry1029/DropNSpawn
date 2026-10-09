@@ -566,6 +566,7 @@
         <Compile Include="SafeTypeLookup.cs"/>
         <Compile Include="TimeOfDayDefinitions.cs"/>
         <Compile Include="SpawnSystemConfiguration.cs"/>
+        <Compile Include="SpawnSystemTimers.cs"/>
         <Compile Include="SpawnSystemCanonicalModel.cs"/>
         <Compile Include="SpawnSystemCustomDataSupport.cs"/>
         <Compile Include="SpawnSystemManager.cs"/>

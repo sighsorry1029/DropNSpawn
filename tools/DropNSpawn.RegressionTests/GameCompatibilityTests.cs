@@ -233,7 +233,22 @@ internal static partial class Program
                     if (patch.Name == "Transpiler")
                     {
                         List<CodeInstruction> input = PatchProcessor.GetOriginalInstructions(original);
-                        var output = ((IEnumerable<CodeInstruction>)patch.Invoke(null, new object[] { input })!).ToList();
+                        object[] arguments = patch.GetParameters().Length == 2 ? new object[] { input, original } : new object[] { input };
+                        var output = ((IEnumerable<CodeInstruction>)patch.Invoke(null, arguments)!).ToList();
+                        if (type.Name == "SpawnSystemTimerPatch")
+                        {
+                            if (output.Count != input.Count + 9 ||
+                                output.Count(i => i.operand is MethodInfo m && m.Name == "ReadTime") != 1 ||
+                                output.Count(i => i.operand is MethodInfo m && m.Name == "WriteTime") != 1 ||
+                                output.Any(i => i.operand is MethodInfo m && m.DeclaringType?.Name == "ZDO" &&
+                                    (m.Name == "GetLong" || m.Name == "Set" && m.GetParameters().Last().ParameterType == typeof(long))))
+                                failures.Add("SpawnSystem timer read/write must be replaced together without rewriting spawn decisions");
+                            var incomplete = input.Where(i => !(i.operand is MethodInfo m && m.DeclaringType?.Name == "ZDO" && m.Name == "GetLong")).ToList();
+                            try { patch.Invoke(null, new object[] { incomplete, original }); failures.Add("Partial timer contract accepted"); }
+                            catch (TargetInvocationException ex) when (ex.InnerException is InvalidOperationException) { }
+                            transpilers++;
+                            continue;
+                        }
                         if (type.Name == "CreatureSpawnerGroupSpawnPatch")
                         {
                             int gate = output.FindIndex(i => i.operand is MethodInfo m && m.Name == "IsCreatureSpawnerGroupCandidate");

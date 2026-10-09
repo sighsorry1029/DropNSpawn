@@ -81,6 +81,7 @@ internal static partial class Program
             CheckOptionalEwdContracts(current);
             CheckCreatureSpawnerLimitContracts(current);
             CheckDungeonSpawnContracts(current);
+            CheckSpawnSystemTimers(current);
             Console.WriteLine($"PASS: {_checks} managed contract checks. Unity gameplay and network execution are not covered.");
             return 0;
         }

@@ -83,6 +83,7 @@ internal static partial class SpawnSystemManager
 
     private sealed class PreparedSpawnSystemEntry
     {
+        public SpawnSystemTimers.TimerId TimerId { get; set; }
         public CanonicalSpawnSystemEntry Entry { get; set; } = null!;
         public SpawnSystem.SpawnData Data { get; set; } = null!;
         public SpawnSystemCustomDataSupport.PreparedPayload? CustomDataPayload { get; set; }
@@ -91,6 +92,7 @@ internal static partial class SpawnSystemManager
 
     private sealed class PreparedSpawnSystemModel
     {
+        public SpawnSystemTimers.TimerId TimerId { get; set; }
         public CanonicalSpawnSystemEntry Entry { get; set; } = null!;
         public string EntrySignature { get; set; } = "";
         public string Context { get; set; } = "";
@@ -147,6 +149,8 @@ internal static partial class SpawnSystemManager
 
     private sealed class CompiledSpawnSystemTable
     {
+        public HashSet<SpawnSystemTimers.TimerId>? TimerIds { get; set; }
+        public Dictionary<SpawnSystem.SpawnData, SpawnSystemTimers.TimerId> TimerIdsBySpawnData { get; } = new();
         public int GameDataSignature { get; set; }
         public string Signature { get; set; } = "";
         public bool ReferenceSourceTrusted { get; set; }
@@ -1625,6 +1629,7 @@ internal static partial class SpawnSystemManager
             {
                 buildState.BuildingActiveTable = new CompiledSpawnSystemTable
                 {
+                    TimerIds = new HashSet<SpawnSystemTimers.TimerId>(buildState.Models.Select(model => model.TimerId)),
                     GameDataSignature = buildState.GameDataSignature,
                     Signature = buildState.PreparedEntriesSignature
                 };
@@ -1642,6 +1647,7 @@ internal static partial class SpawnSystemManager
                 {
                     PreparedSpawnSystemEntry finalizedEntry = buildState.FinalizedEntries[buildState.NextCompiledEntryIndex++];
                     SpawnSystem.SpawnData liveEntry = finalizedEntry.Data.Clone();
+                    buildState.BuildingActiveTable.TimerIdsBySpawnData.Add(liveEntry, finalizedEntry.TimerId);
                     StageCompiledRuntimeMetadata(
                         buildState.BuildingActiveTable,
                         liveEntry,
