@@ -119,8 +119,10 @@ internal static class DungeonSpawnManager
     internal static void ResetWorld()
     {
         ResetTimers(); Tracked.Clear(); World = null; Restored = false;
-        RegisteredRpc = null; NextTick = 0;
+        NextTick = 0;
         Warnings.Clear(); CompatibilityResolved = CompatibilityUnavailable = false; CanSpawnWithCreatureManager = null;
+        // RPC handlers survive world shutdown on the old instance. Keep its registration
+        // record until Tick observes a new instance, including after Dispose/reinitialization.
         // Sequence deliberately survives world changes: late replies cannot match a new request.
     }
 
@@ -130,7 +132,8 @@ internal static class DungeonSpawnManager
 
     internal static void Tick()
     {
-        if (!Active || ZNet.instance == null || ZRoutedRpc.instance == null || ZDOMan.instance == null || ZNetScene.instance == null) return;
+        if (!Active || ZNet.instance == null || !ZNet.instance.enabled || ZRoutedRpc.instance == null ||
+            ZDOMan.instance == null || ZNetScene.instance == null || !ZNetScene.instance.enabled) return;
         if (!ReferenceEquals(RegisteredRpc, ZRoutedRpc.instance))
         {
             RegisteredRpc = ZRoutedRpc.instance;

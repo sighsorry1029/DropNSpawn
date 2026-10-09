@@ -1,3 +1,10 @@
+## 1.3.22 — Dungeon RPC shutdown and reconnect fix
+
+- Fix duplicate dungeon RPC registration after world shutdown, including failed connections and lobby transitions. Keep registration tied to the existing RPC instance instead of clearing its record with world state; register normally when a new connection creates a new instance.
+- Skip dungeon updates while ZNet or ZNetScene is disabled during shutdown. Preserve pending-request cleanup, stale/duplicate reply protection, spawn rules and configuration formats.
+- Add isolated Mono regression checks for repeated resets, disabled network/scene state, new-instance registration and same-instance reactivation. The pre-fix build reproduces the reported duplicate key; actual connection failure and multiplayer rejoining remain in-game verification steps.
+- Network schemas and RPC identifiers are unchanged. Update the server and all clients to 1.3.22 together and restart.
+
 ## 1.3.21 — Damage-over-time drop credit and EpicLoot compatibility
 
 - When the player-aligned killer requirement is enabled, allow drops from lethal poison, fire or spirit pools with a confirmed player-aligned contribution, even when mixed with hostile or unknown damage. Unknown-only damage and unrelated active effects still do not qualify direct or environmental deaths. Preserve poison replacement and actual fire/spirit hit-channel rules.

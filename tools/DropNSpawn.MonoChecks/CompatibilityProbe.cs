@@ -70,6 +70,7 @@ namespace DropNSpawn.Tests
                 !(bool)reserve.Invoke(schedule, new object[] { 1, 3 }), "multiple dungeon players share the living plus pending cap under Unity Mono");
             int ruleTag = (int)dungeon.GetField("RuleTag", All).GetValue(null);
             Check(ZDOExtraData.GetAllZDOIDsWithHash(ZDOExtraData.Type.String, ruleTag) != null, "original public ZDO metadata lookup for unloaded dungeon cap restore");
+            CheckDungeonRpcLifecycle(dungeon);
             foreach (string name in new[] { "EventManager+GameAccess", "CharacterDropKillerFilter", "RagdollSetupMonsterInstantLootDropPatch", "VneiCompatibility" })
             {
                 RuntimeHelpers.RunClassConstructor(mod.GetType("DropNSpawn." + name, true).TypeHandle);
@@ -141,6 +142,97 @@ namespace DropNSpawn.Tests
             CheckCreatureSpawnerLimits(mod);
             if (File.Exists(ewdPath)) CheckEwdCompatibility(mod);
             else CheckStandalone(mod);
+        }
+
+        private static bool dungeonNetEnabled, dungeonSceneEnabled;
+
+        private static void CheckDungeonRpcLifecycle(Type dungeon)
+        {
+            var fixture = new Harmony("DropNSpawn.isolated.dungeon.rpc");
+            MethodInfo tick = dungeon.GetMethod("Tick", All), reset = dungeon.GetMethod("ResetWorld", All);
+            FieldInfo net = AccessTools.Field(typeof(ZNet), "m_instance"), scene = AccessTools.Field(typeof(ZNetScene), "s_instance"),
+                world = AccessTools.Field(typeof(ZDOMan), "s_instance"), rpc = AccessTools.Field(typeof(ZRoutedRpc), "s_instance"),
+                active = dungeon.GetField("Active", All), hasRules = dungeon.GetField("HasRules", All), registered = dungeon.GetField("RegisteredRpc", All);
+            FieldInfo[] fields = { net, scene, world, rpc, active, hasRules, registered };
+            object[] saved = fields.Select(field => field.GetValue(null)).ToArray();
+            FieldInfo handlers = AccessTools.Field(typeof(ZRoutedRpc), "m_functions");
+            int request = "DNS_DungeonPosition_v1".GetStableHashCode(), reply = "DNS_DungeonPositionReply_v1".GetStableHashCode();
+            try
+            {
+                // Only scene identity/enabled state is substituted. Tick, ResetWorld and
+                // the original ZRoutedRpc.Register/Dictionary.Add execute unchanged.
+                fixture.Patch(tick, transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateDungeonSceneCalls)));
+                net.SetValue(null, FormatterServices.GetUninitializedObject(typeof(ZNet)));
+                scene.SetValue(null, FormatterServices.GetUninitializedObject(typeof(ZNetScene)));
+                world.SetValue(null, FormatterServices.GetUninitializedObject(typeof(ZDOMan)));
+                hasRules.SetValue(null, false); // Clients still need both RPCs with no local rules.
+                foreach (bool server in new[] { false, true })
+                {
+                    active.SetValue(null, true);
+                    dungeonNetEnabled = dungeonSceneEnabled = true;
+                    var current = new ZRoutedRpc(server);
+                    var table = (System.Collections.IDictionary)handlers.GetValue(current);
+                    tick.Invoke(null, null);
+                    Check(table.Count == 2 && table.Contains(request) && table.Contains(reply), "dungeon registers request/reply with no rules, server=" + server);
+                    object requestHandler = table[request], replyHandler = table[reply];
+                    for (int attempt = 0; attempt < 3; attempt++)
+                    {
+                        reset.Invoke(null, null);
+                        tick.Invoke(null, null);
+                        tick.Invoke(null, null);
+                    }
+                    Check(table.Count == 2 && ReferenceEquals(table[request], requestHandler) && ReferenceEquals(table[reply], replyHandler),
+                        "world reset/repeated tick retains original handlers without duplicate registration, server=" + server);
+
+                    current = new ZRoutedRpc(server);
+                    table = (System.Collections.IDictionary)handlers.GetValue(current);
+                    dungeonNetEnabled = false;
+                    tick.Invoke(null, null);
+                    Check(table.Count == 0, "shutdown ZNet cannot register dungeon RPCs, server=" + server);
+                    dungeonNetEnabled = true; dungeonSceneEnabled = false;
+                    tick.Invoke(null, null);
+                    Check(table.Count == 0, "shutdown ZNetScene cannot register dungeon RPCs, server=" + server);
+                    dungeonSceneEnabled = true;
+                    tick.Invoke(null, null);
+                    Check(table.Count == 2 && table.Contains(request) && table.Contains(reply) && ReferenceEquals(registered.GetValue(null), current),
+                        "new active RPC instance registers both handlers after reconnect, server=" + server);
+
+                    dungeon.GetMethod("Dispose", All).Invoke(null, null);
+                    tick.Invoke(null, null);
+                    Check(!(bool)active.GetValue(null) && table.Count == 2, "disposed dungeon manager stays inactive without deleting RPC handlers");
+                    active.SetValue(null, true);
+                    tick.Invoke(null, null);
+                    Check(table.Count == 2, "reactivation on the same RPC instance does not register twice");
+                }
+            }
+            finally
+            {
+                fixture.UnpatchSelf();
+                for (int i = 0; i < fields.Length; i++) fields[i].SetValue(null, saved[i]);
+            }
+        }
+
+        private static bool DungeonFixtureEnabled(UnityEngine.Behaviour value) => value is ZNet ? dungeonNetEnabled : dungeonSceneEnabled;
+
+        private static IEnumerable<CodeInstruction> IsolateDungeonSceneCalls(IEnumerable<CodeInstruction> instructions)
+        {
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (instruction.operand is MethodInfo method)
+                {
+                    if (method.DeclaringType == typeof(UnityEngine.Object) && method.Name == "op_Equality")
+                    {
+                        instruction.opcode = OpCodes.Call;
+                        instruction.operand = AccessTools.Method(typeof(object), nameof(ReferenceEquals));
+                    }
+                    else if (method.DeclaringType == typeof(UnityEngine.Behaviour) && method.Name == "get_enabled")
+                    {
+                        instruction.opcode = OpCodes.Call;
+                        instruction.operand = AccessTools.Method(typeof(CompatibilityProbe), nameof(DungeonFixtureEnabled));
+                    }
+                }
+                yield return instruction;
+            }
         }
 
         private static Action<Ragdoll> instantLootBody;
