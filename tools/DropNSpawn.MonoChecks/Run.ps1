@@ -26,7 +26,7 @@ $probe = Join-Path $directory 'CompatibilityProbe.dll'
 $references = @('mscorlib.dll','System.dll','System.Core.dll') | ForEach-Object { '/reference:' + (Join-Path $framework $_) }
 & dotnet $compiler /nologo /noconfig /nostdlib+ /langversion:latest @references /target:exe /platform:x64 "/out:$hostExe" "$PSScriptRoot/CompatibilityMonoHost.cs"
 if ($LASTEXITCODE) { throw 'Mono host compilation failed.' }
-$gameReferences = @('assembly_valheim.dll','assembly_utils.dll','assembly_guiutils.dll','UnityEngine.CoreModule.dll','netstandard.dll') | ForEach-Object { '/reference:' + (Join-Path $managed $_) }
+$gameReferences = @('assembly_valheim.dll','assembly_utils.dll','assembly_guiutils.dll','UnityEngine.CoreModule.dll','UnityEngine.PhysicsModule.dll','netstandard.dll') | ForEach-Object { '/reference:' + (Join-Path $managed $_) }
 $libraryReferences = @('0Harmony.dll','BepInEx.dll') | ForEach-Object { '/reference:' + (Join-Path $core $_) }
 & dotnet $compiler /nologo /noconfig /nostdlib+ /langversion:latest @references @gameReferences @libraryReferences /target:library "/out:$probe" "$PSScriptRoot/CompatibilityProbe.cs"
 if ($LASTEXITCODE) { throw 'Mono probe compilation failed.' }

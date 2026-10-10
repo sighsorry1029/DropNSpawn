@@ -1,3 +1,10 @@
+## 1.4.1 — Dungeon spawn floor alignment
+
+- Fix dungeon spawn candidates such as BlobElite being rejected because their capsule extends below the prefab pivot and intersects the supporting floor. Raise the actual spawn position just enough to align the capsule's lower edge with the floor; already-clear pivots remain unchanged.
+- Keep navigation targeted at the supporting floor and revalidate the corrected position. Wall, ceiling, creature, distance and interior checks remain active; weighted selection, spawn chance, capacity limits, YAML formats and RPC schemas are unchanged.
+- Add isolated Mono regression checks using original BlobElite/Skeleton capsule values, including scaling, obstruction rejection and the corrected height limit. These checks cover managed placement logic, not native Unity physics or actual multiplayer spawning.
+- Update the server and all clients to 1.4.1 together and restart. Remote dungeon placement is checked in the selected client's loaded scene; actual dungeon and multiplayer behavior still require in-game verification.
+
 ## 1.4.0 — Content-based SpawnSystem timers and consolidated storage
 
 - Store DNS-owned normal SpawnSystem timers in one versioned ZDO table per zone instead of adding a long key for every rule. Remove retired records from the new table when the owning zone next updates; disabled or currently ineligible accepted rules retain their records.

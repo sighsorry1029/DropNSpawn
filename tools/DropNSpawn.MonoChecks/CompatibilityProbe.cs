@@ -72,6 +72,7 @@ namespace DropNSpawn.Tests
             Check(ZDOExtraData.GetAllZDOIDsWithHash(ZDOExtraData.Type.String, ruleTag) != null, "original public ZDO metadata lookup for unloaded dungeon cap restore");
             CheckDungeonRpcLifecycle(dungeon);
             CheckSpawnSystemTimers(mod);
+            DungeonPlacementFixture.Run(mod);
             foreach (string name in new[] { "EventManager+GameAccess", "CharacterDropKillerFilter", "RagdollSetupMonsterInstantLootDropPatch", "VneiCompatibility" })
             {
                 RuntimeHelpers.RunClassConstructor(mod.GetType("DropNSpawn." + name, true).TypeHandle);
@@ -435,6 +436,169 @@ namespace DropNSpawn.Tests
             {
                 fixture.UnpatchSelf();
                 for (int i = 0; i < fields.Length; i++) fields[i].SetValue(null, saved[i]);
+            }
+        }
+
+        // Executes the shipped placement/validation methods. Native scene queries are
+        // substituted with a flat supporting plane and explicit obstruction results;
+        // this checks the queried shape and returned position, not Unity physics itself.
+        private static class DungeonPlacementFixture
+        {
+            private static readonly UnityEngine.GameObject Prefab = (UnityEngine.GameObject)FormatterServices.GetUninitializedObject(typeof(UnityEngine.GameObject));
+            private static readonly UnityEngine.CapsuleCollider Capsule = (UnityEngine.CapsuleCollider)FormatterServices.GetUninitializedObject(typeof(UnityEngine.CapsuleCollider));
+            private static readonly UnityEngine.Transform Transform = (UnityEngine.Transform)FormatterServices.GetUninitializedObject(typeof(UnityEngine.Transform));
+            private static readonly ZoneSystem Zone = (ZoneSystem)FormatterServices.GetUninitializedObject(typeof(ZoneSystem));
+            private static readonly Pathfinding Navigation = (Pathfinding)FormatterServices.GetUninitializedObject(typeof(Pathfinding));
+            private static readonly List<Player> Players = new List<Player>();
+            private static readonly string[] MaskNames = { "Default", "static_solid", "Default_small", "piece", "terrain", "blocker", "vehicle", "character", "character_net", "character_noenv", "character_ghost" };
+            private static float radius, height, floor, queryBottom;
+            private static UnityEngine.Vector3 center, scale, pathTarget, lineTarget;
+            private static int axis, queries, pathQueries, queryMask, lineMask;
+            private static bool missing, blocked, floorFound, havePath, lineBlocked, interior;
+            private static UnityEngine.QueryTriggerInteraction triggers;
+
+            internal static void Run(Assembly mod)
+            {
+                Type placement = mod.GetType("DropNSpawn.DungeonSpawnPlacement", true);
+                // The old method name lets the same regression expose the 1.4.0 failure.
+                MethodInfo place = placement.GetMethod("TryPlaceOnFloor", All) ?? placement.GetMethod("Clear", All);
+                MethodInfo validate = placement.GetMethod("Validate", All);
+                var fixture = new Harmony("DropNSpawn.isolated.dungeon.placement");
+                try
+                {
+                    foreach (MethodInfo method in new[] { place, validate, placement.GetMethod("WithinRange", All), placement.GetMethod("get_StaticMask", All) })
+                        fixture.Patch(method, transpiler: new HarmonyMethod(typeof(DungeonPlacementFixture), nameof(Isolate)));
+
+                    ResetBlob();
+                    Check(Place(out var point) && Near(point.y, floor + 0.2f) && queryBottom >= floor,
+                        "BlobElite floor placement raises the actual pivot by 0.2m and clears the supporting plane");
+                    Check(Near(point.x, 8) && Near(point.z, 0) && queryMask == (1 << MaskNames.Length) - 1 && triggers == UnityEngine.QueryTriggerInteraction.Ignore,
+                        "floor correction preserves horizontal position, solid/character masks and trigger policy");
+                    blocked = true;
+                    Check(!Place(out _), "floor correction still rejects an occupied capsule, including walls/ceilings/creatures");
+
+                    ResetBlob(); radius = 0.4f; height = 1.85f; center = new UnityEngine.Vector3(0, 0.925f, 0);
+                    Check(Place(out point) && point.y == floor, "native Skeleton upright capsule retains its original spawn height");
+                    center.y = 2;
+                    Check(Place(out point) && point.y == floor, "an already-clear elevated capsule is not moved down into the floor");
+                    ResetBlob(); scale = new UnityEngine.Vector3(2, 2, 2);
+                    Check(Place(out point) && Near(point.y, floor + 0.4f), "uniform prefab scaling adjusts the actual pivot offset");
+                    ResetBlob(); scale = new UnityEngine.Vector3(-2, 1, 0.5f);
+                    Check(Place(out point) && Near(point.y, floor + 1.4f), "nonuniform/mirrored scale preserves radius and vertical-center rules");
+                    ResetBlob(); missing = true;
+                    Check(!Place(out _) && queries == 0, "missing capsule remains unsupported without a geometry query");
+                    missing = false; axis = 0;
+                    Check(!Place(out _) && queries == 0, "horizontal capsule remains unsupported");
+
+                    ResetBlob();
+                    Check(Validate(out point) && Near(point.y, floor + 0.2f) && Near(pathTarget.y, floor) && pathQueries == 1,
+                        "full validation returns the corrected spawn point but navigates to the supporting floor");
+                    ResetBlob(); havePath = false; lineBlocked = true;
+                    Check(!Validate(out _) && Near(lineTarget.y, floor + 0.8f) && lineMask == (1 << 7) - 1,
+                        "failed full path still rejects an obstructed floor-relative direct route");
+                    lineBlocked = false;
+                    Check(Validate(out point) && Near(point.y, floor + 0.2f), "unobstructed native direct-route fallback retains the corrected position");
+                    ResetBlob(); blocked = true;
+                    Check(!Validate(out _) && pathQueries == 0, "full validation cannot bypass failed capsule clearance");
+                    ResetBlob(); floorFound = false;
+                    Check(!Validate(out _) && queries == 0, "missing supporting floor cannot create a floating candidate");
+                    ResetBlob(); interior = false;
+                    Check(!Validate(out _) && queries == 0, "outside-interior candidates remain rejected");
+                    ResetBlob(); floor = 5003.9f;
+                    Check(!Validate(out _) && queries == 1 && pathQueries == 0,
+                        "corrected pivot is revalidated against the original four-meter vertical limit");
+                }
+                finally { fixture.UnpatchSelf(); }
+
+                bool Place(out UnityEngine.Vector3 position)
+                {
+                    object[] args = { Prefab, new UnityEngine.Vector3(8, floor, 0) };
+                    bool result = (bool)place.Invoke(null, args);
+                    position = (UnityEngine.Vector3)args[1];
+                    return result;
+                }
+                bool Validate(out UnityEngine.Vector3 position)
+                {
+                    object[] args = { Prefab, new UnityEngine.Vector3(0, 5000, 0), new UnityEngine.Vector3(8, 5000, 0), new Vector2s(0, 0), 6f, 12f, default(UnityEngine.Vector3) };
+                    bool result = (bool)validate.Invoke(null, args);
+                    position = (UnityEngine.Vector3)args[6];
+                    return result;
+                }
+            }
+
+            private static bool Near(float value, float expected) => Math.Abs(value - expected) < 0.001f;
+            private static void ResetBlob()
+            {
+                // Original Valheim 1.0.17 BlobElite.prefab in SoftRef/Bundles/c4210710.
+                radius = 1.2f; height = 1; center = new UnityEngine.Vector3(0, 1, -0.04794228f); scale = UnityEngine.Vector3.one;
+                axis = 1; floor = 5000; missing = blocked = lineBlocked = false; floorFound = havePath = interior = true;
+                queries = pathQueries = queryMask = lineMask = 0;
+            }
+            private static UnityEngine.CapsuleCollider GetCapsule(UnityEngine.GameObject _) => missing ? null : Capsule;
+            private static BaseAI GetAI(UnityEngine.GameObject _) => null;
+            private static UnityEngine.Transform GetTransform(UnityEngine.GameObject _) => Transform;
+            private static UnityEngine.Vector3 GetScale(UnityEngine.Transform _) => scale;
+            private static UnityEngine.Vector3 GetCenter(UnityEngine.CapsuleCollider _) => center;
+            private static float GetRadius(UnityEngine.CapsuleCollider _) => radius;
+            private static float GetHeight(UnityEngine.CapsuleCollider _) => height;
+            private static int GetAxis(UnityEngine.CapsuleCollider _) => axis;
+            private static ZoneSystem GetZoneSystem() => Zone;
+            private static Pathfinding GetPathfinding() => Navigation;
+            private static List<Player> GetPlayers() => Players;
+            private static bool InInterior(UnityEngine.Vector3 _) => interior;
+            private static int GetMask(string[] names) => names.Aggregate(0, (mask, name) => mask | (1 << Array.IndexOf(MaskNames, name)));
+            private static bool GetFloor(ZoneSystem _, UnityEngine.Vector3 point, out float y, int margin) { y = floor; return floorFound; }
+            private static bool CapsuleBlocked(UnityEngine.Vector3 bottom, UnityEngine.Vector3 top, float r, int mask, UnityEngine.QueryTriggerInteraction interaction)
+            {
+                queries++; queryBottom = Math.Min(bottom.y, top.y) - r; queryMask = mask; triggers = interaction;
+                return blocked || queryBottom < floor - 0.001f;
+            }
+            private static bool GetPath(Pathfinding _, UnityEngine.Vector3 from, UnityEngine.Vector3 to, List<UnityEngine.Vector3> path,
+                Pathfinding.AgentType agent, bool full, bool cleanup, bool existing)
+            {
+                pathQueries++; pathTarget = to;
+                if (havePath) { path.Add(from); path.Add(to); }
+                return havePath;
+            }
+            private static bool Linecast(UnityEngine.Vector3 from, UnityEngine.Vector3 to, int mask, UnityEngine.QueryTriggerInteraction interaction)
+            { lineTarget = to; lineMask = mask; return lineBlocked; }
+
+            private static IEnumerable<CodeInstruction> Isolate(IEnumerable<CodeInstruction> instructions)
+            {
+                foreach (CodeInstruction instruction in instructions)
+                {
+                    if (instruction.operand is MethodInfo method)
+                    {
+                        string replacement = null;
+                        if (method.DeclaringType == typeof(UnityEngine.GameObject))
+                            replacement = method.Name == "get_transform" ? nameof(GetTransform) : method.Name == "GetComponent" && method.IsGenericMethod
+                                ? method.GetGenericArguments()[0] == typeof(UnityEngine.CapsuleCollider) ? nameof(GetCapsule) : nameof(GetAI) : null;
+                        else if (method.DeclaringType == typeof(UnityEngine.Transform) && method.Name == "get_lossyScale") replacement = nameof(GetScale);
+                        else if (method.DeclaringType == typeof(UnityEngine.CapsuleCollider))
+                            replacement = method.Name == "get_radius" ? nameof(GetRadius) : method.Name == "get_height" ? nameof(GetHeight) :
+                                method.Name == "get_center" ? nameof(GetCenter) : method.Name == "get_direction" ? nameof(GetAxis) : null;
+                        else if (method.DeclaringType == typeof(UnityEngine.LayerMask) && method.Name == "GetMask") replacement = nameof(GetMask);
+                        else if (method.DeclaringType == typeof(UnityEngine.Physics))
+                            replacement = method.Name == "CheckCapsule" ? nameof(CapsuleBlocked) : method.Name == "Linecast" ? nameof(Linecast) : null;
+                        else if (method.DeclaringType == typeof(ZoneSystem))
+                            replacement = method.Name == "get_instance" ? nameof(GetZoneSystem) : method.Name == "GetSolidHeight" ? nameof(GetFloor) : null;
+                        else if (method.DeclaringType == typeof(Pathfinding))
+                            replacement = method.Name == "get_instance" ? nameof(GetPathfinding) : method.Name == "GetPath" ? nameof(GetPath) : null;
+                        else if (method.DeclaringType == typeof(Player) && method.Name == "GetAllPlayers") replacement = nameof(GetPlayers);
+                        else if (method.DeclaringType == typeof(Character) && method.Name == "InInterior") replacement = nameof(InInterior);
+                        if (replacement != null)
+                        {
+                            instruction.opcode = OpCodes.Call;
+                            instruction.operand = AccessTools.Method(typeof(DungeonPlacementFixture), replacement);
+                        }
+                        else if (method.DeclaringType == typeof(UnityEngine.Object) && (method.Name == "op_Equality" || method.Name == "op_Inequality"))
+                        {
+                            instruction.opcode = OpCodes.Call;
+                            instruction.operand = AccessTools.Method(typeof(CompatibilityProbe), method.Name == "op_Equality" ? nameof(AttributionEqual) : nameof(AttributionDifferent));
+                        }
+                    }
+                    yield return instruction;
+                }
             }
         }
 

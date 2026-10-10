@@ -61,29 +61,36 @@ internal static class DungeonSpawnPlacement
         if (!WithinRange(origin, candidate, zone, min, max) ||
             !ZoneSystem.instance.GetSolidHeight(candidate, out float floor, 1)) return false;
         candidate.y = floor;
-        if (!WithinRange(origin, candidate, zone, min, max) || !Clear(prefab, candidate)) return false;
+        Vector3 floorPosition = candidate;
+        if (!WithinRange(origin, candidate, zone, min, max) || !TryPlaceOnFloor(prefab, ref candidate) ||
+            !WithinRange(origin, candidate, zone, min, max)) return false;
         foreach (Player player in Player.GetAllPlayers())
             if (player != null && !player.IsDead() && (player.transform.position - candidate).sqrMagnitude < min * min) return false;
 
         Path.Clear();
         BaseAI ai = prefab.GetComponent<BaseAI>();
-        bool fullPath = Pathfinding.instance != null && Pathfinding.instance.GetPath(origin, candidate, Path,
+        // Navigation still targets the supporting floor, not a raised prefab pivot.
+        bool fullPath = Pathfinding.instance != null && Pathfinding.instance.GetPath(origin, floorPosition, Path,
             ai != null ? ai.m_pathAgentType : Pathfinding.AgentType.Humanoid, requireFullPath: true, cleanup: false, havePath: true) &&
-            Path.Count > 0 && Vector3.Distance(Path[0], origin) <= 2f && Vector3.Distance(Path[Path.Count - 1], candidate) <= 1.25f;
-        if (!fullPath && Physics.Linecast(origin + Vector3.up * 0.8f, candidate + Vector3.up * 0.8f, StaticMask, QueryTriggerInteraction.Ignore)) return false;
+            Path.Count > 0 && Vector3.Distance(Path[0], origin) <= 2f && Vector3.Distance(Path[Path.Count - 1], floorPosition) <= 1.25f;
+        if (!fullPath && Physics.Linecast(origin + Vector3.up * 0.8f, floorPosition + Vector3.up * 0.8f, StaticMask, QueryTriggerInteraction.Ignore)) return false;
         position = candidate;
         return true;
     }
 
-    private static bool Clear(GameObject prefab, Vector3 position)
+    private static bool TryPlaceOnFloor(GameObject prefab, ref Vector3 position)
     {
         CapsuleCollider capsule = prefab.GetComponent<CapsuleCollider>();
         if (capsule == null || capsule.direction != 1) return false;
         Vector3 scale = prefab.transform.lossyScale;
         float radius = Mathf.Max(0.05f, capsule.radius * Mathf.Max(Mathf.Abs(scale.x), Mathf.Abs(scale.z)));
         float height = Mathf.Max(radius * 2, capsule.height * Mathf.Abs(scale.y));
+        Vector3 centerOffset = Vector3.Scale(capsule.center, scale);
+        // A prefab pivot need not be at its feet (BlobElite's capsule extends below it).
+        // Raise the actual spawn point before checking clearance; keep already-clear pivots unchanged.
+        position.y += Mathf.Max(0, height * 0.5f - centerOffset.y);
         // The spawn rotation is identity too; don't rotate an offset capsule differently here.
-        Vector3 center = position + Vector3.Scale(capsule.center, scale) + Vector3.up * 0.05f;
+        Vector3 center = position + centerOffset + Vector3.up * 0.05f;
         float segment = Mathf.Max(0, height * 0.5f - radius);
         return !Physics.CheckCapsule(center - Vector3.up * segment, center + Vector3.up * segment,
             Mathf.Max(0.05f, radius - 0.05f), StaticMask | LayerMask.GetMask("character", "character_net", "character_noenv", "character_ghost"), QueryTriggerInteraction.Ignore);
