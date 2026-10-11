@@ -193,7 +193,7 @@ internal static class SpawnSystemCustomDataSupport
         {
             inlineData ??= new EwdData.DataEntry();
             inlineData.Strings ??= new Dictionary<int, EwdData.IStringValue>();
-            inlineData.Strings[HashFaction] = EwdData.DataValue.Simple(factionValue);
+            inlineData.Strings[HashFaction] = (EwdData.IStringValue)ExpandWorldDataCompatibility.Constant(factionValue);
         }
 
         Dictionary<string, string>? configuredFields = spawnSystem?.Fields;

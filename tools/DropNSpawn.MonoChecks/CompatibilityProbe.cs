@@ -142,7 +142,12 @@ namespace DropNSpawn.Tests
             compatibilityType.GetMethod("ConfigureDependency", All).Invoke(null, new object[] { File.Exists(ewdPath) ? Assembly.LoadFrom(ewdPath) : null });
             CheckEpicLootInstantCompatibility(mod, Path.Combine(testRoot, "EpicLoot.dll"));
             CheckCreatureSpawnerLimits(mod);
-            if (File.Exists(ewdPath)) CheckEwdCompatibility(mod);
+            if (File.Exists(ewdPath))
+            {
+                CheckEwdValueFactories(mod);
+                EwdFailureFixture.Run(mod);
+                CheckEwdCompatibility(mod);
+            }
             else CheckStandalone(mod);
         }
 
@@ -1055,6 +1060,221 @@ namespace DropNSpawn.Tests
             }
             finally { harmony.UnpatchSelf(); }
             Check(!AppDomain.CurrentDomain.GetAssemblies().Any(a => a.GetName().Name == "ExpandWorldData"), "no EWD assembly loaded by standalone paths");
+        }
+
+        private static class EwdFailureFixture
+        {
+            private static readonly List<SpawnSystem.SpawnData> Seen = new List<SpawnSystem.SpawnData>();
+            private static Func<string, object> originalConstant;
+            private static int constantCalls;
+            private static object Read(object obj, string name) => obj.GetType().GetProperty(name, All).GetValue(obj);
+            private static void Set(object obj, string name, object value) => obj.GetType().GetProperty(name, All).SetValue(obj, value);
+            private static bool Skip() => false;
+            private static bool Allow(ref bool __result) { __result = true; return false; }
+            private static bool EnvironmentKey(ref string __result) { __result = "dependency-fixture"; return false; }
+            private static bool ApplyEntry(object[] __args, ref bool __result)
+            {
+                Seen.Add((SpawnSystem.SpawnData)__args[0]);
+                __result = (string)Read(__args[1], "Prefab") != "missing";
+                return false;
+            }
+            private static object FailingConstant(string value)
+            {
+                if (++constantCalls == 2) throw new MissingMethodException("Injected EWD constant API failure");
+                return originalConstant(value);
+            }
+            internal static void Run(Assembly mod)
+            {
+                Type compat = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
+                Type manager = mod.GetType("DropNSpawn.SpawnSystemManager", true);
+                Type events = mod.GetType("DropNSpawn.EventManager", true);
+                Type support = mod.GetType("DropNSpawn.SpawnSystemCustomDataSupport", true);
+                Type entryType = mod.GetType("DropNSpawn.CanonicalSpawnSystemEntry", true);
+                Type definitionType = mod.GetType("DropNSpawn.SpawnSystemSpawnDefinition", true);
+                FieldInfo constantField = compat.GetField("_stringConstant", All);
+                originalConstant = (Func<string, object>)constantField.GetValue(null);
+                var fixture = new Harmony("DropNSpawn.isolated.ewd.failure");
+                var restore = new List<Action>();
+                string yamlPath = Path.Combine(Path.GetTempPath(), "dns-ewd-fault-" + Guid.NewGuid().ToString("N") + ".yml");
+                try
+                {
+                    fixture.Patch(manager.GetMethod("ApplyEntry", All), prefix: new HarmonyMethod(typeof(EwdFailureFixture), nameof(ApplyEntry)));
+                    foreach (string method in new[] { "RefreshResolvedBiomeMasksForConfiguration", "EnsureVanillaCompiledTableCurrentLocked" })
+                        fixture.Patch(manager.GetMethod(method, All), prefix: new HarmonyMethod(typeof(EwdFailureFixture), nameof(Skip)));
+                    fixture.Patch(manager.GetMethod("CanStrictlyValidateLocalConfigurationNow", All), prefix: new HarmonyMethod(typeof(EwdFailureFixture), nameof(Allow)));
+                    fixture.Patch(manager.GetMethod("BuildStrictLocalValidationEnvironmentKey", All), prefix: new HarmonyMethod(typeof(EwdFailureFixture), nameof(EnvironmentKey)));
+                    fixture.Patch(events.GetMethod("ApplyActiveDefinitionsLocked", All), transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateTimerIdentity)));
+                    // RandomEvent's default AnimationCurve requires native Unity.
+                    // This fixture supplies the fields relevant to candidate rollback.
+                    fixture.Patch(AccessTools.Constructor(typeof(RandomEvent)), prefix: new HarmonyMethod(typeof(EwdFailureFixture), nameof(Skip)));
+                    fixture.Patch(AccessTools.Method(typeof(RandEventSystem), "SetRandomEventsNeedsRefresh"), prefix: new HarmonyMethod(typeof(EwdFailureFixture), nameof(Skip)));
+                    MethodInfo hasPayload = support.GetMethod("HasPreparedPayload", All);
+                    object runtime = manager.GetField("ConfigurationRuntime", All).GetValue(null);
+                    object load = Read(runtime, "LoadState");
+                    foreach (PropertyInfo property in load.GetType().GetProperties(All))
+                    {
+                        object old = property.GetValue(load); restore.Add(() => property.SetValue(load, old));
+                    }
+                    Set(load, "LastLoadedPayload", "accepted-before-fault");
+                    object runtimeState = manager.GetField("RuntimeState", All).GetValue(null);
+                    object oldConfiguration = Read(runtimeState, "Configuration");
+                    File.WriteAllText(yamlPath, "- prefab: first\n  spawnSystem:\n    faction: ForestMonsters\n- prefab: second\n  spawnSystem:\n    faction: ForestMonsters\n");
+                    Arm();
+                    object outcome = runtime.GetType().GetMethod("ReloadSourceOfTruth", All).Invoke(runtime, new object[] { new List<string> { yamlPath } });
+                    Check(outcome.ToString() == "Rejected" && (string)Read(load, "LastLoadedPayload") == "accepted-before-fault" &&
+                        ReferenceEquals(Read(runtimeState, "Configuration"), oldConfiguration), "common API failure rejects local reload before authoritative configuration replacement");
+                    Check(constantCalls == 2 && manager.GetField("_capturedStrictValidationWarnings", All).GetValue(null) == null,
+                        "strict validation aborts once and releases diagnostic capture after dependency failure");
+
+                    constantField.SetValue(null, originalConstant);
+                    var entries = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(entryType));
+                    object[] args = { entries, null };
+                    var filter = manager.GetMethod("FilterStrictlyValidatedLocalConfiguration", All);
+                    Check(((System.Collections.IList)filter.Invoke(null, args)).Count == 0, "intentional empty SpawnSystem configuration remains valid");
+                    entries.Add(Entry("missing")); entries.Add(Entry("valid"));
+                    Check(((System.Collections.IList)filter.Invoke(null, args)).Count == 1, "unknown-prefab skip remains separate from dependency failure");
+
+                    object pipeline = manager.GetField("BuildPipelineState", All).GetValue(null);
+                    foreach (PropertyInfo property in pipeline.GetType().GetProperties(All))
+                    {
+                        object old = property.GetValue(pipeline); restore.Add(() => property.SetValue(pipeline, old));
+                    }
+                    var cache = (System.Collections.IDictionary)manager.GetField("FinalizedPreparedEntryCache", All).GetValue(null);
+                    var oldCache = cache.Cast<System.Collections.DictionaryEntry>().ToArray();
+                    restore.Add(() => { cache.Clear(); foreach (var item in oldCache) cache.Add(item.Key, item.Value); });
+                    cache.Clear();
+                    object pending = Activator.CreateInstance(manager.GetNestedType("PendingCompiledTableBuildState", All), true);
+                    Set(pending, "BuildVersion", Read(pipeline, "PreparedEntriesBuildVersion"));
+                    Set(pending, "GameDataSignature", 123); Set(pending, "DomainEnabled", true); Set(pending, "EagerClientSyncBuild", true);
+                    Set(pending, "ApplyTargetSignature", "candidate");
+                    Set(pipeline, "PendingCompiledTableBuild", pending); Set(pipeline, "PendingBuildTargetSignature", "candidate");
+                    foreach (string name in new[] { "first", "second" })
+                    {
+                        object model = Activator.CreateInstance(manager.GetNestedType("PreparedSpawnSystemModel", All), true);
+                        Set(model, "Entry", Entry(name)); Set(model, "EntrySignature", name); Set(model, "Context", name);
+                        ((System.Collections.IList)Read(pending, "Models")).Add(model);
+                    }
+                    object oldActive = manager.GetField("_activeCompiledTable", All).GetValue(null);
+                    object sentinel = Activator.CreateInstance(manager.GetNestedType("CompiledSpawnSystemTable", All), true);
+                    manager.GetField("_activeCompiledTable", All).SetValue(null, sentinel);
+                    restore.Add(() => manager.GetField("_activeCompiledTable", All).SetValue(null, oldActive));
+                    Arm();
+                    MethodInfo step = manager.GetMethod("TryProcessPendingCompiledTableBuild", All);
+                    Check((bool)step.Invoke(null, new object[] { double.MaxValue }) && constantCalls == 2 &&
+                        Read(pipeline, "PendingCompiledTableBuild") == null && ReferenceEquals(manager.GetField("_activeCompiledTable", All).GetValue(null), sentinel),
+                        "partially prepared table is discarded on API failure while previous active table stays selected");
+                    Check(!(bool)step.Invoke(null, new object[] { double.MaxValue }), "failed staged table does not retry/skip rows on the next frame");
+
+                    constantField.SetValue(null, originalConstant);
+                    FieldInfo instance = typeof(RandEventSystem).GetFields(All).Single(field => field.IsStatic && field.FieldType == typeof(RandEventSystem));
+                    object oldInstance = instance.GetValue(null); restore.Add(() => instance.SetValue(null, oldInstance));
+                    var system = (RandEventSystem)FormatterServices.GetUninitializedObject(typeof(RandEventSystem));
+                    instance.SetValue(null, system);
+                    var oldSpawn = new SpawnSystem.SpawnData();
+                    object oldPayload = support.GetMethod("BuildPreparedPayload", All).Invoke(null, new[] { oldSpawn, Entry("old"), "old" });
+                    support.GetMethod("ApplyPreparedPayload", All).Invoke(null, new[] { oldSpawn, oldPayload });
+                    restore.Add(() => support.GetMethod("ApplyPreparedPayload", All).Invoke(null, new object[] { oldSpawn, null }));
+                    var oldEvent = new RandomEvent { m_name = "old", m_forceEnvironment = "old-env", m_forceMusic = "old-music", m_spawn = new List<SpawnSystem.SpawnData> { oldSpawn } };
+                    system.m_events = new List<RandomEvent> { oldEvent };
+                    object oldEvents = system.m_events;
+                    foreach (string name in new[] { "BaselineEvents", "ActiveDefinitions", "EventMetadata" })
+                    {
+                        FieldInfo field = events.GetField(name, All); object old = field.GetValue(null); restore.Add(() => field.SetValue(null, old));
+                    }
+                    events.GetField("BaselineEvents", All).SetValue(null, new List<RandomEvent>());
+                    var definitions = (System.Collections.IList)Activator.CreateInstance(events.GetField("ActiveDefinitions", All).FieldType);
+                    Type eventType = mod.GetType("DropNSpawn.EventDefinition", true);
+                    Type eventSpawnType = mod.GetType("DropNSpawn.EventSpawnDefinition", true);
+                    foreach (string name in new[] { "first", "second" })
+                    {
+                        object ev = Activator.CreateInstance(eventType, true); Set(ev, "Event", name);
+                        object spawn = Activator.CreateInstance(eventSpawnType, true); Set(spawn, "Prefab", name); Set(spawn, "SpawnSystem", Definition());
+                        var spawns = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(eventSpawnType)); spawns.Add(spawn); Set(ev, "Spawns", spawns);
+                        definitions.Add(ev);
+                    }
+                    events.GetField("ActiveDefinitions", All).SetValue(null, definitions);
+                    object metadata = events.GetField("EventMetadata", All).GetValue(null);
+                    object oldMetadata = Activator.CreateInstance(metadata.GetType().GetGenericArguments()[1], true);
+                    metadata.GetType().GetMethod("Add").Invoke(metadata, new[] { oldEvent, oldMetadata });
+                    restore.Add(() => metadata.GetType().GetMethod("Remove").Invoke(metadata, new object[] { oldEvent }));
+                    var applied = (System.Collections.IList)events.GetField("AppliedSpawnData", All).GetValue(null);
+                    var oldApplied = applied.Cast<object>().ToArray(); restore.Add(() => { applied.Clear(); foreach (var item in oldApplied) applied.Add(item); });
+                    restore.Add(() => events.GetMethod("ClearAppliedPayloadsLocked", All).Invoke(null, null));
+                    applied.Clear(); applied.Add(oldSpawn);
+                    Arm();
+                    try { events.GetMethod("ApplyActiveDefinitionsLocked", All).Invoke(null, new object[] { "failure fixture" }); throw new Exception("event fault did not propagate"); }
+                    catch (TargetInvocationException error) when (error.InnerException is MissingMethodException) { }
+                    Check(constantCalls == 2 && ReferenceEquals(system.m_events, oldEvents) && ReferenceEquals(events.GetField("EventMetadata", All).GetValue(null), metadata) &&
+                        oldEvent.m_forceEnvironment == "old-env" && oldEvent.m_forceMusic == "old-music", "failed event candidate retains previous event list, metadata, environment and music");
+                    Check(applied.Count == 1 && ReferenceEquals(applied[0], oldSpawn) && (bool)hasPayload.Invoke(null, new object[] { oldSpawn }) &&
+                        Seen.All(spawn => !(bool)hasPayload.Invoke(null, new object[] { spawn })), "failed event candidate cleans new payloads but preserves old payload ownership");
+                    constantField.SetValue(null, originalConstant);
+                    definitions.Clear();
+                    events.GetMethod("ApplyActiveDefinitionsLocked", All).Invoke(null, new object[] { "intentional empty" });
+                    Check(system.m_events.Count == 0 && applied.Count == 0 && !(bool)hasPayload.Invoke(null, new object[] { oldSpawn }),
+                        "valid empty event definitions still activate and retire previous payloads after recovery");
+                }
+                finally
+                {
+                    constantField.SetValue(null, originalConstant);
+                    for (int index = restore.Count - 1; index >= 0; index--) restore[index]();
+                    fixture.UnpatchSelf();
+                    File.Delete(yamlPath);
+                }
+                object Definition() { object value = Activator.CreateInstance(definitionType, true); Set(value, "Faction", "ForestMonsters"); return value; }
+                object Entry(string name) { object value = Activator.CreateInstance(entryType, true); Set(value, "Prefab", name); Set(value, "SpawnSystem", Definition()); return value; }
+                void Arm() { constantCalls = 0; Seen.Clear(); constantField.SetValue(null, (Func<string, object>)FailingConstant); }
+            }
+        }
+
+        private sealed class EwdValueFields : UnityEngine.MonoBehaviour
+        {
+            public int Count = 0;
+            public float Speed = 0;
+            public bool Active = false;
+            public long Ticks = 0;
+            public string Label = "";
+            public UnityEngine.Vector3 Position = default;
+            public UnityEngine.Quaternion Rotation = default;
+        }
+
+        private static void CheckEwdValueFactories(Assembly mod)
+        {
+            Assembly ewd = Assembly.Load("ExpandWorldData");
+            Type support = mod.GetType("DropNSpawn.SpawnSystemCustomDataSupport", true);
+            Type entryType = mod.GetType("DropNSpawn.CanonicalSpawnSystemEntry", true);
+            object entry = Activator.CreateInstance(entryType, true);
+            PropertyInfo definitionProperty = entryType.GetProperty("SpawnSystem", All);
+            object definition = Activator.CreateInstance(definitionProperty.PropertyType, true);
+            definitionProperty.SetValue(entry, definition);
+            const string literal = "ForestMonsters,<literal>,AnimalsVeg";
+            definition.GetType().GetProperty("Faction", All).SetValue(definition, literal);
+            definition.GetType().GetProperty("Objects", All).SetValue(definition, new List<string> { "Wood,1,2,3,1" });
+            object payload = support.GetMethod("BuildPreparedPayload", All).Invoke(null, new[] { new SpawnSystem.SpawnData(), entry, "EWD fixture" });
+            object data = payload.GetType().GetProperty("CustomData").GetValue(payload);
+            var strings = (System.Collections.IDictionary)data.GetType().GetField("Strings").GetValue(data);
+            Check((string)ReadValue(strings[literalHash("faction")]) == literal, "EWD faction constant remains literal (commas/value-group tokens are not parsed)");
+            var objects = (System.Collections.IList)payload.GetType().GetProperty("CustomObjects").GetValue(payload);
+            Check(objects.Count == 1 && objects[0].GetType().FullName == "ExpandWorldData.BlueprintObject", "EWD object payload still builds alongside faction");
+            object plain = support.GetMethod("BuildPreparedPayload", All).Invoke(null, new[] { new SpawnSystem.SpawnData(), Activator.CreateInstance(entryType, true), "plain fixture" });
+            Check(plain == null, "plain spawn still prepares successfully with EWD installed");
+
+            object component = FormatterServices.GetUninitializedObject(typeof(EwdValueFields));
+            Type fields = mod.GetType("DropNSpawn.ExpandWorldFieldOverrideSupport", true);
+            // Dynamic rotation is parsed but not evaluated: numeric Euler conversion
+            // belongs to Unity's native engine, which this managed probe does not host.
+            foreach (var value in new[] { ("Count", "2"), ("Speed", "2.5"), ("Active", "true"), ("Ticks", "123"), ("Label", "literal"), ("Position", "1,2,3"), ("Rotation", "<rotation>") })
+            {
+                object custom = Activator.CreateInstance(ewd.GetType("Data.DataEntry", true));
+                fields.GetMethod("InsertReflectedField", All).Invoke(null, new[] { custom, component, typeof(EwdValueFields).GetField(value.Item1), value.Item2 });
+                var ints = (System.Collections.IDictionary)custom.GetType().GetField("Ints").GetValue(custom);
+                Check((int)ReadValue(ints[literalHash("HasFields")]) == 1 && (int)ReadValue(ints[literalHash("HasFieldsEwdValueFields")]) == 1,
+                    "EWD reflected " + value.Item1 + " preserves both HasFields markers");
+                string map = value.Item1 == "Count" ? "Ints" : value.Item1 == "Speed" ? "Floats" : value.Item1 == "Active" ? "Bools" : value.Item1 == "Ticks" ? "Longs" : value.Item1 == "Position" ? "Vecs" : value.Item1 == "Rotation" ? "Quats" : "Strings";
+                Check(((System.Collections.IDictionary)custom.GetType().GetField(map).GetValue(custom)).Contains(literalHash("EwdValueFields." + value.Item1)), "EWD reflected value retained: " + value.Item1);
+            }
+            object ReadValue(object value) => value.GetType().GetMethod("Get", All).Invoke(value, new object[] { null });
+            int literalHash(string text) => text.GetStableHashCode();
         }
 
         private static void CheckEwdCompatibility(Assembly mod)

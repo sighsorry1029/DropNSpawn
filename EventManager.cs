@@ -1057,10 +1057,35 @@ internal static class EventManager
             return;
         }
 
-        ClearAppliedPayloadsLocked();
+        var previousMetadata = EventMetadata;
+        var previousSpawns = AppliedSpawnData.ToArray();
+        AppliedSpawnData.Clear();
         EventMetadata = new ConditionalWeakTable<RandomEvent, EventRuntimeMetadata>();
 
-        List<RandomEvent> events = CloneEvents(BaselineEvents);
+        List<RandomEvent> events;
+        try
+        {
+            events = BuildActiveEventsLocked(source);
+        }
+        catch
+        {
+            ClearAppliedPayloadsLocked();
+            AppliedSpawnData.AddRange(previousSpawns);
+            EventMetadata = previousMetadata;
+            throw;
+        }
+
+        foreach (SpawnSystem.SpawnData spawn in previousSpawns)
+            SpawnSystemCustomDataSupport.ApplyPreparedPayload(spawn, null);
+        RandEventSystem.instance.m_events = events;
+        RandEventSystem.SetRandomEventsNeedsRefresh();
+    }
+
+    // Build definitions, metadata and spawn payloads as one candidate. The caller
+    // retains the old live set until every event has prepared successfully.
+    private static List<RandomEvent> BuildActiveEventsLocked(string source)
+    {
+        List<RandomEvent> events = CloneEvents(BaselineEvents!);
         HashSet<RandomEvent> explicitDurationEvents = new();
 
         if (PluginSettingsFacade.IsEventDomainEnabled())
@@ -1114,8 +1139,7 @@ internal static class EventManager
 
         ApplyEventDurationMultiplier(events, explicitDurationEvents);
         ApplyDefaultPlayerBaseConditions(events);
-        RandEventSystem.instance.m_events = events;
-        RandEventSystem.SetRandomEventsNeedsRefresh();
+        return events;
     }
 
     private static void ApplyDefaultPlayerBaseConditions(List<RandomEvent> events)

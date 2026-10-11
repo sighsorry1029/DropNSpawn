@@ -1,3 +1,11 @@
+## 1.4.2 — Expand World Data 1.75 compatibility
+
+- Support EWD 1.75's renamed constant-value factories. Select and cache the exact `Constant(string/int)` or compatible `Simple(string/int)` APIs instead of relying on version numbers or missing direct calls. Preserve literal faction values, reflected-field markers, expression parsing and standalone DNS behavior.
+- Validate the required data-value APIs during dependency setup. An installed incompatible EWD now fails explicitly before DNS initialization instead of silently treating the dependency as absent or discarding normal spawn entries as invalid YAML.
+- Reject common dependency failures before strict local SpawnSystem configuration commit, and discard failed staged runtime builds without activating a partial table. Preserve existing live tables and event metadata/payloads when event candidate preparation fails; valid empty configurations and ordinary invalid-prefab filtering remain unchanged.
+- Let queued game-data refresh finish other domains after a dependency failure without automatic per-frame retries. Existing network authority, YAML formats, timer storage and RPC schemas are unchanged.
+- Add API-shape and isolated Mono regression coverage for EWD 1.75, the pinned 1.71 API and missing EWD, including failure after one successful row. Actual gameplay, coroutine scheduling and multiplayer synchronization remain in-game verification steps. Update the server and all clients to 1.4.2 together and restart.
+
 ## 1.4.1 — Dungeon spawn floor alignment
 
 - Fix dungeon spawn candidates such as BlobElite being rejected because their capsule extends below the prefab pivot and intersects the supporting floor. Raise the actual spawn position just enough to align the capsule's lower edge with the floor; already-clear pivots remain unchanged.

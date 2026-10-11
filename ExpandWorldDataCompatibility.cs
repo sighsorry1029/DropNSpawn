@@ -25,6 +25,9 @@ internal static class ExpandWorldDataCompatibility
     private static IDictionary? _objects;
     private static FieldInfo[] _sourceFields = Array.Empty<FieldInfo>();
     private static Assembly? _assembly;
+    // Opaque returns keep EWD types out of the standalone class initialization path.
+    private static Func<string, object>? _stringConstant;
+    private static Func<int, object>? _intConstant;
 
     internal static bool IsAvailable => _assembly != null;
     internal static Type? FindType(string name) => _assembly?.GetType(name);
@@ -32,14 +35,24 @@ internal static class ExpandWorldDataCompatibility
     internal static void DetectDependency()
     {
         // A DLL on disk is not sufficient: BepInEx must have loaded the optional plugin.
-        ConfigureDependency(Chainloader.PluginInfos.TryGetValue("expand_world_data", out var plugin)
-            ? plugin.Instance.GetType().Assembly : null);
+        Assembly? assembly = Chainloader.PluginInfos.TryGetValue("expand_world_data", out var plugin)
+            ? plugin.Instance.GetType().Assembly : null;
+        try { ConfigureDependency(assembly); }
+        catch (Exception error) when (IsDependencyFailure(error))
+        {
+            DropNSpawnPlugin.DropNSpawnLogger.LogError($"DNS initialization aborted before configuration/patch installation; existing game tables are unchanged. {DescribeDependencyFailure(error, assembly)}");
+            throw;
+        }
         if (!IsAvailable)
             DropNSpawnPlugin.DropNSpawnLogger.LogInfo("EWD is not loaded: standalone DNS enabled. EWD data/fields/objects and event commands require EWD 1.71 or newer.");
+        else
+            DropNSpawnPlugin.DropNSpawnLogger.LogInfo($"EWD data constants: string={_stringConstant!.Method.Name}, int={_intConstant!.Method.Name} (API-selected).");
     }
 
     internal static void ConfigureDependency(Assembly? assembly)
     {
+        Func<string, object>? stringConstant = null;
+        Func<int, object>? intConstant = null;
         if (assembly != null)
         {
             // VERSION is informational, not a compatibility key (including suffixes
@@ -52,8 +65,53 @@ internal static class ExpandWorldDataCompatibility
             RequireMethod(helper, "Merge", data, data, data);
             RequireMethod(helper, "Init", typeof(ZDO), typeof(GameObject), typeof(Vector3),
                 typeof(Quaternion), typeof(Vector3?), data);
+            Type values = RequireType(assembly, "Data.DataValue");
+            stringConstant = (Func<string, object>)Delegate.CreateDelegate(typeof(Func<string, object>),
+                RequireConstantFactory(values, typeof(string), RequireType(assembly, "Data.IStringValue")));
+            intConstant = (Func<int, object>)Delegate.CreateDelegate(typeof(Func<int, object>),
+                RequireConstantFactory(values, typeof(int), RequireType(assembly, "Data.IIntValue")));
+            foreach (string valueType in new[] { "String", "Int", "Float", "Long", "Bool", "Vector3", "Quaternion" })
+                RequireMethod(values, valueType, RequireType(assembly, $"Data.I{valueType}Value"), typeof(string));
         }
+        // Publish only a complete contract. A failed probe retains any existing one;
+        // startup aborts before DNS installs patches or replaces game tables.
+        _stringConstant = stringConstant;
+        _intConstant = intConstant;
         _assembly = assembly;
+    }
+
+    private static MethodInfo RequireConstantFactory(Type values, Type argument, Type returns)
+    {
+        foreach (string name in new[] { "Constant", "Simple" })
+        {
+            MethodInfo? method = values.GetMethod(name, BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly,
+                null, new[] { argument }, null);
+            if (method != null && !method.ContainsGenericParameters && method.ReturnType == returns) return method;
+        }
+        throw new MissingMethodException($"EWD requires public static {returns.FullName} {values.FullName}.Constant({argument.FullName}) or Simple({argument.FullName}).");
+    }
+
+    internal static object Constant(string value) => _stringConstant!(value);
+    internal static object Constant(int value) => _intConstant!(value);
+
+    internal static bool IsDependencyFailure(Exception error)
+    {
+        if (error is TargetInvocationException or TypeInitializationException && error.InnerException != null)
+            return IsDependencyFailure(error.InnerException);
+        return error is MissingMemberException or TypeLoadException or ReflectionTypeLoadException or
+            FileLoadException or FileNotFoundException or BadImageFormatException;
+    }
+
+    internal static string DescribeDependencyFailure(Exception error, Assembly? assembly = null)
+    {
+        string version = "unknown";
+        try
+        {
+            FieldInfo? field = (assembly ?? _assembly)?.GetType("ExpandWorldData.EWD")?.GetField("VERSION");
+            if (field?.IsLiteral == true) version = field.GetRawConstantValue()?.ToString() ?? version;
+        }
+        catch { /* A diagnostic must not resolve another broken dependency. */ }
+        return $"DNS {DropNSpawnPlugin.ModVersion} / EWD {version}: dependency API failure, not an invalid YAML entry. {error.GetBaseException().Message}";
     }
 
     internal static void RequireExtensions(string? data, Dictionary<string, string>? fields, List<string>? objects, string context)

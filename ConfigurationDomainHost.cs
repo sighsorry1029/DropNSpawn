@@ -300,7 +300,16 @@ internal static class ConfigurationDomainHost
             }
 
             loadState.PendingStrictPayload = "";
-            StrictValidationResult<TEntry> strictValidationResult = hooks.StrictValidateLocal(acceptedEntries);
+            StrictValidationResult<TEntry> strictValidationResult;
+            try
+            {
+                strictValidationResult = hooks.StrictValidateLocal(acceptedEntries);
+            }
+            catch (Exception ex) when (ExpandWorldDataCompatibility.IsDependencyFailure(ex))
+            {
+                hooks.RejectLocalPayload(payload, new[] { ExpandWorldDataCompatibility.DescribeDependencyFailure(ex) });
+                return DomainReloadOutcome.Rejected;
+            }
             acceptedEntries = strictValidationResult.Entries;
             if (strictValidationResult.Warnings.Count > 0)
             {

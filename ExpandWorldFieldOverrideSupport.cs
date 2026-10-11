@@ -235,8 +235,8 @@ internal static class ExpandWorldFieldOverrideSupport
     {
         int key = $"{component.GetType().Name}.{field.Name}".GetStableHashCode();
         customData.Ints ??= new Dictionary<int, EwdData.IIntValue>();
-        customData.Ints["HasFields".GetStableHashCode()] = EwdData.DataValue.Simple(1);
-        customData.Ints[$"HasFields{component.GetType().Name}".GetStableHashCode()] = EwdData.DataValue.Simple(1);
+        customData.Ints["HasFields".GetStableHashCode()] = (EwdData.IIntValue)ExpandWorldDataCompatibility.Constant(1);
+        customData.Ints[$"HasFields{component.GetType().Name}".GetStableHashCode()] = (EwdData.IIntValue)ExpandWorldDataCompatibility.Constant(1);
 
         if (field.FieldType == typeof(int))
         {

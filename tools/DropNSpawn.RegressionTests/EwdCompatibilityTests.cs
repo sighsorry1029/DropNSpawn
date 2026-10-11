@@ -116,6 +116,10 @@ internal static partial class Program
         if (mod.WithoutEwd) return;
         Assembly ewd = mod.LoadGameAssembly("ExpandWorldData");
         Type compat = mod.Type("ExpandWorldDataCompatibility");
+        using (var module = Mono.Cecil.ModuleDefinition.ReadModule(mod.Assembly.Location))
+            Check(!module.GetMemberReferences().OfType<Mono.Cecil.MethodReference>().Any(method =>
+                method.DeclaringType.FullName == "Data.DataValue" && method.Name is "Simple" or "Constant"),
+                "EWD constant factories have no version-specific direct MemberRefs");
         var plan = (IList)Invoke(compat, null, "GetPatchPlan", ewd)!;
         CheckEwdCapabilitySelection(mod, ewd, plan.Count);
         if (ewd.GetType("ExpandWorld.Spawn.Patcher") == null)
@@ -252,6 +256,31 @@ internal static partial class Program
                 Check(plan.Count == expectedPatches, "same EWD API accepted regardless of plugin/assembly version: " + version);
             }
             path = Path.Combine(directory, "ExpandWorldData.dll");
+            foreach (string argument in new[] { "System.String", "System.Int32" })
+            foreach (string defect in new[] { "missing", "return", "instance" })
+            {
+                using (var module = Mono.Cecil.ModuleDefinition.ReadModule(ewd.Location))
+                {
+                    foreach (var factory in module.GetType("Data.DataValue").Methods.Where(method =>
+                        method.Name is "Constant" or "Simple" && method.Parameters.Count == 1 && method.Parameters[0].ParameterType.FullName == argument))
+                    {
+                        if (defect == "missing") factory.Name = "Unavailable" + factory.Name;
+                        else if (defect == "return") factory.ReturnType = module.TypeSystem.Object;
+                        else { factory.IsStatic = false; factory.HasThis = true; }
+                    }
+                    module.Write(path);
+                }
+                try
+                {
+                    using var incompatible = new ModContract(mod.Assembly.Location, Path.GetDirectoryName(Path.GetDirectoryName(mod.SearchPaths[1]))!,
+                        Directory.GetCurrentDirectory(), mod.SearchPaths[0], path, ewdFromMemory: true);
+                    throw new InvalidOperationException("Invalid EWD constant factory was accepted");
+                }
+                catch (TargetInvocationException ex) when (ex.InnerException is MissingMethodException)
+                {
+                    Check(ex.InnerException.Message.Contains(argument), "invalid constant factory rejected before payload processing: " + argument + "/" + defect);
+                }
+            }
             using (var module = Mono.Cecil.ModuleDefinition.ReadModule(ewd.Location))
             {
                 var helper = module.GetType("Data.DataHelper");

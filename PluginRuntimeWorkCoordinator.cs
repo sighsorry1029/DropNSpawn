@@ -288,8 +288,18 @@ internal sealed class PluginRuntimeWorkCoordinator
                     continue;
                 }
 
-                domain.OnGameDataReady(source);
-                MarkGameDataRefreshDomainProcessed(domain.ReloadDomain);
+                try
+                {
+                    domain.OnGameDataReady(source);
+                }
+                catch (Exception ex) when (ExpandWorldDataCompatibility.IsDependencyFailure(ex))
+                {
+                    DropNSpawnPlugin.DropNSpawnLogger.LogError($"Game-data refresh failed for {domain.ReloadDomain}; no automatic retry until another refresh is requested. {ExpandWorldDataCompatibility.DescribeDependencyFailure(ex)}");
+                }
+                finally
+                {
+                    MarkGameDataRefreshDomainProcessed(domain.ReloadDomain);
+                }
                 if (ShouldYieldBetweenQueuedGameDataRefreshDomains(domains, domain.ReloadDomain))
                 {
                     yield return null;

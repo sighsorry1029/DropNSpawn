@@ -757,6 +757,7 @@ internal static partial class SpawnSystemManager
                 }
                 catch (Exception ex)
                 {
+                    if (ExpandWorldDataCompatibility.IsDependencyFailure(ex)) throw;
                     warnings.Add($"Entry '{context}' failed strict spawnsystem validation and was skipped. {ex.Message}");
                 }
             }
@@ -1610,9 +1611,20 @@ internal static partial class SpawnSystemManager
                    (buildState.EagerClientSyncBuild || Time.realtimeSinceStartupAsDouble < deadline))
             {
                 PreparedSpawnSystemModel model = buildState.Models[buildState.NextFinalizeIndex++];
-                if (TryFinalizePreparedSpawnSystemModelLocked(model, buildState.GameDataSignature, out PreparedSpawnSystemEntry? finalizedEntry))
+                try
                 {
-                    buildState.FinalizedEntries.Add(finalizedEntry!);
+                    if (TryFinalizePreparedSpawnSystemModelLocked(model, buildState.GameDataSignature, out PreparedSpawnSystemEntry? finalizedEntry))
+                        buildState.FinalizedEntries.Add(finalizedEntry!);
+                }
+                catch (Exception ex) when (ExpandWorldDataCompatibility.IsDependencyFailure(ex))
+                {
+                    // Discard this candidate, never resume at the next row and commit
+                    // a partial table. Existing live tables and timers remain attached.
+                    BuildPipelineState.PendingCompiledTableBuild = null;
+                    BuildPipelineState.PendingBuildTargetSignature = "";
+                    BuildPipelineState.PendingGameDataSignature = null;
+                    DropNSpawnPlugin.DropNSpawnLogger.LogError($"Rejected staged spawnsystem apply; existing runtime tables retained. {ExpandWorldDataCompatibility.DescribeDependencyFailure(ex)}");
+                    return true;
                 }
 
                 processedEntries++;
