@@ -1,3 +1,11 @@
+## 1.4.3 — SpawnSystem first-check timing and dungeon diagnostics
+
+- Restore vanilla first-check timing for new or edited DNS-owned normal SpawnSystem rules. Missing timers use the native zero baseline rather than starting a full-interval wait on first use; the original world-time calculation, catch-up cap, chance and spawn conditions still decide whether a check is due. Align the optional ESP timer reader with that baseline without writing timers.
+- Preserve existing saved timer progress, including timestamps written by 1.4.0–1.4.2. This update does not reset active cooldowns, migrate or delete old keys, change timer identities/storage, or alter event and AltBiome timing.
+- Add `5 - Diagnostics` → `Dungeon spawn diagnostics`, default `Off`. Enable it separately on the server and reproducing clients for bounded `[DungeonDiag]` summaries every 30 seconds: scheduling/capacity, request/reply outcomes, floor/range/capsule/path rejection and final server validation. The option is local, live and not synchronized.
+- Correlate limited samples with existing request tokens. Collision samples are limited to two extra observation queries per reporting window; diagnostic Off does not build per-event strings, measure placement time or issue extra physics queries. Diagnostics do not change spawn conditions, RNG draws, retries, RPC payloads or saved world state.
+- Add regression coverage for native first-check timing and diagnostic bounds, cleanup and unchanged placement decisions with diagnostics On/Off. Actual Unity physics, client instantiation and multiplayer reproduction remain in-game checks. Update the server and all clients to 1.4.3 together and restart; turn diagnostics Off after testing.
+
 ## 1.4.2 — Expand World Data 1.75 compatibility
 
 - Support EWD 1.75's renamed constant-value factories. Select and cache the exact `Constant(string/int)` or compatible `Simple(string/int)` APIs instead of relying on version numbers or missing direct calls. Preserve literal faction values, reflected-field markers, expression parsing and standalone DNS behavior.

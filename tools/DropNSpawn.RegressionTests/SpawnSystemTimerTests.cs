@@ -22,7 +22,7 @@ internal static partial class Program
         byte[] Bytes(object table) => (byte[])Call(table, "Serialize")!;
         IDictionary Values(object table) => (IDictionary)tableType.GetField("Values", All)!.GetValue(table)!;
         void Prune(object table, Array ids) => Call(table, "Prune", Activator.CreateInstance(setType, new object[] { ids })!);
-        long Read(object table, object id, long now) => (long)Call(table, "Read", id, now)!;
+        long Read(object table, object id, long fallback = 0) => (long)Call(table, "Read", id, fallback)!;
         bool Dirty(object table) => (bool)tableType.GetField("Dirty", All)!.GetValue(table)!;
         void Reject(byte[] bytes, string reason)
         {
@@ -93,10 +93,12 @@ internal static partial class Program
 
         long now = TimeSpan.FromHours(20).Ticks;
         object table = Table();
-        Check(Read(table, dayId, now) == now && Dirty(table), "missing timer initializes at current game time, not zero");
+        Check(Read(table, dayId) == 0 && Read(table, dayId, 123) == 123 && !Dirty(table) && Values(table).Count == 0,
+            "missing timer preserves the native fallback without starting a cooldown or writing a record");
         Call(table, "Set", dayId, now + TimeSpan.TicksPerMinute);
-        Check(Read(table, nightId, now) == now && Read(table, dayId, now + 1) == now + TimeSpan.TicksPerMinute,
+        Check(Read(table, nightId) == 0 && Read(table, dayId) == now + TimeSpan.TicksPerMinute && Values(table).Count == 1,
             "one rule consuming an interval does not consume another rule's interval");
+        Call(table, "Set", nightId, now);
         byte[] saved = Bytes(table);
         Check(saved.Length == 8 + 2 * 44, "versioned binary store uses fixed full-hash/ordinal/time records");
         object restored = Table(saved);
@@ -110,8 +112,8 @@ internal static partial class Program
         Check(Dirty(restored) && Values(restored).Count == 1 && Values(restored).Contains(dayId), "only absent configured timer identities are pruned");
         object replacement = Entry("day", 41);
         Prune(restored, Ids(replacement));
-        Check(Values(restored).Count == 0 && Read(restored, Ids(replacement).GetValue(0)!, now + 300) == now + 300,
-            "editing one rule discards its old record and begins its new interval");
+        Check(Values(restored).Count == 0 && Read(restored, Ids(replacement).GetValue(0)!) == 0 && Values(restored).Count == 0,
+            "editing one rule discards its old record and uses native first-check timing without an initial cooldown");
         Prune(restored, Ids());
         Check(Values(Table(Bytes(restored))).Count == 0, "empty accepted configuration clears the new store without legacy-key scanning");
 
@@ -124,7 +126,7 @@ internal static partial class Program
         {
             Array active = Ids(Entry("day", interval: 100 + i));
             Prune(many, active);
-            Read(many, active.GetValue(0)!, now + i);
+            Call(many, "Set", active.GetValue(0)!, now + i);
         }
         Check(Values(many).Count == 1 && Bytes(many).Length == 52, "repeated setting edits do not accumulate retired IDs in the new store");
         byte[] wrongVersion = (byte[])saved.Clone(); wrongVersion[0] = 2;

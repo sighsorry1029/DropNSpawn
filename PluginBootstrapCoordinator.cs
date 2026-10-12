@@ -60,6 +60,12 @@ internal sealed class PluginBootstrapCoordinator
         SpawnerGlobalConfig.Bind(_host);
         CharacterDropGlobalConfig.Bind(_host);
         EventGlobalConfig.Bind(_host);
+        PluginBoundSettings.DungeonSpawnDiagnostics = _host.BindConfigEntry(
+            "5 - Diagnostics",
+            "Dungeon spawn diagnostics",
+            DropNSpawnPlugin.Toggle.Off,
+            "Log bounded dungeon spawn diagnostics every 30 seconds. Local only: enable separately on the server and the clients reproducing the issue. Does not change spawn rules. Includes limited position/collider samples; turn off after testing.",
+            synchronizedSetting: false);
 
         BindDomainConfigurationEntries();
     }

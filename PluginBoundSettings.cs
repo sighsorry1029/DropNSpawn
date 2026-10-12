@@ -11,6 +11,7 @@ internal static class PluginBoundSettings
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? EnableSpawnSystemOverrides { get; set; }
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? EnableEventOverrides { get; set; }
     internal static ConfigEntry<DropNSpawnPlugin.Toggle>? DisableGlobalKeySpawnSystemEntriesInLowTierBiomes { get; set; }
+    internal static ConfigEntry<DropNSpawnPlugin.Toggle>? DungeonSpawnDiagnostics { get; set; }
 
     internal static void Clear()
     {
@@ -21,5 +22,6 @@ internal static class PluginBoundSettings
         EnableSpawnSystemOverrides = null;
         EnableEventOverrides = null;
         DisableGlobalKeySpawnSystemEntriesInLowTierBiomes = null;
+        DungeonSpawnDiagnostics = null;
     }
 }

@@ -83,11 +83,11 @@ internal static class SpawnSystemTimers
         internal readonly Dictionary<TimerId, long> Values = new();
         internal bool Dirty;
 
-        internal long Read(TimerId id, long now)
+        internal long Read(TimerId id, long defaultValue)
         {
-            if (Values.TryGetValue(id, out long ticks)) return ticks;
-            Set(id, now); // first use waits one interval; never imports legacy counters
-            return now;
+            // Preserve the native missing-timer baseline without importing old
+            // keys. Only a real native check writes its timestamp through Set.
+            return Values.TryGetValue(id, out long ticks) ? ticks : defaultValue;
         }
 
         internal void Set(TimerId id, long ticks)
@@ -258,10 +258,10 @@ internal static class SpawnSystemTimers
     }
 
     internal static long ReadTime(ZDO zdo, int oldKey, long defaultValue, SpawnSystem system,
-        SpawnSystem.SpawnData row, DateTime now, bool eventSpawners, string groupSalt)
+        SpawnSystem.SpawnData row, bool eventSpawners, string groupSalt)
     {
         return TryGetActiveRow(system, row, zdo, eventSpawners, groupSalt, out ZoneState state, out TimerId id)
-            ? state.Table!.Read(id, now.Ticks) : zdo.GetLong(oldKey, defaultValue);
+            ? state.Table!.Read(id, defaultValue) : zdo.GetLong(oldKey, defaultValue);
     }
 
     internal static void WriteTime(ZDO zdo, int oldKey, long ticks, SpawnSystem system,
@@ -279,8 +279,8 @@ internal static class SpawnSystemTimers
             !state.Rows.TryGetValue(row, out TimerId id)) return false;
         // ESP never initializes or prunes timers, including on non-owner clients.
         if (state.Depth == 0) state.Refresh(zdo);
-        if (state.Table != null && state.Table.Values.TryGetValue(id, out long ticks))
-            elapsed = (now.Ticks - ticks) / (double)TimeSpan.TicksPerSecond;
+        if (state.Table != null)
+            elapsed = (now.Ticks - state.Table.Read(id, 0L)) / (double)TimeSpan.TicksPerSecond;
         return true;
     }
 }

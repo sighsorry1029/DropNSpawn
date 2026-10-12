@@ -51,6 +51,9 @@ namespace DropNSpawn.Tests
         private static void RunChecks(string managed)
         {
             Assembly mod = Assembly.LoadFrom(Environment.GetEnvironmentVariable("DROPNSPAWN_MONO_PROBE_DLL"));
+            string testRoot = Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location);
+            AccessTools.Method(typeof(BepInEx.Paths), "SetExecutablePath").Invoke(null,
+                new object[] { Path.Combine(testRoot, "CompatibilityMonoHost.exe"), testRoot, managed, null });
             Check(Path.GetFullPath(typeof(Character).Assembly.Location) == Path.Combine(managed, "assembly_valheim.dll"), "original game assembly");
             System.Console.WriteLine("Game: " + typeof(Character).Assembly.Location);
             System.Console.WriteLine("Harmony: " + typeof(Harmony).Assembly.FullName);
@@ -129,9 +132,6 @@ namespace DropNSpawn.Tests
                 ItemDrop.OnCreateNew(item, cheated);
                 Check(item.m_itemData.m_cheated == cheated && item.m_itemData.m_worldLevel == 2, "game item provenance " + cheated);
             }
-            string testRoot = Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location);
-            AccessTools.Method(typeof(BepInEx.Paths), "SetExecutablePath").Invoke(null,
-                new object[] { Path.Combine(testRoot, "CompatibilityMonoHost.exe"), testRoot, managed, null });
             // EWD's managed initializer queues ServerSync startup. Keep that queue
             // pending: full BepInEx/Unity/network startup is outside this probe.
             var threading = (BepInEx.ThreadingHelper)FormatterServices.GetUninitializedObject(typeof(BepInEx.ThreadingHelper));
@@ -202,7 +202,7 @@ namespace DropNSpawn.Tests
                 Check(run, "owner SpawnSystem timer batch may execute");
                 return args[5];
             }
-            long Read(SpawnSystem.SpawnData row) => (long)read.Invoke(null, new object[] { zdo, legacy, 0L, system, row, now, false, "b_" });
+            long Read(SpawnSystem.SpawnData row) => (long)read.Invoke(null, new object[] { zdo, legacy, 0L, system, row, false, "b_" });
             void Write(SpawnSystem.SpawnData row, long ticks) => write.Invoke(null, new object[] { zdo, legacy, ticks, system, row, false, "b_" });
             void Attach() => attach.Invoke(null, new object[] { system, configuredIds, rows, system.m_spawnLists });
             MethodInfo setBytes = AccessTools.Method(typeof(ZDOExtraData), "Set", new[] { typeof(ZDOID), typeof(int), typeof(byte[]) });
@@ -216,6 +216,8 @@ namespace DropNSpawn.Tests
                 // Only Unity's native Object equality is substituted. Real ZDO,
                 // ownership flags, revision increments and byte-array APIs run.
                 isolation.Patch(begin, transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateTimerIdentity)));
+                isolation.Patch(AccessTools.PropertyGetter(typeof(UnityEngine.Application), "persistentDataPath"),
+                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(TimerFixtureDataPath)));
                 production.CreateClassProcessor(mod.GetType("DropNSpawn.SpawnSystemTimerPatch", true)).Patch();
                 Check(true, "original private UpdateSpawnList timer patch installs under Unity Mono");
                 Type manager = mod.GetType("DropNSpawn.SpawnSystemManager", true);
@@ -233,19 +235,72 @@ namespace DropNSpawn.Tests
                 Check(!ReferenceEquals(first, list.m_spawners[0]) && rows[list.m_spawners[0]].Equals(ids.GetValue(0)) &&
                     rows[list.m_spawners[1]].Equals(ids.GetValue(1)), "real per-zone cloning carries timer identities to both independent live rows");
                 first = list.m_spawners[0]; second = list.m_spawners[1];
+
+                // Run the original loop, not a second implementation of its
+                // timer arithmetic. Only scene queries and chance draws are
+                // substituted; every draw fails, so no native spawn is needed.
+                MethodInfo update = AccessTools.Method(typeof(SpawnSystem), "UpdateSpawnList");
+                isolation.Patch(update, transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateTimerSpawnScene)));
+                var heightmap = (Heightmap)FormatterServices.GetUninitializedObject(typeof(Heightmap));
+                AccessTools.Field(typeof(Heightmap), "m_cornerAltBiomes").SetValue(heightmap, new List<AltBiome>());
+                AccessTools.Field(typeof(SpawnSystem), "m_heightmap").SetValue(system, heightmap);
+                AccessTools.Field(typeof(SpawnSystem), "m_tempNearZDOs").SetValue(system, new List<ZDO>());
+                first.m_enabled = second.m_enabled = true;
+                first.m_spawnChance = second.m_spawnChance = -1;
+                first.m_spawnInterval = 1500; second.m_spawnInterval = 3000;
+                first.m_maxSpawned = 2; second.m_maxSpawned = 3;
+                first.m_prefab = second.m_prefab = (UnityEngine.GameObject)FormatterServices.GetUninitializedObject(typeof(UnityEngine.GameObject));
+                Attach();
+                int Attempts(DateTime time, bool isEvent = false, string salt = "b_")
+                {
+                    timerChanceDraws = 0;
+                    update.Invoke(system, new object[] { list.m_spawners, time, isEvent, salt });
+                    return timerChanceDraws;
+                }
+                Check(Attempts(new DateTime(TimeSpan.FromSeconds(34).Ticks)) == 0 && zdo.GetByteArray(key) == null,
+                    "native young-world loop waits only for elapsed world time without creating a new cooldown");
+                Check(Attempts(now) == 5 && zdo.GetByteArray(key).Length == 96,
+                    "native mature-world first check immediately attempts both long-interval rules with their native caps");
+                byte[] nativeSaved = zdo.GetByteArray(key);
+                uint nativeRevision = zdo.DataRevision;
+                Check(Attempts(now) == 0 && ReferenceEquals(nativeSaved, zdo.GetByteArray(key)) && zdo.DataRevision == nativeRevision,
+                    "failed chance draws consume the interval once; same-time checks neither retry nor write");
+                Check(Attempts(now.AddSeconds(1499)) == 0 && Attempts(now.AddSeconds(1500)) == 1 &&
+                    Attempts(now.AddSeconds(3000)) == 2,
+                    "native independent 1500/3000-second cooldowns remain due at their original intervals");
+                Check(Attempts(now, true, "e_") == 5 && zdo.GetLong("e_TimerFixture1".GetStableHashCode()) == now.Ticks,
+                    "native event first checks still use their original long-key timers");
+                Check(Attempts(now, false, "m0") == 5 && zdo.GetLong("m0TimerFixture1".GetStableHashCode()) == now.Ticks,
+                    "native AltBiome first checks still use their original long-key timers");
+                first.m_maxSpawned = 0; second.m_enabled = false;
+                Check(Attempts(now, true, "unlimited_") == 1,
+                    "native unlimited-count rules retain the one-attempt catch-up cap");
+                first.m_maxSpawned = 2; second.m_enabled = true;
+
+                // Separate fresh ZDO for the batch/save/ownership fixtures below.
+                zdo = (ZDO)FormatterServices.GetUninitializedObject(typeof(ZDO));
+                zdo.m_uid = new ZDOID(9812346L, 94002);
+                AccessTools.Property(typeof(ZDO), "Owner").SetValue(zdo, true);
+                AccessTools.Property(typeof(ZDO), "Valid").SetValue(zdo, true);
+                AccessTools.Field(typeof(ZNetView), "m_zdo").SetValue(view, zdo);
                 zdo.Set(legacy, 123L);
                 uint revision = zdo.DataRevision;
                 Attach();
                 object state = Start();
-                Check(Read(first) == now.Ticks && Read(second) == now.Ticks, "fresh timers ignore legacy values and start at current game time");
+                Check(Read(first) == 0 && Read(second) == 0, "fresh timers ignore legacy values and retain the native zero baseline");
+                end.Invoke(null, new[] { state });
+                object[] missingHover = { system, first, zdo, now, 0d };
+                Check((bool)elapsed.Invoke(null, missingHover) && (double)missingHover[4] == now.Ticks / (double)TimeSpan.TicksPerSecond &&
+                    zdo.DataRevision == revision && zdo.GetByteArray(key) == null,
+                    "missing timer reads and ESP reflect native elapsed time without creating or syncing records");
+                state = Start();
                 Write(first, now.Ticks + 100);
+                Write(second, now.Ticks);
                 Check(zdo.DataRevision == revision && zdo.GetByteArray(key) == null, "row writes are batched, not individually synchronized");
                 end.Invoke(null, new[] { state });
                 byte[] saved = zdo.GetByteArray(key);
                 Check(saved != null && zdo.DataRevision == revision + 1 && zdo.GetLong(legacy) == 123L,
                     "batch writes one new array, marks revision and preserves old long keys");
-                isolation.Patch(AccessTools.PropertyGetter(typeof(UnityEngine.Application), "persistentDataPath"),
-                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(TimerFixtureDataPath)));
                 ZDOExtraData.PrepareSave();
                 ZPackage package = new ZPackage();
                 zdo.Clone().Save(package);
@@ -273,7 +328,7 @@ namespace DropNSpawn.Tests
                 Check(Read(first) == now.Ticks + 100, "reattachment reconstructs timer state from the ZDO");
                 end.Invoke(null, new[] { state });
                 Check(Start(isEvent: true, salt: "e_") == null && Start(salt: "m0") == null, "events and AltBiomes do not enter DNS storage");
-                Check((long)read.Invoke(null, new object[] { zdo, legacy, 0L, system, first, now, true, "e_" }) == 123L,
+                Check((long)read.Invoke(null, new object[] { zdo, legacy, 0L, system, first, true, "e_" }) == 123L,
                     "event timer reads retain the native path even for a shared row object");
 
                 state = Start(); Write(first, now.Ticks + 200);
@@ -364,6 +419,39 @@ namespace DropNSpawn.Tests
                 yield return instruction;
             }
         }
+
+        private static int timerChanceDraws;
+
+        private static IEnumerable<CodeInstruction> IsolateTimerSpawnScene(IEnumerable<CodeInstruction> instructions)
+        {
+            foreach (CodeInstruction instruction in instructions)
+            {
+                if (instruction.operand is MethodInfo method)
+                {
+                    string replacement = null;
+                    if (method.DeclaringType == typeof(UnityEngine.Component) && method.Name == "get_transform") replacement = nameof(TimerFixtureTransform);
+                    else if (method.DeclaringType == typeof(UnityEngine.Transform) && method.Name == "get_position") replacement = nameof(TimerFixturePosition);
+                    else if (method.DeclaringType == typeof(UnityEngine.Object) && method.Name == "get_name") replacement = nameof(TimerFixtureName);
+                    else if (method.DeclaringType == typeof(ZDOMan) && method.Name == "FindSectorObjects") replacement = nameof(TimerFixtureSectorObjects);
+                    else if (method.DeclaringType == typeof(Heightmap) && method.Name == "HaveBiome") replacement = nameof(TimerFixtureBiome);
+                    else if (method.DeclaringType == typeof(UnityEngine.Random) && method.Name == "Range" && method.ReturnType == typeof(float)) replacement = nameof(TimerFixtureChance);
+                    if (replacement != null)
+                    {
+                        instruction.opcode = OpCodes.Call;
+                        instruction.operand = AccessTools.Method(typeof(CompatibilityProbe), replacement);
+                    }
+                }
+                yield return instruction;
+            }
+        }
+
+        private static UnityEngine.Transform TimerFixtureTransform(UnityEngine.Component component) => null;
+        private static UnityEngine.Vector3 TimerFixturePosition(UnityEngine.Transform transform) => default;
+        private static string TimerFixtureName(UnityEngine.Object obj) => "TimerFixture";
+        private static bool TimerFixtureBiome(Heightmap heightmap, Heightmap.Biome biome) => true;
+        private static void TimerFixtureSectorObjects(ZDOMan manager, Vector2s sector, SimulationDistance distance,
+            List<ZDO> objects, List<ZDO> distant) { }
+        private static float TimerFixtureChance(float min, float max) { timerChanceDraws++; return 0; }
 
         private static bool TimerFixtureList(List<SpawnSystem.SpawnData> spawners, ref SpawnSystemList __result)
         {
@@ -458,7 +546,7 @@ namespace DropNSpawn.Tests
             private static readonly string[] MaskNames = { "Default", "static_solid", "Default_small", "piece", "terrain", "blocker", "vehicle", "character", "character_net", "character_noenv", "character_ghost" };
             private static float radius, height, floor, queryBottom;
             private static UnityEngine.Vector3 center, scale, pathTarget, lineTarget;
-            private static int axis, queries, pathQueries, queryMask, lineMask;
+            private static int axis, queries, pathQueries, lineQueries, diagnosticQueries, queryMask, lineMask;
             private static bool missing, blocked, floorFound, havePath, lineBlocked, interior;
             private static UnityEngine.QueryTriggerInteraction triggers;
 
@@ -468,10 +556,22 @@ namespace DropNSpawn.Tests
                 // The old method name lets the same regression expose the 1.4.0 failure.
                 MethodInfo place = placement.GetMethod("TryPlaceOnFloor", All) ?? placement.GetMethod("Clear", All);
                 MethodInfo validate = placement.GetMethod("Validate", All);
+                Type diagnostics = mod.GetType("DropNSpawn.DungeonSpawnDiagnostics", true);
+                Type traceType = diagnostics.GetNestedType("Placement", All);
+                Type reasonType = diagnostics.GetNestedType("Reason", All);
+                Type toggle = mod.GetType("DropNSpawn.DropNSpawnPlugin+Toggle", true);
+                PropertyInfo setting = mod.GetType("DropNSpawn.PluginBoundSettings", true).GetProperty("DungeonSpawnDiagnostics", All);
+                object oldSetting = setting.GetValue(null);
+                var config = new ConfigFile(Path.Combine(Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location), "diagnostics.cfg"), false) { SaveOnConfigSet = false };
+                MethodInfo bind = typeof(ConfigFile).GetMethods().Single(m => m.Name == "Bind" && m.IsGenericMethodDefinition &&
+                    m.GetParameters().Length == 4 && m.GetParameters()[0].ParameterType == typeof(string) && m.GetParameters()[3].ParameterType == typeof(string)).MakeGenericMethod(toggle);
+                object option = bind.Invoke(config, new[] { "test", "diagnostics", Enum.ToObject(toggle, 0), "" });
+                object trace = null;
                 var fixture = new Harmony("DropNSpawn.isolated.dungeon.placement");
                 try
                 {
-                    foreach (MethodInfo method in new[] { place, validate, placement.GetMethod("WithinRange", All), placement.GetMethod("get_StaticMask", All) })
+                    setting.SetValue(null, option);
+                    foreach (MethodInfo method in new[] { place, validate, placement.GetMethod("WithinRange", All), placement.GetMethod("RangeFailure", All), placement.GetMethod("get_StaticMask", All), traceType.GetMethod("SampleCollision", All) })
                         fixture.Patch(method, transpiler: new HarmonyMethod(typeof(DungeonPlacementFixture), nameof(Isolate)));
 
                     ResetBlob();
@@ -512,19 +612,57 @@ namespace DropNSpawn.Tests
                     ResetBlob(); floor = 5003.9f;
                     Check(!Validate(out _) && queries == 1 && pathQueries == 0,
                         "corrected pivot is revalidated against the original four-meter vertical limit");
+
+                    string[] reasons = { null, "CapsuleBlocked", "FloorMissing", "OutsideInterior", "PathAndLineBlocked", null, "Height", "UnsupportedCapsule" };
+                    for (int scenario = 0; scenario < reasons.Length; scenario++)
+                    {
+                        void Prepare()
+                        {
+                            ResetBlob();
+                            if (scenario == 1) blocked = true;
+                            if (scenario == 2) floorFound = false;
+                            if (scenario == 3) interior = false;
+                            if (scenario == 4) { havePath = false; lineBlocked = true; }
+                            if (scenario == 5) havePath = false;
+                            if (scenario == 6) floor = 5003.9f;
+                            if (scenario == 7) missing = true;
+                        }
+                        option.GetType().GetProperty("Value").SetValue(option, Enum.ToObject(toggle, 0));
+                        diagnostics.GetMethod("Reset", All).Invoke(null, null); trace = null; Prepare();
+                        bool expected = Validate(out var expectedPoint);
+                        int capsuleCalls = queries, pathCalls = pathQueries, lineCalls = lineQueries;
+                        Check(diagnosticQueries == 0, "diagnostics Off performs no obstacle sampling");
+                        option.GetType().GetProperty("Value").SetValue(option, Enum.ToObject(toggle, 1));
+                        trace = Activator.CreateInstance(traceType, All, null, new object[] { 17L, "BlobElite", 6f, 12f }, null);
+                        Prepare();
+                        Check(Validate(out point) == expected && point.Equals(expectedPoint) && queries == capsuleCalls && pathQueries == pathCalls && lineQueries == lineCalls,
+                            "diagnostics On preserves placement result, position and original query short-circuiting: scenario " + scenario);
+                        var counts = (System.Collections.IDictionary)traceType.GetField("Counts", All).GetValue(trace);
+                        if (reasons[scenario] != null)
+                            Check(counts.Contains(Enum.Parse(reasonType, reasons[scenario])), "diagnostics identifies first rejection: " + reasons[scenario]);
+                        if (scenario == 1) Check(diagnosticQueries == 1, "blocked capsule adds only a bounded observation query without changing the decision");
+                    }
+                    diagnostics.GetMethod("Reset", All).Invoke(null, null);
+                    ResetBlob(); blocked = true;
+                    for (int i = 0; i < 5; i++)
+                    {
+                        trace = Activator.CreateInstance(traceType, All, null, new object[] { (long)i, "BlobElite", 6f, 12f }, null);
+                        Validate(out _);
+                    }
+                    Check(diagnosticQueries == 2, "obstacle sampling is capped at two extra queries across all requests in a window");
                 }
-                finally { fixture.UnpatchSelf(); }
+                finally { setting.SetValue(null, oldSetting); diagnostics.GetMethod("Reset", All).Invoke(null, null); fixture.UnpatchSelf(); }
 
                 bool Place(out UnityEngine.Vector3 position)
                 {
-                    object[] args = { Prefab, new UnityEngine.Vector3(8, floor, 0) };
+                    object[] args = { Prefab, new UnityEngine.Vector3(8, floor, 0), trace };
                     bool result = (bool)place.Invoke(null, args);
                     position = (UnityEngine.Vector3)args[1];
                     return result;
                 }
                 bool Validate(out UnityEngine.Vector3 position)
                 {
-                    object[] args = { Prefab, new UnityEngine.Vector3(0, 5000, 0), new UnityEngine.Vector3(8, 5000, 0), new Vector2s(0, 0), 6f, 12f, default(UnityEngine.Vector3) };
+                    object[] args = { Prefab, new UnityEngine.Vector3(0, 5000, 0), new UnityEngine.Vector3(8, 5000, 0), new Vector2s(0, 0), 6f, 12f, default(UnityEngine.Vector3), trace };
                     bool result = (bool)validate.Invoke(null, args);
                     position = (UnityEngine.Vector3)args[6];
                     return result;
@@ -537,7 +675,7 @@ namespace DropNSpawn.Tests
                 // Original Valheim 1.0.17 BlobElite.prefab in SoftRef/Bundles/c4210710.
                 radius = 1.2f; height = 1; center = new UnityEngine.Vector3(0, 1, -0.04794228f); scale = UnityEngine.Vector3.one;
                 axis = 1; floor = 5000; missing = blocked = lineBlocked = false; floorFound = havePath = interior = true;
-                queries = pathQueries = queryMask = lineMask = 0;
+                queries = pathQueries = lineQueries = diagnosticQueries = queryMask = lineMask = 0;
             }
             private static UnityEngine.CapsuleCollider GetCapsule(UnityEngine.GameObject _) => missing ? null : Capsule;
             private static BaseAI GetAI(UnityEngine.GameObject _) => null;
@@ -566,7 +704,9 @@ namespace DropNSpawn.Tests
                 return havePath;
             }
             private static bool Linecast(UnityEngine.Vector3 from, UnityEngine.Vector3 to, int mask, UnityEngine.QueryTriggerInteraction interaction)
-            { lineTarget = to; lineMask = mask; return lineBlocked; }
+            { lineQueries++; lineTarget = to; lineMask = mask; return lineBlocked; }
+            private static int ObserveCapsule(UnityEngine.Vector3 bottom, UnityEngine.Vector3 top, float radius, UnityEngine.Collider[] hits,
+                int mask, UnityEngine.QueryTriggerInteraction interaction) { diagnosticQueries++; return 0; }
 
             private static IEnumerable<CodeInstruction> Isolate(IEnumerable<CodeInstruction> instructions)
             {
@@ -584,7 +724,8 @@ namespace DropNSpawn.Tests
                                 method.Name == "get_center" ? nameof(GetCenter) : method.Name == "get_direction" ? nameof(GetAxis) : null;
                         else if (method.DeclaringType == typeof(UnityEngine.LayerMask) && method.Name == "GetMask") replacement = nameof(GetMask);
                         else if (method.DeclaringType == typeof(UnityEngine.Physics))
-                            replacement = method.Name == "CheckCapsule" ? nameof(CapsuleBlocked) : method.Name == "Linecast" ? nameof(Linecast) : null;
+                            replacement = method.Name == "CheckCapsule" ? nameof(CapsuleBlocked) : method.Name == "Linecast" ? nameof(Linecast) :
+                                method.Name == "OverlapCapsuleNonAlloc" ? nameof(ObserveCapsule) : null;
                         else if (method.DeclaringType == typeof(ZoneSystem))
                             replacement = method.Name == "get_instance" ? nameof(GetZoneSystem) : method.Name == "GetSolidHeight" ? nameof(GetFloor) : null;
                         else if (method.DeclaringType == typeof(Pathfinding))

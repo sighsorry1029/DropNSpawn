@@ -66,6 +66,8 @@ Both `.yml` and `.yaml` are supported. Loaded names are `DNS_<domain>` and `DNS_
 
 `DNS_dungeon.yml` separately adds **periodic ordinary dungeon spawns** with per-player probability rolls and shared per-rule/per-dungeon living limits. New files include English instructions and a commented example above the empty active list. Creature entries use `prefab`; old `creature` keys must be changed manually. Rules are server-owned; server and clients need the updated DNS build for safe placement checks. The optional CreatureManager 1.2.5 integration honors its boss/Enforcer spawn blockers. See the [dungeon spawn guide](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/dungeon-spawns.md) for the inactive sample, schema and multiplayer behavior.
 
+For dungeon spawn troubleshooting, temporarily set `5 - Diagnostics` → `Dungeon spawn diagnostics = On` in the server's and reproducing clients' local cfg. It defaults to `Off`, is not synchronized, and logs bounded `[DungeonDiag]` summaries every 30 seconds without changing spawn conditions. See the [diagnostic instructions](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/dungeon-spawns.md#diagnosing-missing-spawns).
+
 ### Scale spawn intervals per file
 
 Place this optional header before all prefab entries in a SpawnSystem override file:
@@ -80,7 +82,7 @@ Place this optional header before all prefab entries in a SpawnSystem override f
 
 This sets an effective interval of **72 seconds**. `0.5` halves intervals; `2.0` doubles them. The multiplier must be finite and greater than zero, defaults to `1.0`, and affects only that file—not event spawns. Decimal intervals are preserved. Keep the other world spawn rows you want; this is only a header example.
 
-World-spawn timers use internal content-based IDs: no `name` or `timerId` is required, and different rules for the same prefab remain independent. Reordering rows or moving them between files preserves timers when their parsed settings stay the same. Editing a rule's spawn settings starts that rule's timer again at its first eligible check. DNS stores these timers together and removes retired records as zones are processed. Old timers are **not migrated or deleted**, so existing save warnings may remain. Event and AltBiome timers are unchanged; update DNS on both the server and all clients.
+World-spawn timers use internal content-based IDs: no `name` or `timerId` is required, and different rules for the same prefab remain independent. Reordering rows or moving them between files preserves timers when their parsed settings stay the same. New or edited rules use vanilla first-check timing, without an extra full-interval wait; existing saved timers keep their progress. DNS stores these timers together and removes retired records as zones are processed. Old timers are **not migrated or deleted**, so existing save warnings may remain. Event and AltBiome timers are unchanged; update DNS on both the server and all clients.
 
 ## References and commands
 

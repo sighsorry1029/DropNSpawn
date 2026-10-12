@@ -62,7 +62,7 @@ internal static class SpawnSystemTimerPatch
         MethodInfo set = AccessTools.Method(typeof(ZDO), nameof(ZDO.Set), new[] { typeof(int), typeof(long) });
         if (rows.Length != 1 || input.Count(i => i.Calls(get)) != 1 || input.Count(i => i.Calls(set)) != 1)
             throw new InvalidOperationException("SpawnSystem.UpdateSpawnList timer contract changed; refusing a partial timer replacement.");
-        List<CodeInstruction> output = new(input.Count + 9);
+        List<CodeInstruction> output = new(input.Count + 8);
         foreach (CodeInstruction instruction in input)
         {
             bool read = instruction.Calls(get);
@@ -72,7 +72,6 @@ internal static class SpawnSystemTimerPatch
             first.blocks.AddRange(instruction.blocks);
             output.Add(first);
             output.Add(new CodeInstruction(OpCodes.Ldloc, rows[0].LocalIndex));
-            if (read) output.Add(new CodeInstruction(OpCodes.Ldarg_2));
             output.Add(new CodeInstruction(OpCodes.Ldarg_3));
             output.Add(new CodeInstruction(OpCodes.Ldarg_S, (byte)4));
             output.Add(new CodeInstruction(OpCodes.Call, AccessTools.Method(typeof(SpawnSystemTimers),

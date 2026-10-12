@@ -5,6 +5,8 @@ using System.Linq;
 using System.Reflection;
 using BepInEx.Bootstrap;
 using UnityEngine;
+using Diag = DropNSpawn.DungeonSpawnDiagnostics;
+using Reason = DropNSpawn.DungeonSpawnDiagnostics.Reason;
 
 namespace DropNSpawn;
 
@@ -128,10 +130,11 @@ internal static class DungeonSpawnManager
 
     internal static void Dispose() { Active = HasRules = false; ResetWorld(); Rules.Clear(); ConfigurationDomainHost.ResetLoadState(LoadState); }
 
-    private static void ResetTimers() { Requests.Clear(); Schedules.Clear(); }
+    private static void ResetTimers() { Requests.Clear(); Schedules.Clear(); Diag.Reset(); }
 
     internal static void Tick()
     {
+        if (!Diag.Enabled) Diag.Reset();
         if (!Active || ZNet.instance == null || !ZNet.instance.enabled || ZRoutedRpc.instance == null ||
             ZDOMan.instance == null || ZNetScene.instance == null || !ZNetScene.instance.enabled) return;
         if (!ReferenceEquals(RegisteredRpc, ZRoutedRpc.instance))
@@ -140,6 +143,7 @@ internal static class DungeonSpawnManager
             RegisteredRpc.Register<ZPackage>(RequestRpc, OnPositionRequest);
             RegisteredRpc.Register<ZPackage>(ReplyRpc, OnPositionReply);
         }
+        if (Diag.Enabled) Diag.Tick(DropNSpawnPlugin.IsRuntimeServer(), HasRules);
         if (!HasRules || !DropNSpawnPlugin.IsRuntimeServer() || ZoneSystem.instance == null) return;
         double now = Time.realtimeSinceStartupAsDouble;
         if (now < NextTick) return;
@@ -168,12 +172,14 @@ internal static class DungeonSpawnManager
             if (!occupied.TryGetValue(dungeon.Id, out Dungeon existing)) occupied.Add(dungeon.Id, existing = dungeon);
             existing.Players.Add(player);
         }
+        if (occupied.Count == 0) Diag.Record(Reason.NoOccupiedDungeon);
         foreach (long token in Requests.Where(pair => pair.Value.Expires <= now ||
                      !occupied.TryGetValue(pair.Value.Dungeon.Id, out Dungeon present) ||
                      !present.Players.Exists(player => player.Peer == pair.Value.Player.Peer && player.Character == pair.Value.Player.Character))
                  .Select(pair => pair.Key).ToArray())
         {
             Pending pending = Requests[token];
+            Diag.Record(pending.Expires <= now ? Reason.Timeout : Reason.PlayerDeparted, pending.Rule.Id, token);
             if (pending.Expires <= now && occupied.ContainsKey(pending.Dungeon.Id))
                 Warn("timeout:" + pending.Player.Peer, "Dungeon position request timed out; no creature spawned. Remote clients need the updated DropNSpawn build and a loaded dungeon scene.");
             Cancel(token);
@@ -182,35 +188,41 @@ internal static class DungeonSpawnManager
         foreach (Dungeon dungeon in occupied.Values)
         foreach (DungeonSpawnRule rule in Rules)
         {
-            if (!rule.Enabled || rule.SpawnChance <= 0 || !rule.Locations.Contains(dungeon.Location, StringComparer.Ordinal)) continue;
+            if (!rule.Enabled || rule.SpawnChance <= 0) { Diag.Record(Reason.RuleDisabled, rule.Id); continue; }
+            if (!rule.Locations.Contains(dungeon.Location, StringComparer.Ordinal)) { Diag.Record(Reason.LocationMismatch, rule.Id); continue; }
             var key = (rule.Id, dungeon.Id);
             if (!Schedules.TryGetValue(key, out Schedule schedule))
             {
                 Schedules.Add(key, new Schedule { Due = now + rule.SpawnInterval });
+                Diag.Record(Reason.WaitingInterval, rule.Id);
                 continue;
             }
             int attempts = schedule.BeginInterval(now, rule.SpawnInterval, dungeon.Players.Count);
-            if (attempts == 0) continue;
+            if (attempts == 0) { Diag.Record(Reason.WaitingInterval, rule.Id); continue; }
             // One roll per present player. Rotate the starting player so a nearly full
             // shared cap does not always favor the first connected peer (or local host).
             int start = UnityEngine.Random.Range(0, attempts);
             for (int i = 0; i < attempts; i++)
             {
-                if (!schedule.HasCapacity(CountAlive(rule.Id, dungeon.Id), rule.MaxAlive)) break;
-                if (UnityEngine.Random.value * 100 >= rule.SpawnChance) continue;
+                int alive = CountAlive(rule.Id, dungeon.Id);
+                if (!schedule.HasCapacity(alive, rule.MaxAlive))
+                { Diag.Record(Reason.Capacity, rule.Id, alive: alive, pending: schedule.PendingCount, limit: rule.MaxAlive); break; }
+                if (UnityEngine.Random.value * 100 >= rule.SpawnChance) { Diag.Record(Reason.ChanceMiss, rule.Id); continue; }
                 string creature = SelectCreature(rule, UnityEngine.Random.value);
                 GameObject prefab = ZNetScene.instance.GetPrefab(creature);
-                if (!Supported(prefab)) { Warn("prefab:" + creature, $"Dungeon spawn skipped: '{creature}' must be a registered ordinary creature with a persistent ZNetView and upright capsule."); continue; }
+                if (!Supported(prefab)) { Diag.Record(Reason.UnsupportedPrefab, rule.Id, prefab: creature); Warn("prefab:" + creature, $"Dungeon spawn skipped: '{creature}' must be a registered ordinary creature with a persistent ZNetView and upright capsule."); continue; }
                 PlayerContext target = dungeon.Players[(start + i) % attempts];
-                if (!AllowSpawn(prefab, target.Position) || !schedule.TryReserve(CountAlive(rule.Id, dungeon.Id), rule.MaxAlive)) continue;
+                if (!AllowSpawn(prefab, target.Position)) { Diag.Record(Reason.CMBlocked, rule.Id, prefab: creature); continue; }
+                if (!schedule.TryReserve(CountAlive(rule.Id, dungeon.Id), rule.MaxAlive)) { Diag.Record(Reason.ReservationRejected, rule.Id); continue; }
                 long token = ++Sequence;
                 Pending request = new() { Rule = rule, Dungeon = dungeon, Player = target, Schedule = schedule, Prefab = prefab, Expires = now + 10 };
                 Requests.Add(token, request);
+                Diag.Record(Reason.Requested, rule.Id, token, creature);
                 try
                 {
                     if (target.Peer == ZNet.GetUID())
                     {
-                        bool found = DungeonSpawnPlacement.Find(prefab, target.Position, dungeon.Zone, rule.SpawnRadius.Min!.Value, rule.SpawnRadius.Max!.Value, out Vector3 position);
+                        bool found = DungeonSpawnPlacement.Find(prefab, target.Position, dungeon.Zone, rule.SpawnRadius.Min!.Value, rule.SpawnRadius.Max!.Value, out Vector3 position, token);
                         Complete(token, target.Peer, found, position);
                     }
                     else
@@ -223,6 +235,7 @@ internal static class DungeonSpawnManager
                 }
                 catch (Exception ex)
                 {
+                    Diag.Record(Reason.DispatchFailed, rule.Id, token);
                     Cancel(token);
                     Warn("dispatch:" + ex.GetType().Name, $"Dungeon spawn attempt skipped: {ex.Message}");
                 }
@@ -327,17 +340,25 @@ internal static class DungeonSpawnManager
         {
             token = package.ReadLong(); ZDOID playerId = package.ReadZDOID(); int prefabHash = package.ReadInt();
             Vector3 origin = package.ReadVector3(); float min = package.ReadSingle(), max = package.ReadSingle();
+            Diag.Record(Reason.ClientRequest, token: token, client: true);
             Player player = Player.m_localPlayer;
             ZDO? local = player != null ? player.GetComponent<ZNetView>()?.GetZDO() : null;
-            if (player == null || local == null || local.m_uid != playerId || player.IsDead() || !DungeonSpawnPlacement.Finite(origin) ||
-                !DungeonSpawnConfiguration.Finite(min) || !DungeonSpawnConfiguration.Finite(max) || min < 2 || max < min || max > 64 ||
-                !Character.InInterior(player.transform.position) || (player.transform.position - origin).sqrMagnitude > 16) return;
+            if (player == null || local == null || local.m_uid != playerId || player.IsDead())
+            { Diag.Record(Reason.ClientStateRejected, token: token, client: true); return; }
+            if (!DungeonSpawnPlacement.Finite(origin) || !DungeonSpawnConfiguration.Finite(min) || !DungeonSpawnConfiguration.Finite(max) ||
+                min < 2 || max < min || max > 64)
+            { Diag.Record(Reason.ClientInputRejected, token: token, client: true); return; }
+            if (!Character.InInterior(player.transform.position) || (player.transform.position - origin).sqrMagnitude > 16)
+            { Diag.Record(Reason.ClientStateRejected, token: token, client: true); return; }
             GameObject prefab = ZNetScene.instance.GetPrefab(prefabHash);
-            bool found = Supported(prefab) && DungeonSpawnPlacement.Find(prefab, player.transform.position, ZoneSystem.GetZone(origin), min, max, out origin);
+            bool supported = Supported(prefab);
+            if (!supported) Diag.Record(Reason.ClientUnsupportedPrefab, token: token, client: true);
+            bool found = supported && DungeonSpawnPlacement.Find(prefab, player.transform.position, ZoneSystem.GetZone(origin), min, max, out origin, token);
             ZPackage reply = new(); reply.Write(token); reply.Write(found); reply.Write(origin);
             RegisteredRpc!.InvokeRoutedRPC(sender, ReplyRpc, reply);
+            Diag.Record(found ? Reason.ClientReplyFound : Reason.ClientReplyNotFound, token: token, client: true);
         }
-        catch (Exception ex) { Warn("request:" + ex.GetType().Name, $"Dungeon position request {token} skipped: {ex.Message}"); }
+        catch (Exception ex) { Diag.Record(Reason.ClientException, token: token, client: true); Warn("request:" + ex.GetType().Name, $"Dungeon position request {token} skipped: {ex.Message}"); }
     }
 
     private static void OnPositionReply(long sender, ZPackage package)
@@ -356,15 +377,23 @@ internal static class DungeonSpawnManager
     private static void Complete(long token, long sender, bool found, Vector3 position)
     {
         Pending? request = TakeRequest(token, sender, Time.realtimeSinceStartupAsDouble);
-        if (request == null || !found) return;
+        if (request == null) return;
+        if (!found) { Diag.Record(Reason.PlacementNotFound, request.Rule.Id, token); return; }
         List<PlayerContext> players = ConnectedPlayers();
         PlayerContext target = players.Find(player => player.Peer == sender && player.Character == request.Player.Character);
         DungeonSpawnRule rule = request.Rule;
-        if (target == null || !TryDungeon(target.Position, out Dungeon current) || current.Id != request.Dungeon.Id ||
-            !DungeonSpawnPlacement.WithinRange(target.Position, position, current.Zone, rule.SpawnRadius.Min!.Value, rule.SpawnRadius.Max!.Value) ||
-            players.Exists(player => (player.Position - position).sqrMagnitude < rule.SpawnRadius.Min.Value * rule.SpawnRadius.Min.Value) ||
-            !request.Schedule.HasCapacity(CountAlive(rule.Id, current.Id), rule.MaxAlive) ||
-            IsSpawnPointOccupied(position) || !AllowSpawn(request.Prefab, position)) return;
+        if (target == null) { Diag.Record(Reason.PlayerUnavailable, rule.Id, token); return; }
+        if (!TryDungeon(target.Position, out Dungeon current) || current.Id != request.Dungeon.Id)
+        { Diag.Record(Reason.DungeonChanged, rule.Id, token); return; }
+        if (!DungeonSpawnPlacement.WithinRange(target.Position, position, current.Zone, rule.SpawnRadius.Min!.Value, rule.SpawnRadius.Max!.Value))
+        { Diag.Record(Reason.FinalRange, rule.Id, token); return; }
+        if (players.Exists(player => (player.Position - position).sqrMagnitude < rule.SpawnRadius.Min.Value * rule.SpawnRadius.Min.Value))
+        { Diag.Record(Reason.FinalPlayerDistance, rule.Id, token); return; }
+        int alive = CountAlive(rule.Id, current.Id);
+        if (!request.Schedule.HasCapacity(alive, rule.MaxAlive))
+        { Diag.Record(Reason.FinalCapacity, rule.Id, token, alive: alive, pending: request.Schedule.PendingCount, limit: rule.MaxAlive); return; }
+        if (IsSpawnPointOccupied(position)) { Diag.Record(Reason.OccupiedPoint, rule.Id, token); return; }
+        if (!AllowSpawn(request.Prefab, position)) { Diag.Record(Reason.FinalCMBlocked, rule.Id, token); return; }
 
         ZDO? zdo = null;
         try
@@ -380,9 +409,11 @@ internal static class DungeonSpawnManager
             zdo.Set(RuleTag, rule.Id); zdo.Set(DungeonTag, current.Id);
             Tracked.Add(zdo.m_uid);
             zdo.SetOwner(sender);
+            Diag.Record(Reason.Spawned, rule.Id, token);
         }
         catch
         {
+            Diag.Record(Reason.SpawnException, rule.Id, token);
             if (zdo != null) { Tracked.Remove(zdo.m_uid); zdo.SetOwner(ZDOMan.GetSessionID()); ZDOMan.instance.DestroyZDO(zdo); }
             throw;
         }
@@ -390,9 +421,12 @@ internal static class DungeonSpawnManager
 
     private static Pending? TakeRequest(long token, long sender, double now)
     {
-        if (!Requests.TryGetValue(token, out Pending request) || request.Player.Peer != sender) return null;
+        if (!Requests.TryGetValue(token, out Pending request)) { Diag.Record(Reason.UnknownReply, token: token); return null; }
+        if (request.Player.Peer != sender) { Diag.Record(Reason.WrongPeer, request.Rule.Id, token); return null; }
         Cancel(token); // consume before external hooks or creation; duplicate replies cannot spawn twice
-        return request.Expires >= now && Rules.Contains(request.Rule) ? request : null;
+        if (!(request.Expires >= now)) { Diag.Record(Reason.ExpiredReply, request.Rule.Id, token); return null; }
+        if (!Rules.Contains(request.Rule)) { Diag.Record(Reason.RemovedRule, request.Rule.Id, token); return null; }
+        return request;
     }
 
     private static bool AllowSpawn(GameObject prefab, Vector3 position)

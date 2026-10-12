@@ -548,6 +548,7 @@
         <Compile Include="DungeonSpawnConfiguration.cs"/>
         <Compile Include="DungeonSpawnManager.cs"/>
         <Compile Include="DungeonSpawnPlacement.cs"/>
+        <Compile Include="DungeonSpawnDiagnostics.cs"/>
         <Compile Include="PluginManifestCoordinator.cs"/>
         <Compile Include="PluginReloadCoordinator.cs"/>
         <Compile Include="PluginRuntimeWorkCoordinator.cs"/>

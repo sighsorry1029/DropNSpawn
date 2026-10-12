@@ -60,6 +60,38 @@ CM is optional: without it, DNS runs standalone. If CM is installed but lacks th
 
 The old EWP mining rule remains independent. Keeping it enabled adds mining-triggered creatures alongside these timed encounters; these creatures do not consume this scheduler's cap. Remove/disable that rule yourself if replacing the mining behavior.
 
+## Diagnosing missing spawns
+
+In `BepInEx/config/sighsorry.DropNSpawn.cfg`, temporarily enable:
+
+```ini
+[5 - Diagnostics]
+Dungeon spawn diagnostics = On
+```
+
+The default is `Off`. This is a **local, live setting**, not synchronized from the server: enable it on the server and the clients reproducing the issue. A host records both scheduling and local placement in one log. No separate diagnostic DLL is needed. Normal clients do not receive the server's dungeon rules, so client-only logs cannot explain server probability, caps or rule selection.
+
+Stay in the problem room long enough for several configured spawn intervals and at least one 30-second reporting window. Collect `[DungeonDiag]` lines from both sides' `BepInEx/LogOutput.log`, together with the active rule and approximate reproduction time. Compare the same rule/prefab in a larger room. Then set the option back to `Off`; accumulated diagnostics are discarded. A reload, world change or plugin shutdown also clears them.
+
+| Log reason | Interpretation |
+| --- | --- |
+| `NoOccupiedDungeon`, `LocationMismatch`, `RuleDisabled`, `WaitingInterval` | No eligible occupied dungeon/rule yet, or the next scheduled interval is not due. These are scheduler observations, not failed placement attempts. |
+| `Capacity`, `FinalCapacity` | The shared living-plus-pending limit was reached; limited samples include `alive`, `pending` and `limit`. |
+| `ChanceMiss`, `UnsupportedPrefab`, `CMBlocked` | Probability rejected the attempt, the prefab was unsupported, or the optional CreatureManager gate denied it. `FinalCMBlocked` is the gate at the proposed point. |
+| `Requested`, `ClientRequest`, `Timeout`, `ClientStateRejected` | Follow dispatch, client reception, timeout or changed/invalid player state. No client requests can simply mean the server has not dispatched any; check its log too. |
+| `FloorMissing`, `Height`, `Radius`, `OutsideInterior`, `WrongZone` | A candidate failed floor, vertical/horizontal range or interior/zone validation. `first=` gives one candidate's earliest failure and position. |
+| `CapsuleBlocked`, `PlayerDistance` | Insufficient room for the selected prefab, or too close to another living player. Limited capsule samples show collider names and numeric layers; these samples are observations, not a substitute for the original collision result. |
+| `PathFailed`, `DirectRouteAccepted`, `PathAndLineBlocked` | A failed full path is not necessarily rejection: an unobstructed direct route still passes. Only failure of both routes rejects here. |
+| `PlacementFound`, `PlacementFailed`, `PlacementNotFound` | Local search result, followed by the server accepting a no-position reply. `AnchorCandidate`/`RandomCandidate` count tested candidates, not creatures or whole requests. |
+| `FinalRange`, `FinalPlayerDistance`, `OccupiedPoint`, `DungeonChanged` | A proposed point failed the server's final validation, for example because a player moved while a request was pending. |
+| `Spawned` | The server created and tagged the ZDO and assigned its owner. This does **not** confirm that the remote client instantiated the creature successfully. |
+
+Counts describe the first rejecting stage of each evaluated candidate/attempt; later checks are not run after rejection. They are not independent probabilities or a total of all obstructions in the room. A request can test several candidates, reject some and still succeed. Compare `PlacementFound`/`PlacementFailed` with individual rejection counts before concluding that spawning is broken.
+
+Each process reports at most 16 detailed groups plus an overflow group, with at most three samples per group per window. Existing `token` values correlate sampled requests and replies within one server session; not every request has a sample, and client/server reporting windows need not align. The logs omit player names and account IDs, but samples can include world positions, configured rule/prefab labels and collider names: review these before sharing.
+
+When `Off`, event recording returns immediately without per-event strings, timing or extra physics queries. When `On`, counters and placement timing add diagnostic overhead; collider samples make at most two additional non-allocating overlap queries per process per reporting window. They run only after an existing capsule rejection and never affect its result. There is no extra spawn attempt, RNG draw, RPC, YAML change or world-state write. Native physics and performance effects still require in-game measurement.
+
 ## Validation scope
 
 Managed checks exercise the actual parser, per-player scheduling, shared-cap reservations, request consumption and persisted-ZDO counting logic, including malformed files, duplicate IDs, several pending players in one dungeon, concurrent independent requests, wrong/duplicate/expired replies, missing health fields, revival, removed objects and wrapper replacement. Wrapper replacement verifies stored metadata access, not an actual save/restart.

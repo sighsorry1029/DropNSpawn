@@ -109,6 +109,7 @@ internal static partial class Program
 
         CheckDungeonZdoCounts(mod, manager);
         CheckDungeonBlockerBoundary(mod, manager);
+        CheckDungeonDiagnostics(mod);
 
         int Attempts(object schedule, double now, int players) => (int)Call(schedule, "BeginInterval", now, 60f, players)!;
         void AddRequest(long token, object schedule, double expiry, object currentRule, long peer = 77)
@@ -120,6 +121,78 @@ internal static partial class Program
         }
         static void Set(object obj, string name, object value) => obj.GetType().GetField(name, All)!.SetValue(obj, value);
         static object? Get(object obj, string name) => obj.GetType().GetField(name, All)!.GetValue(obj);
+    }
+
+    private static void CheckDungeonDiagnostics(ModContract mod)
+    {
+        Type diagnostics = mod.Type("DungeonSpawnDiagnostics");
+        Type reason = diagnostics.GetNestedType("Reason", All)!;
+        Type toggle = mod.Type("DropNSpawnPlugin").GetNestedType("Toggle", All)!;
+        PropertyInfo setting = mod.Type("PluginBoundSettings").GetProperty("DungeonSpawnDiagnostics", All)!;
+        object? originalSetting = setting.GetValue(null);
+        Type configType = mod.LoadGameAssembly("BepInEx").GetType("BepInEx.Configuration.ConfigFile", true)!;
+        string path = Path.Combine(Path.GetTempPath(), "dns-diagnostic-fixture-" + Guid.NewGuid().ToString("N") + ".cfg");
+        object config = Activator.CreateInstance(configType, new object?[] { path, false, null })!;
+        SetProperty(config, "SaveOnConfigSet", false);
+        MethodInfo bind = configType.GetMethods().Single(m => m.Name == "Bind" && m.IsGenericMethodDefinition &&
+            m.GetParameters().Length == 4 && m.GetParameters()[0].ParameterType == typeof(string) && m.GetParameters()[3].ParameterType == typeof(string)).MakeGenericMethod(toggle);
+        object entry = bind.Invoke(config, new[] { "5 - Diagnostics", "Dungeon spawn diagnostics", Enum.ToObject(toggle, 0), "" })!;
+        IDictionary groups = (IDictionary)diagnostics.GetField("Groups", All)!.GetValue(null)!;
+        void Record(string name, string rule = "crypt", long token = 1) => Invoke(diagnostics, null, "Record",
+            Enum.Parse(reason, name), rule, token, "BlobElite", false, -1, -1, -1);
+        string[] Collect(double time, bool server = true) => (string[])Invoke(diagnostics, null, "Collect", time, server, true)!;
+        void On(bool on) => SetProperty(entry, "Value", Enum.ToObject(toggle, on ? 1 : 0));
+        try
+        {
+            setting.SetValue(null, entry); Invoke(diagnostics, null, "Reset");
+            Record("Requested");
+            Check(groups.Count == 0 && Collect(0).Length == 0, "diagnostics Off records and emits nothing");
+            On(true); Check(Collect(0).Length == 0, "diagnostic window starts without an immediate log burst");
+            for (int i = 0; i < 100; i++) Record("Requested", token: i + 1);
+            Check(groups.Count == 1 && Collect(29).Length == 0, "repeated tokens aggregate rather than growing per-request state");
+            object summary = groups.Values.Cast<object>().Single();
+            Check(((IList)summary.GetType().GetField("Samples", All)!.GetValue(summary)!).Count == 3, "request samples are bounded per group");
+            string[] report = Collect(30);
+            Check(report.Length == 2 && report[1].Contains("Requested=100") && report[1].Contains("token=1") && groups.Count == 0,
+                "window emits counts with correlation samples and then clears them");
+            Check(Collect(60, false).Single().Contains("role=client"), "client can emit an empty-request heartbeat without server rules");
+            for (int i = 0; i < 100; i++) Record("ChanceMiss", "rule-" + i);
+            Check(groups.Count == 17, "unique diagnostic groups are bounded at sixteen plus one overflow bucket");
+            Check(Collect(90).Length == 18, "large rule sets have a bounded reporting burst");
+            Record("Requested", "bad\nrule\r\t" + new string('x', 200));
+            report = Collect(120);
+            Check(!report[1].Contains('\n') && !report[1].Contains('\r') && !report[1].Contains('\t') && !report[1].Contains(new string('x', 100)),
+                "diagnostic labels are bounded and cannot inject log lines");
+            Record("Requested"); On(false);
+            Check(Collect(150).Length == 0 && groups.Count == 0, "turning Off discards pending diagnostics");
+            On(true); Check(Collect(151).Length == 0, "re-enabling starts a new reporting window");
+            Record("Requested"); Invoke(mod.Type("DungeonSpawnManager"), null, "ResetTimers");
+            Check(groups.Count == 0 && Collect(181).Length == 0, "reload/world timer reset also resets diagnostic state");
+            Type traceType = diagnostics.GetNestedType("Placement", All)!;
+            Type vector = mod.LoadGameAssembly("UnityEngine.CoreModule").GetType("UnityEngine.Vector3", true)!;
+            object point = Activator.CreateInstance(vector, 8f, 5000f, 0f)!;
+            object Trace(long token) => Activator.CreateInstance(traceType, All, null, new object[] { token, "BlobElite", 6f, 12f }, null)!;
+            for (int i = 0; i < 5; i++)
+            {
+                object trace = Trace(i + 10);
+                Call(trace, "Count", Enum.Parse(reason, "RandomCandidate"));
+                Call(trace, "Reject", Enum.Parse(reason, "CapsuleBlocked"), point, "capsule");
+                if (i == 0) traceType.GetField("Found", All)!.SetValue(trace, true);
+                if (i == 1) traceType.GetField("FailedWithException", All)!.SetValue(trace, true);
+                Call(trace, "Finish");
+            }
+            report = Collect(211);
+            Check(report.Length == 2 && report[1].Contains("PlacementFound=1") && report[1].Contains("PlacementException=1") &&
+                  report[1].Contains("PlacementFailed=3") && report[1].Contains("CapsuleBlocked=5") && report[1].Contains("RandomCandidate=5"),
+                "placement completion publishes outcomes separately from candidate rejections");
+            Check(report[1].Contains("token=10 radius=6~12") && report[1].Contains("first=capsule:CapsuleBlocked@(8.0,5000.0,0.0)") &&
+                  !report[1].Contains("token=13"), "placement reports correlate bounded position/radius samples with requests");
+            object stale = Trace(100);
+            Invoke(diagnostics, null, "Reset"); Call(stale, "Finish");
+            Check(groups.Count == 0, "a pre-reset placement cannot publish into a new diagnostic generation");
+            Check(!File.Exists(path), "diagnostic fixtures do not write user configuration");
+        }
+        finally { setting.SetValue(null, originalSetting); Invoke(diagnostics, null, "Reset"); }
     }
 
     private static void CheckDungeonBlockerBoundary(ModContract mod, Type manager)

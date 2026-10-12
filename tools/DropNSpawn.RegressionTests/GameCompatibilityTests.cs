@@ -237,7 +237,7 @@ internal static partial class Program
                         var output = ((IEnumerable<CodeInstruction>)patch.Invoke(null, arguments)!).ToList();
                         if (type.Name == "SpawnSystemTimerPatch")
                         {
-                            if (output.Count != input.Count + 9 ||
+                            if (output.Count != input.Count + 8 ||
                                 output.Count(i => i.operand is MethodInfo m && m.Name == "ReadTime") != 1 ||
                                 output.Count(i => i.operand is MethodInfo m && m.Name == "WriteTime") != 1 ||
                                 output.Any(i => i.operand is MethodInfo m && m.DeclaringType?.Name == "ZDO" &&
