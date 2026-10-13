@@ -1,3 +1,10 @@
+## 1.4.4 — Dungeon detection in outer rooms
+
+- Fix periodic dungeon rules becoming inactive in rooms outside the entrance's exterior/interior radius. Resolve interior players through the server's registered location for their zone, so outer rooms in the same dungeon retain the same rule matching, timer and shared spawn limit without requiring a loaded server-side dungeon scene.
+- Preserve the native interior boundary, exact location names, per-instance identity, spawn radius, height, floor, collision and reachability checks. This does not enable spawning anywhere above the world or add support for relocated, stacked or multi-zone custom interiors. YAML, RPC and saved-data formats are unchanged.
+- Extend the existing default-Off dungeon diagnostics with bounded location-detection results, zone and position samples to distinguish outside-interior players, missing zone locations and empty location names from placement failures.
+- Add regression checks for outer rooms, adjacent locations, invalid positions, unchanged placement boundaries and diagnostic limits. Actual dungeon physics and multiplayer spawning remain in-game verification steps. Update the server and all clients to 1.4.4 together and restart.
+
 ## 1.4.3 — SpawnSystem first-check timing and dungeon diagnostics
 
 - Restore vanilla first-check timing for new or edited DNS-owned normal SpawnSystem rules. Missing timers use the native zero baseline rather than starting a full-interval wait on first use; the original world-time calculation, catch-up cap, chance and spawn conditions still decide whether a check is due. Align the optional ESP timer reader with that baseline without writing timers.

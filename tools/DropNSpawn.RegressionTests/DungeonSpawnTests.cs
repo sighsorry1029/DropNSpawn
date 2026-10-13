@@ -107,6 +107,7 @@ internal static partial class Program
         }
         finally { requests.Clear(); rulesField.SetValue(null, savedRules); }
 
+        CheckDungeonDetection(mod, manager);
         CheckDungeonZdoCounts(mod, manager);
         CheckDungeonBlockerBoundary(mod, manager);
         CheckDungeonDiagnostics(mod);
@@ -121,6 +122,68 @@ internal static partial class Program
         }
         static void Set(object obj, string name, object value) => obj.GetType().GetField(name, All)!.SetValue(obj, value);
         static object? Get(object obj, string name) => obj.GetType().GetField(name, All)!.GetValue(obj);
+    }
+
+    private static void CheckDungeonDetection(ModContract mod, Type manager)
+    {
+        Assembly game = mod.LoadGameAssembly("assembly_valheim");
+        Type zoneSystem = game.GetType("ZoneSystem", true)!,
+            locationType = zoneSystem.GetNestedType("ZoneLocation", All)!, instanceType = zoneSystem.GetNestedType("LocationInstance", All)!;
+        Type vector = mod.LoadGameAssembly("UnityEngine.CoreModule").GetType("UnityEngine.Vector3", true)!;
+        FieldInfo singleton = zoneSystem.GetField("s_instance", All)!, locations = zoneSystem.GetField("m_locationInstances", All)!;
+        Type zone = locations.FieldType.GetGenericArguments()[0];
+        object? saved = singleton.GetValue(null);
+        object system = RuntimeHelpers.GetUninitializedObject(zoneSystem);
+        IDictionary registry = (IDictionary)Activator.CreateInstance(locations.FieldType)!;
+        locations.SetValue(system, registry);
+        try
+        {
+            singleton.SetValue(null, system);
+            // A small exterior footprint must not exclude the outer rooms of this zone.
+            AddLocation(0, "SunkenCrypt4"); AddLocation(1, "SunkenCrypt4"); AddLocation(2, "Crypt2"); AddLocation(3, "");
+            object center = Detect(0, 5000, 0)!;
+            Check(center != null && Id(center) == "SunkenCrypt4:0:0", "registered interior retains the persisted dungeon identity");
+            foreach ((float x, float z) in new[] { (31f, 0f), (-31f, 0f), (31f, 31f), (-31f, -31f) })
+            {
+                object? outer = Detect(x, 5000, z);
+                Check(outer != null && Id(outer) == Id(center!), "outer rooms beyond the location radius share their zone's dungeon and cap identity");
+            }
+            Check(Detect(0, 3000, 0) == null && Detect(0, 50, 0) == null && Detect(0, 3000.5f, 0) != null,
+                "detection follows the native interior threshold instead of introducing a 3500m cutoff");
+            Check(Detect(float.NaN, 5000, 0) == null && Detect(0, float.PositiveInfinity, 0) == null,
+                "nonfinite player positions remain ineligible");
+            Check(Detect(0, 5000, 64) == null, "unregistered zone cannot borrow a nearby dungeon");
+            Check(Id(Detect(64, 5000, 0)!) == "SunkenCrypt4:1:0", "adjacent instances of the same prefab keep separate dungeon identities");
+            Check(Id(Detect(128, 5000, 0)!) == "Crypt2:2:0", "a different location remains distinct for exact rule matching");
+            Check(Detect(192, 5000, 0) == null, "empty location names remain ineligible");
+            object origin = Point(29, 5000, 0), originZone = Invoke(zoneSystem, null, "GetZone", origin)!;
+            bool InRange(float x, float y, float z) => (bool)Invoke(mod.Type("DungeonSpawnPlacement"), null, "WithinRange",
+                origin, Point(x, y, z), originZone, 2f, 4f)!;
+            Check(InRange(31, 5000, 0) && !InRange(33, 5000, 0), "removing the entrance radius does not allow placements across a zone boundary");
+            Check(!InRange(30, 5000, 0) && !InRange(24, 5000, 0), "configured player-relative minimum and maximum spawn distances remain enforced");
+            Check(!InRange(31, 5004.1f, 0) && !InRange(31, 50, 0), "placement still rejects excessive vertical separation and the ground world");
+        }
+        finally { singleton.SetValue(null, saved); }
+
+        object Point(float x, float y, float z) => Activator.CreateInstance(vector, x, y, z)!;
+        string Id(object dungeon) => (string)dungeon.GetType().GetField("Id", All)!.GetValue(dungeon)!;
+        object? Detect(float x, float y, float z)
+        {
+            object?[] args = { Point(x, y, z), null };
+            return (bool)Invoke(manager, null, "TryDungeon", args)! ? args[1] : null;
+        }
+        void AddLocation(int x, string name)
+        {
+            object location = RuntimeHelpers.GetUninitializedObject(locationType), instance = Activator.CreateInstance(instanceType)!;
+            locationType.GetField("m_prefabName", All)!.SetValue(location, name);
+            locationType.GetField("m_exteriorRadius", All)!.SetValue(location, 2f);
+            locationType.GetField("m_interiorRadius", All)!.SetValue(location, 3f);
+            instanceType.GetField("m_location", All)!.SetValue(instance, location);
+            instanceType.GetField("m_position", All)!.SetValue(instance, Point(x * 64, 30, 0));
+            object key = Activator.CreateInstance(zone)!;
+            zone.GetField("x", All)!.SetValue(key, (short)x); zone.GetField("y", All)!.SetValue(key, (short)0);
+            registry.Add(key, instance);
+        }
     }
 
     private static void CheckDungeonDiagnostics(ModContract mod)
@@ -140,12 +203,16 @@ internal static partial class Program
         IDictionary groups = (IDictionary)diagnostics.GetField("Groups", All)!.GetValue(null)!;
         void Record(string name, string rule = "crypt", long token = 1) => Invoke(diagnostics, null, "Record",
             Enum.Parse(reason, name), rule, token, "BlobElite", false, -1, -1, -1);
+        Type vector = mod.LoadGameAssembly("UnityEngine.CoreModule").GetType("UnityEngine.Vector3", true)!;
+        void Detect(string name, float x, float y, float z, string location = "") => Invoke(diagnostics, null, "RecordDungeon",
+            Enum.Parse(reason, name), Activator.CreateInstance(vector, x, y, z), location);
         string[] Collect(double time, bool server = true) => (string[])Invoke(diagnostics, null, "Collect", time, server, true)!;
         void On(bool on) => SetProperty(entry, "Value", Enum.ToObject(toggle, on ? 1 : 0));
         try
         {
             setting.SetValue(null, entry); Invoke(diagnostics, null, "Reset");
             Record("Requested");
+            Detect("DungeonDetected", 31, 5000, 31, "SunkenCrypt4");
             Check(groups.Count == 0 && Collect(0).Length == 0, "diagnostics Off records and emits nothing");
             On(true); Check(Collect(0).Length == 0, "diagnostic window starts without an immediate log burst");
             for (int i = 0; i < 100; i++) Record("Requested", token: i + 1);
@@ -168,8 +235,23 @@ internal static partial class Program
             On(true); Check(Collect(151).Length == 0, "re-enabling starts a new reporting window");
             Record("Requested"); Invoke(mod.Type("DungeonSpawnManager"), null, "ResetTimers");
             Check(groups.Count == 0 && Collect(181).Length == 0, "reload/world timer reset also resets diagnostic state");
+            for (int i = 0; i < 20; i++) Detect("OutsideInterior", 0, 30, 0);
+            Detect("NoLocationInZone", 64, 5000, 0);
+            Detect("EmptyLocationName", 128, 5000, 0);
+            Detect("InvalidPosition", float.NaN, 5000, 0);
+            for (int i = 0; i < 5; i++) Detect("DungeonDetected", 31, 5000, 31, "SunkenCrypt4");
+            report = Collect(211);
+            Check(report.Length == 6 && report.Any(line => line.Contains("dungeon location=SunkenCrypt4 DungeonDetected=5") &&
+                  line.Contains("zone=0,0 position=(31.0,5000.0,31.0)")), "dungeon diagnostics identify the actual location and zone with XYZ samples");
+            Check(report.Any(line => line.Contains("NoLocationInZone=1") && line.Contains("zone=1,0")) &&
+                  report.Any(line => line.Contains("EmptyLocationName=1")) && report.Any(line => line.Contains("InvalidPosition=1") && line.Contains("zone=-")),
+                "ground observations cannot hide the separate missing-location, empty-name and invalid-position samples");
+            Check(report.All(line => line.Split("position=").Length <= 4), "dungeon detection samples retain the three-per-group bound");
+            Detect("DungeonDetected", 0, 5000, 0, "bad\nlocation\r\t" + new string('x', 200));
+            report = Collect(241);
+            Check(!report[1].Contains('\n') && !report[1].Contains('\r') && !report[1].Contains('\t') && !report[1].Contains(new string('x', 100)),
+                "dungeon location labels are sanitized and bounded");
             Type traceType = diagnostics.GetNestedType("Placement", All)!;
-            Type vector = mod.LoadGameAssembly("UnityEngine.CoreModule").GetType("UnityEngine.Vector3", true)!;
             object point = Activator.CreateInstance(vector, 8f, 5000f, 0f)!;
             object Trace(long token) => Activator.CreateInstance(traceType, All, null, new object[] { token, "BlobElite", 6f, 12f }, null)!;
             for (int i = 0; i < 5; i++)
@@ -181,7 +263,7 @@ internal static partial class Program
                 if (i == 1) traceType.GetField("FailedWithException", All)!.SetValue(trace, true);
                 Call(trace, "Finish");
             }
-            report = Collect(211);
+            report = Collect(271);
             Check(report.Length == 2 && report[1].Contains("PlacementFound=1") && report[1].Contains("PlacementException=1") &&
                   report[1].Contains("PlacementFailed=3") && report[1].Contains("CapsuleBlocked=5") && report[1].Contains("RandomCandidate=5"),
                 "placement completion publishes outcomes separately from candidate rejections");

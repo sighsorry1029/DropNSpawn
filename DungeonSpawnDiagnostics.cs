@@ -23,7 +23,8 @@ internal static class DungeonSpawnDiagnostics
         ZoneNotLoaded, InvalidPosition, OutsideInterior, WrongZone, Height, Radius,
         FloorMissing, UnsupportedCapsule, CapsuleBlocked, PlayerDistance, PathAndLineBlocked,
         PlacementFound, PlacementFailed, PlacementException, AnchorCandidate, RandomCandidate,
-        PathFailed, DirectRouteAccepted
+        PathFailed, DirectRouteAccepted,
+        DungeonDetected, NoLocationInZone, EmptyLocationName
     }
 
     private const int MaxGroups = 16, MaxSamples = 3;
@@ -66,6 +67,23 @@ internal static class DungeonSpawnDiagnostics
             summary.Samples.Add($"token={token} {reason}" + (alive >= 0 ? $" alive={alive} pending={pending} limit={limit}" : ""));
     }
 
+    internal static void RecordDungeon(Reason reason, Vector3 position, string location = "")
+    {
+        if (!Enabled) return;
+        // Separate failures so ground players cannot hide missing-location samples.
+        Summary summary = Group("dungeon", reason.ToString(), location);
+        summary.Add(reason);
+        if (summary.Samples.Count >= MaxSamples) return;
+        string zone = "-";
+        if (DungeonSpawnPlacement.Finite(position))
+        {
+            Vector2s cell = ZoneSystem.GetZone(position);
+            zone = cell.x + "," + cell.y;
+        }
+        summary.Samples.Add(string.Format(CultureInfo.InvariantCulture,
+            "zone={0} position=({1:0.0},{2:0.0},{3:0.0})", zone, position.x, position.y, position.z));
+    }
+
     internal static void Reset()
     {
         if (!Started && Groups.Count == 0 && CollisionSamples == 0) return;
@@ -98,7 +116,9 @@ internal static class DungeonSpawnDiagnostics
         };
         foreach (var pair in Groups)
         {
-            StringBuilder text = new($"[DungeonDiag] {pair.Key.Scope} rule={Safe(pair.Key.Rule)} prefab={Safe(pair.Key.Prefab)}");
+            StringBuilder text = new(pair.Key.Scope == "dungeon"
+                ? $"[DungeonDiag] dungeon location={Safe(pair.Key.Prefab)}"
+                : $"[DungeonDiag] {pair.Key.Scope} rule={Safe(pair.Key.Rule)} prefab={Safe(pair.Key.Prefab)}");
             foreach (var count in pair.Value.Counts) text.Append(' ').Append(count.Key).Append('=').Append(count.Value);
             foreach (string sample in pair.Value.Samples) text.Append(" | ").Append(sample);
             lines.Add(text.ToString());

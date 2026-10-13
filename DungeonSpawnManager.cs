@@ -280,13 +280,20 @@ internal static class DungeonSpawnManager
     private static bool TryDungeon(Vector3 position, out Dungeon dungeon)
     {
         dungeon = null!;
-        if (!DungeonSpawnPlacement.Finite(position) || !Character.InInterior(position)) return false;
+        if (!DungeonSpawnPlacement.Finite(position))
+        { Diag.RecordDungeon(Reason.InvalidPosition, position); return false; }
+        if (!Character.InInterior(position))
+        { Diag.RecordDungeon(Reason.OutsideInterior, position); return false; }
         Vector2s zone = ZoneSystem.GetZone(position);
-        if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance location)) return false;
+        if (!ZoneSystem.instance.m_locationInstances.TryGetValue(zone, out ZoneSystem.LocationInstance location))
+        { Diag.RecordDungeon(Reason.NoLocationInZone, position); return false; }
         string name = SpawnerManager.GetZoneLocationPrefabName(location.m_location);
-        float radius = Mathf.Max(location.m_location.m_exteriorRadius, location.m_location.m_interiorRadius);
-        if (name.Length == 0 || (radius > 0 && Utils.DistanceXZ(location.m_position, position) > radius)) return false;
+        if (name.Length == 0)
+        { Diag.RecordDungeon(Reason.EmptyLocationName, position); return false; }
+        // Native Location.GetLocation resolves interiors by zone, not the exterior
+        // footprint around the entrance. Keep the server registry for unloaded scenes.
         dungeon = new Dungeon { Id = name + ":" + zone.x + ":" + zone.y, Location = name, Zone = zone };
+        Diag.RecordDungeon(Reason.DungeonDetected, position, name);
         return true;
     }
 
