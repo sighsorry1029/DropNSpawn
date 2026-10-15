@@ -62,6 +62,7 @@ internal static partial class ConfigurationEntryCloneSupport
             Chance = source.Chance,
             DontScale = source.DontScale,
             LevelMultiplier = source.LevelMultiplier,
+            LevelMultiplierNotAmount = source.LevelMultiplierNotAmount,
             OnePerPlayer = source.OnePerPlayer,
             AmountLimit = source.AmountLimit,
             DropInStack = source.DropInStack

@@ -92,7 +92,7 @@ internal static class CharacterDropGlobalConfig
             "2 - Character",
             "character loot system",
             CharacterLootSystem.CalculateChance,
-            "Vanilla leaves character-drop level scaling to the game and YAML levelMultiplier values. CalculateChance replaces vanilla exponential level scaling with configured per-star amount scaling only for non-trophy item drops whose levelMultiplier is true. The global trophy level multiplier setting separately controls trophies and can override their levelMultiplier value.",
+            "Vanilla leaves character-drop level scaling to the game and YAML levelMultiplier values. CalculateChance replaces vanilla exponential level scaling with configured per-star amount scaling only for non-trophy item drops whose levelMultiplier is true. Drops with both levelMultiplier and levelMultiplierNotAmount true retain vanilla chance-only scaling; all rows sharing that drop prefab retain vanilla star scaling. The global trophy level multiplier setting separately controls trophies and can override their levelMultiplier value, except for these chance-only groups.",
             synchronizedSetting: true,
             configManagerOrder: 440);
         _disableCharacterLootScalingWhenCreatureLevelControlLoaded = plugin.BindConfigEntry(
@@ -138,7 +138,7 @@ internal static class CharacterDropGlobalConfig
             "2 - Character",
             "global trophy level multiplier",
             DropNSpawnPlugin.Toggle.Off,
-            "If on, successful character trophy drops keep their original drop chance and scale their final amount by the configured creature or boss additional-loot chance per star. Eligible trophies are kept out of vanilla levelMultiplier amount scaling to avoid very large 2^(level-1) trophy stacks. Items listed in global trophy level multiplier blacklist are exempt and keep their vanilla or YAML levelMultiplier behavior.",
+            "If on, successful character trophy drops keep their original drop chance and scale their final amount by the configured creature or boss additional-loot chance per star. Eligible trophies are kept out of vanilla levelMultiplier amount scaling to avoid very large 2^(level-1) trophy stacks. Items listed in global trophy level multiplier blacklist are exempt and keep their vanilla or YAML levelMultiplier behavior. A drop with both levelMultiplier and levelMultiplierNotAmount true also exempts all rows sharing that trophy prefab.",
             synchronizedSetting: true,
             configManagerOrder: 200);
         _trophyLevelMultiplierBlacklistEntry = plugin.BindConfigEntry(

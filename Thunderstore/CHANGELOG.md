@@ -1,3 +1,11 @@
+## 1.4.5 — Valheim 1.0.20 character loot compatibility
+
+- Preserve the game's new chance-only star-scaling flag when capturing, copying and restoring creature drops, including Vanilla loot mode and disabled character overrides.
+- Add optional character-drop YAML `levelMultiplierNotAmount`, defaulting to `false`, and preserve it through reference/scaffold output, compiled rules and server synchronization. When combined with `levelMultiplier: true`, stars increase chance without multiplying the amount. Existing YAML needs no edits.
+- Keep same-prefab drop groups containing chance-only rows out of DNS CalculateChance and global trophy amount scaling, since generated results cannot identify which duplicate row succeeded. Apply the same policy to custom stacked/limited drops; other drop prefabs and one-per-player precedence retain their existing behavior.
+- Upgrade the character synchronization payload from DTO 10 to 11 and reject incompatible payloads. Update the server and all clients to 1.4.5 together and restart.
+- Add regression coverage for optional flag values, copying/restoration, YAML and network round trips, signatures, mixed drop groups and payload-version rejection. Original Valheim 1.0.20 client and dedicated-server managed checks pass; actual item spawning and multiplayer gameplay remain in-game verification steps.
+
 ## 1.4.4 — Dungeon detection in outer rooms
 
 - Fix periodic dungeon rules becoming inactive in rooms outside the entrance's exterior/interior radius. Resolve interior players through the server's registered location for their zone, so outer rooms in the same dungeon retain the same rule matching, timer and shared spawn limit without requiring a loaded server-side dungeon scene.

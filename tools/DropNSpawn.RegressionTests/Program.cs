@@ -24,7 +24,7 @@ internal static partial class Program
         ("Character", "CharacterDropPrefabEntry", """
         {"Prefab":"TestCreature","RuleId":"character-rule","SourcePath":"local.yml","SourceColumn":4,
          "Conditions":{"States":["Tamed"],"TimeOfDay":{"Values":["day"]}},
-         "CharacterDrop":{"Drops":[{"Item":"Resin","Amount":{"Min":1,"Max":4},"Chance":0.5,"AmountLimit":3,"DropInStack":true}]}}
+         "CharacterDrop":{"Drops":[{"Item":"Resin","Amount":{"Min":1,"Max":4},"Chance":0.5,"LevelMultiplierNotAmount":true,"AmountLimit":3,"DropInStack":true}]}}
         """),
         ("Spawner", "SpawnerConfigurationEntry", """
         {"Prefab":"TestSpawner","RuleId":"spawner-rule","SourcePath":"local.yml","Locations":["Crypt"],
@@ -64,7 +64,7 @@ internal static partial class Program
                 foreach (KeyValuePair<string, string> pair in expected)
                 {
                     string domain = pair.Key.Split(':')[0];
-                    if (domain is "SpawnSystem" or "Event" or "Spawner" && CheckKnownSchemaUpgrade(current, baseline, domain))
+                    if (domain is "SpawnSystem" or "Event" or "Spawner" or "Character" && CheckKnownSchemaUpgrade(current, baseline, domain))
                         continue;
                     Check(actual[pair.Key] == pair.Value, $"wire/signature compatibility: {pair.Key}");
                 }

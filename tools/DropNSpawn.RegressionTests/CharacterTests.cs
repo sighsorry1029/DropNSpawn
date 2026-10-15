@@ -120,6 +120,7 @@ internal static partial class Program
             CheckCharacterResolution(manager, definitionType, ruleType, entryType);
             CheckCharacterDropOwnership(manager, mod, compiled);
             CheckCharacterBaselineNormalization(manager, mod);
+            CheckChanceOnlyDropContracts(manager, mod);
 
             // Local input is still cloned; owned transport data is normalized in place.
             object local = JsonSerializer.Deserialize("{\"Prefab\":\" Creature \",\"Enabled\":false,\"RuleId\":\" local \",\"CharacterDrop\":{\"Drops\":[]}}", entryType, JsonOptions)!;
@@ -198,6 +199,7 @@ internal static partial class Program
         FieldInfo minField = dropType.GetField("m_amountMin", All)!;
         object baselineRow = Activator.CreateInstance(dropType)!;
         minField.SetValue(baselineRow, 7);
+        dropType.GetField("m_levelMultiplierNotAmount")!.SetValue(baselineRow, true);
         IList baseline = ListOf(dropType, baselineRow);
         object snapshot = Activator.CreateInstance(mod.Type("CharacterDropSnapshot"))!;
         SetProperty(snapshot, "BuiltDrops", baseline);
@@ -209,6 +211,7 @@ internal static partial class Program
         dropType.GetField("m_chance", All)!.SetValue(staticRow, 0.25f);
         dropType.GetField("m_onePerPlayer", All)!.SetValue(staticRow, true);
         dropType.GetField("m_levelMultiplier", All)!.SetValue(staticRow, false);
+        dropType.GetField("m_levelMultiplierNotAmount")!.SetValue(staticRow, true);
         dropType.GetField("m_dontScale", All)!.SetValue(staticRow, true);
         IList template = ListOf(dropType, staticRow);
         var staticDrops = (IDictionary)Property(compiled, "StaticBuiltDropsByPrefab")!;
@@ -235,6 +238,8 @@ internal static partial class Program
         firstDrops = Apply(first, false);
         Check((int)minField.GetValue(firstDrops[0])! == 7 && !ReferenceEquals(firstDrops, baseline) && !ReferenceEquals(firstDrops[0], baselineRow),
             "Character disabling domain restores an owned baseline copy");
+        Check((bool)dropType.GetField("m_levelMultiplierNotAmount")!.GetValue(firstDrops[0])!,
+            "Character disabling domain preserves the original chance-only flag");
         staticDrops.Remove("Owned");
         firstDrops = Apply(first, true);
         Check((int)minField.GetValue(firstDrops[0])! == 7, "Character removed static override selects baseline");
@@ -258,13 +263,13 @@ internal static partial class Program
         // A missing prefab is the non-item case executable without Unity native calls.
         foreach (var (field, value) in new (string, object)[] {
                      ("m_amountMin", 2), ("m_amountMax", 5), ("m_chance", 0.25f),
-                     ("m_onePerPlayer", true), ("m_levelMultiplier", true), ("m_dontScale", true) })
+                     ("m_onePerPlayer", true), ("m_levelMultiplier", true), ("m_levelMultiplierNotAmount", true), ("m_dontScale", true) })
             dropType.GetField(field)!.SetValue(row, value);
         IList source = ListOf(dropType, row);
         IList baseline = (IList)Invoke(manager, null, "CloneDrops", source, true)!;
         object captured = baseline[0]!;
         Check(!ReferenceEquals(source, baseline) && !ReferenceEquals(row, captured), "character capture owns list and rows");
-        foreach (string field in new[] { "m_prefab", "m_amountMin", "m_amountMax", "m_chance", "m_onePerPlayer", "m_dontScale" })
+        foreach (string field in new[] { "m_prefab", "m_amountMin", "m_amountMax", "m_chance", "m_onePerPlayer", "m_levelMultiplierNotAmount", "m_dontScale" })
             Check(Equals(dropType.GetField(field)!.GetValue(row), dropType.GetField(field)!.GetValue(captured)), "character capture preserves " + field);
         Check(!(bool)dropType.GetField("m_levelMultiplier")!.GetValue(captured)! &&
               (bool)dropType.GetField("m_levelMultiplier")!.GetValue(row)!, "non-item normalization changes only the owned baseline");
@@ -280,6 +285,98 @@ internal static partial class Program
         dropType.GetField("m_amountMax")!.SetValue(restored[0], 99);
         Check((int)dropType.GetField("m_amountMax")!.GetValue(captured)! == 5,
             "restoring a live drop does not mutate the shared read-only baseline");
+    }
+
+    private static void CheckChanceOnlyDropContracts(Type manager, ModContract mod)
+    {
+        Type network = mod.Type("NetworkPayloadSyncSupport");
+        object schema = Invoke(network, null, "CreateCharacterEntrySchema")!;
+        HashSet<string> signatures = new();
+        Dictionary<bool, string> fingerprints = new();
+        foreach (bool? flag in new bool?[] { null, false, true })
+        {
+            string flagLine = flag.HasValue ? $", levelMultiplierNotAmount: {flag.Value.ToString().ToLowerInvariant()}" : "";
+            object parsed = Invoke(manager, null, "ParseConfiguration",
+                "- prefab: Boar\n  characterDrop:\n    drops:\n      - {item: Wood, levelMultiplier: true" + flagLine + "}\n", "chance-only.yml")!;
+            Check(((IList)Property(parsed, "Warnings")!).Count == 0, "chance-only YAML parses: " + flag);
+            IList entries = (IList)Property(parsed, "Configuration")!;
+            object Row(IList list) => ((IList)Property(Property(list[0]!, "CharacterDrop")!, "Drops")!)[0]!;
+            Check(Equals(Property(Row(entries), "LevelMultiplierNotAmount"), flag), "YAML preserves optional chance-only flag: " + flag);
+            IList clone = (IList)Call(schema, "CloneEntries", entries)!;
+            byte[] bytes = (byte[])Call(schema, "SerializeEntries", entries)!;
+            IList restored = (IList)Call(schema, "DeserializeEntries", bytes)!;
+            Check(Equals(Property(Row(clone), "LevelMultiplierNotAmount"), flag) &&
+                  Equals(Property(Row(restored), "LevelMultiplierNotAmount"), flag), "clone and wire preserve chance-only flag: " + flag);
+            signatures.Add((string)Call(schema, "ComputePayloadSignature", entries)!);
+            string fingerprint = (string)Invoke(manager, null, "BuildDropRowFingerprint", Row(entries), true)!;
+            if (flag == false) Check(fingerprints[false] == fingerprint,
+                "omitted and false chance-only flag have the same effective fingerprint");
+            fingerprints[flag ?? false] = fingerprint;
+        }
+        Check(signatures.Count == 3, "wire signatures distinguish omitted/false/true chance-only flags");
+        Check(fingerprints[false] != fingerprints[true], "chance-only changes invalidate compiled row fingerprints");
+
+        Type dropType = mod.LoadGameAssembly("assembly_valheim").GetType("CharacterDrop+Drop", true)!;
+        Type compiledType = mod.Type("CompiledCharacterDropDefinition");
+        Type prefabType = dropType.GetField("m_prefab")!.FieldType;
+        object prefabA = RuntimeHelpers.GetUninitializedObject(prefabType);
+        object prefabB = RuntimeHelpers.GetUninitializedObject(prefabType);
+        foreach (bool level in new[] { false, true })
+        foreach (bool chanceOnly in new[] { false, true })
+        {
+            object compiled = Activator.CreateInstance(compiledType)!;
+            SetProperty(compiled, "Prefab", prefabA);
+            SetProperty(compiled, "LevelMultiplier", level);
+            SetProperty(compiled, "LevelMultiplierNotAmount", chanceOnly);
+            IList definitions = ListOf(compiledType, compiled);
+            IList rows = (IList)Invoke(manager, null, "BuildDrops", definitions)!;
+            IList copied = (IList)Invoke(manager, null, "CloneDrops", rows, false)!;
+            foreach (IList list in new[] { rows, copied })
+                Check(Equals(dropType.GetField("m_levelMultiplier")!.GetValue(list[0]), level) &&
+                      Equals(dropType.GetField("m_levelMultiplierNotAmount")!.GetValue(list[0]), chanceOnly),
+                    "built/copied game rows retain both level flags");
+            Check(Protected(rows, prefabA) == (level && chanceOnly) && Protected(definitions, prefabA) == (level && chanceOnly),
+                "chance-only bypass requires both flags in game and custom paths");
+        }
+
+        foreach (Type rowType in new[] { dropType, compiledType })
+        {
+            object ordinary = MakeRow(prefabA, false);
+            object chanceOnly = MakeRow(prefabA, true);
+            object unrelated = MakeRow(prefabB, false);
+            IList rows = ListOf(rowType, ordinary, chanceOnly, unrelated);
+            Check(Protected(rows, prefabA) && !Protected(rows, prefabB), "mixed duplicate rows protect only their own prefab");
+            rows.RemoveAt(0);
+            rows.Add(ordinary);
+            Check(Protected(rows, prefabA) && !Protected(rows, prefabB), "chance-only protection is independent of failed-row ordering");
+            if (rowType == dropType) rows.Insert(0, null);
+            Check(Protected(rows, prefabA), "group lookup tolerates null native rows without Unity object access");
+
+            object MakeRow(object prefab, bool flag)
+            {
+                object row = Activator.CreateInstance(rowType)!;
+                if (rowType == dropType)
+                {
+                    rowType.GetField("m_prefab")!.SetValue(row, prefab);
+                    rowType.GetField("m_levelMultiplier")!.SetValue(row, true);
+                    rowType.GetField("m_levelMultiplierNotAmount")!.SetValue(row, flag);
+                }
+                else
+                {
+                    SetProperty(row, "Prefab", prefab);
+                    SetProperty(row, "LevelMultiplier", true);
+                    SetProperty(row, "LevelMultiplierNotAmount", flag);
+                }
+                return row;
+            }
+        }
+
+        bool Protected(IList rows, object prefab)
+        {
+            MethodInfo helper = manager.GetMethods(All).Single(m => m.Name == "HasChanceOnlyDropForPrefab" &&
+                m.GetParameters()[0].ParameterType.IsInstanceOfType(rows));
+            return (bool)helper.Invoke(null, new[] { rows, prefab })!;
+        }
     }
 
     private static object? Property(object value, string name) => value.GetType().GetProperty(name, All)!.GetValue(value);

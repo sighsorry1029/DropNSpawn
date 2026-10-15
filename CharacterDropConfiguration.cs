@@ -62,9 +62,11 @@ internal sealed class CharacterDropEntryDefinition
     [YamlMember(Order = 5)]
     public bool? LevelMultiplier { get; set; }
     [YamlMember(Order = 6)]
-    public bool? OnePerPlayer { get; set; }
+    public bool? LevelMultiplierNotAmount { get; set; }
     [YamlMember(Order = 7)]
-    public int? AmountLimit { get; set; }
+    public bool? OnePerPlayer { get; set; }
     [YamlMember(Order = 8)]
+    public int? AmountLimit { get; set; }
+    [YamlMember(Order = 9)]
     public bool? DropInStack { get; set; }
 }

@@ -35,7 +35,7 @@ internal static partial class CharacterDropManager
             InitializeRuntime = Initialize,
             OnGameDataReady = OnGameDataReady,
             HandleExpandWorldDataReady = HandleExpandWorldDataReady,
-            DtoVersion = 10,
+            DtoVersion = 11,
             TransportProfile = DomainTransportProfile.SmallConfig,
             DisplayName = "character",
             CacheDirectoryName = "character",
@@ -850,6 +850,7 @@ internal static partial class CharacterDropManager
             CharacterDrop.Drop drop = originalDrops[index];
             if (drop == null ||
                 !drop.m_levelMultiplier ||
+                HasChanceOnlyDropForPrefab(originalDrops, drop.m_prefab) ||
                 !ShouldApplyGlobalCharacterLootLevelMultiplier(drop.m_prefab, drop.m_levelMultiplier))
             {
                 continue;
@@ -895,7 +896,8 @@ internal static partial class CharacterDropManager
         {
             KeyValuePair<GameObject, int> result = drops[index];
             CharacterDrop.Drop? sourceDrop = FindNextMatchingSourceDrop(sourceDrops, ref sourceIndex, result.Key);
-            if (!ShouldApplyGlobalCharacterLootLevelMultiplier(
+            if (HasChanceOnlyDropForPrefab(sourceDrops, result.Key) ||
+                !ShouldApplyGlobalCharacterLootLevelMultiplier(
                     result.Key,
                     sourceDrop?.m_levelMultiplier == true))
             {
@@ -939,6 +941,31 @@ internal static partial class CharacterDropManager
         }
 
         return null;
+    }
+
+    // GenerateDropList results have no row identity. If duplicate rows for one prefab mix
+    // chance-only and ordinary scaling, preserve the game's calculation for that whole prefab.
+    // Use the original list in both the suppression and result passes, including failed rolls.
+    private static bool HasChanceOnlyDropForPrefab(IReadOnlyList<CharacterDrop.Drop>? drops, GameObject? prefab)
+    {
+        if (drops == null) return false;
+        for (int i = 0; i < drops.Count; i++)
+        {
+            CharacterDrop.Drop drop = drops[i];
+            if (drop != null && ReferenceEquals(drop.m_prefab, prefab) &&
+                drop.m_levelMultiplier && drop.m_levelMultiplierNotAmount) return true;
+        }
+        return false;
+    }
+
+    private static bool HasChanceOnlyDropForPrefab(IReadOnlyList<CompiledCharacterDropDefinition> drops, GameObject prefab)
+    {
+        for (int i = 0; i < drops.Count; i++)
+        {
+            CompiledCharacterDropDefinition drop = drops[i];
+            if (ReferenceEquals(drop.Prefab, prefab) && drop.LevelMultiplier && drop.LevelMultiplierNotAmount) return true;
+        }
+        return false;
     }
 
     private static int NormalizeGeneratedLevelScaledAmount(
@@ -1283,6 +1310,7 @@ internal static partial class CharacterDropManager
             Chance = Mathf.Max(0f, definition.Chance ?? 1f),
             DontScale = definition.DontScale ?? false,
             LevelMultiplier = levelMultiplier,
+            LevelMultiplierNotAmount = definition.LevelMultiplierNotAmount ?? false,
             OnePerPlayer = definition.OnePerPlayer ?? false,
             AmountLimit = definition.AmountLimit.HasValue && definition.AmountLimit.Value >= 0
                 ? definition.AmountLimit.Value
@@ -1995,6 +2023,7 @@ internal static partial class CharacterDropManager
             Chance = Mathf.Max(0f, definition.Chance ?? 1f),
             OnePerPlayer = definition.OnePerPlayer ?? false,
             LevelMultiplier = levelMultiplier,
+            LevelMultiplierNotAmount = definition.LevelMultiplierNotAmount ?? false,
             DontScale = definition.DontScale ?? false,
             AmountLimit = definition.AmountLimit.HasValue && definition.AmountLimit.Value >= 0
                 ? definition.AmountLimit.Value
@@ -2087,6 +2116,7 @@ internal static partial class CharacterDropManager
                 m_levelMultiplier = normalizeNonItemLevelMultiplier
                     ? NormalizeBaselineCharacterDropLevelMultiplier(drop.m_prefab, drop.m_levelMultiplier)
                     : drop.m_levelMultiplier,
+                m_levelMultiplierNotAmount = drop.m_levelMultiplierNotAmount,
                 m_dontScale = drop.m_dontScale
             });
         }
@@ -2107,6 +2137,7 @@ internal static partial class CharacterDropManager
                 m_chance = definition.Chance,
                 m_onePerPlayer = definition.OnePerPlayer,
                 m_levelMultiplier = definition.LevelMultiplier,
+                m_levelMultiplierNotAmount = definition.LevelMultiplierNotAmount,
                 m_dontScale = definition.DontScale
             });
         }
@@ -2125,9 +2156,8 @@ internal static partial class CharacterDropManager
         foreach (CompiledCharacterDropDefinition definition in definitions)
         {
             float chance = definition.Chance;
-            bool applyGlobalCharacterLootMultiplier = ShouldApplyGlobalCharacterLootLevelMultiplier(
-                definition.Prefab,
-                definition.LevelMultiplier);
+            bool applyGlobalCharacterLootMultiplier = !HasChanceOnlyDropForPrefab(definitions, definition.Prefab) &&
+                ShouldApplyGlobalCharacterLootLevelMultiplier(definition.Prefab, definition.LevelMultiplier);
             bool applyVanillaLevelMultiplier = definition.LevelMultiplier && !applyGlobalCharacterLootMultiplier;
             if (applyVanillaLevelMultiplier)
             {
@@ -2143,7 +2173,7 @@ internal static partial class CharacterDropManager
                 ? UnityEngine.Random.Range(definition.AmountMin, definition.AmountMax)
                 : RollConfiguredDropAmount(definition.Prefab, definition.AmountMin, definition.AmountMax);
 
-            if (applyVanillaLevelMultiplier)
+            if (applyVanillaLevelMultiplier && !definition.LevelMultiplierNotAmount)
             {
                 amount *= levelFactor;
             }

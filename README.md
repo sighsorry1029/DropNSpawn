@@ -24,7 +24,7 @@ Install the same DropNSpawn version and its dependencies on the server and all c
 
 Requires **BepInExPack Valheim 5.4.2351**. **Expand World Data is optional**: DNS's basic drops, spawners, world spawning, raids, and native faction overrides work without it. Install EWD **1.71 or newer** on the server and clients to use spawn `data`/`fields`/`objects`, event `startCommands`/`endCommands`, or EWD custom biomes. Without EWD, nonempty extension settings reject the affected domain's configuration update and retain its previous accepted configuration; they are not silently ignored. Empty extension fields are allowed.
 
-The current target is **Valheim 1.0.15**; see the [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.15.md) for reviewed EWD builds and existing-YAML update notes. Restart after changing the installed mod set; mixed EWD capability between peers is not supported for EWD-dependent configurations.
+Character-drop handling has been updated for **Valheim 1.0.20**. See the earlier [compatibility notes](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/compatibility-1.0.15.md) for reviewed EWD builds and existing-YAML update notes. Restart after changing the installed mod set; mixed EWD capability between peers is not supported for EWD-dependent configurations.
 
 ## Quick start
 
@@ -49,6 +49,8 @@ For example, put this in `DNS_character.yml` to replace Lox loot:
 ```
 
 Global options live in `BepInEx/config/sighsorry.DropNSpawn.cfg`. All five domains start enabled; toggle them under `4 - Domains`. Loot scaling, stacked drops, trophy scaling, and event scheduling have their own settings; most server-facing settings sync from the server.
+
+Character drops support `levelMultiplierNotAmount` (default `false`). With both `levelMultiplier: true` and `levelMultiplierNotAmount: true`, stars increase the drop chance without multiplying its amount. DNS preserves this game policy, including original prefab drops. If multiple rows share that drop prefab, DNS leaves their star scaling to the game as a group, because generated results do not identify which row succeeded. This exception also applies to global trophy scaling and custom stacked/limited drops; other drop prefabs keep their configured DNS scaling. Update the server and all clients together when using this build.
 
 Under `2 - Character`, `monster instant loot drop blacklist` defaults to `Dragon, Hatchling`. These creature prefabs keep normal ragdoll loot timing even when instant loot is enabled. Use comma-separated names, or leave it empty for no exclusions; changes affect new ragdolls.
 

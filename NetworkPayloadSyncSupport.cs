@@ -1264,6 +1264,7 @@ PublishExit:
         WriteNullableFloat(builder, definition.Chance);
         WriteNullableBool(builder, definition.DontScale);
         WriteNullableBool(builder, definition.LevelMultiplier);
+        WriteNullableBool(builder, definition.LevelMultiplierNotAmount);
         WriteNullableBool(builder, definition.OnePerPlayer);
         WriteNullableInt(builder, definition.AmountLimit);
         WriteNullableBool(builder, definition.DropInStack);
@@ -1475,6 +1476,7 @@ PublishExit:
         WriteNullableFloat(package, definition.Chance);
         WriteNullableBool(package, definition.DontScale);
         WriteNullableBool(package, definition.LevelMultiplier);
+        WriteNullableBool(package, definition.LevelMultiplierNotAmount);
         WriteNullableBool(package, definition.OnePerPlayer);
         WriteNullableInt(package, definition.AmountLimit);
         WriteNullableBool(package, definition.DropInStack);
@@ -1491,6 +1493,7 @@ PublishExit:
             Chance = ReadNullableFloat(package),
             DontScale = ReadNullableBool(package),
             LevelMultiplier = ReadNullableBool(package),
+            LevelMultiplierNotAmount = ReadNullableBool(package),
             OnePerPlayer = ReadNullableBool(package),
             AmountLimit = ReadNullableInt(package),
             DropInStack = ReadNullableBool(package)

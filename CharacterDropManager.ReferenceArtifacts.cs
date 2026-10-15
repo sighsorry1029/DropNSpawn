@@ -156,6 +156,7 @@ internal static partial class CharacterDropManager
                 Chance = IsReferenceDefault(entry.Drop.m_chance, 1f) ? null : entry.Drop.m_chance,
                 OnePerPlayer = entry.Drop.m_onePerPlayer ? true : null,
                 LevelMultiplier = GetReferenceLevelMultiplierOverride(entry.Drop),
+                LevelMultiplierNotAmount = entry.Drop.m_levelMultiplierNotAmount ? true : null,
                 DontScale = entry.Drop.m_dontScale ? true : null
             })
             .ToList();

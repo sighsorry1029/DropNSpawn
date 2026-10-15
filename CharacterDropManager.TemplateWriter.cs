@@ -39,6 +39,7 @@ internal static partial class CharacterDropManager
         AppendTemplateLine(builder, 3, "chance: 1 # Chance from 0 to 1 for this item on each roll");
         AppendTemplateLine(builder, 3, "dontScale: false # True skips the game's built-in drop scaling for the base amount roll");
         AppendTemplateLine(builder, 3, "levelMultiplier: true # Omitted default: true for ItemDrop prefabs, false for non-item prefabs # Trophy items can be forced true in config");
+        AppendTemplateLine(builder, 3, "levelMultiplierNotAmount: false # With levelMultiplier: true, stars affect chance only; DNS leaves same-prefab rows at vanilla scaling");
         AppendTemplateLine(builder, 3, "onePerPlayer: false # True uses nearby player count as the final amount # Configure check range in config");
         AppendTemplateLine(builder, 3, "amountLimit: null # ex) 2 # Integer cap on the final amount");
         AppendTemplateLine(builder, 3, "dropInStack: false # True spawns one stacked drop instead of many singles");

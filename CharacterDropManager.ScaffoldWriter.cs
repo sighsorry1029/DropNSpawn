@@ -57,6 +57,7 @@ internal static partial class CharacterDropManager
         AppendScaffoldLine(builder, indent + 1, $"chance: {FormatYamlFloat(definition.Chance ?? 1f)}");
         AppendScaffoldLine(builder, indent + 1, $"dontScale: {FormatYamlBool(definition.DontScale ?? false)}");
         AppendScaffoldLine(builder, indent + 1, $"levelMultiplier: {FormatYamlBool(GetConfiguredCharacterDropLevelMultiplierForOutput(definition))}");
+        AppendScaffoldLine(builder, indent + 1, $"levelMultiplierNotAmount: {FormatYamlBool(definition.LevelMultiplierNotAmount ?? false)}");
         AppendScaffoldLine(builder, indent + 1, $"onePerPlayer: {FormatYamlBool(definition.OnePerPlayer ?? false)}");
         AppendScaffoldNullableIntLine(builder, indent + 1, "amountLimit", definition.AmountLimit);
         AppendScaffoldLine(builder, indent + 1, $"dropInStack: {FormatYamlBool(definition.DropInStack ?? false)}");
