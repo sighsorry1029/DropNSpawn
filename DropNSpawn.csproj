@@ -470,6 +470,7 @@
         <Compile Include="CharacterCompiledState.cs"/>
         <Compile Include="CharacterDropRuntime.cs"/>
         <Compile Include="CharacterDropManager.cs"/>
+        <Compile Include="CharacterDropManager.GeneratedLoot.cs"/>
         <Compile Include="CharacterDropManager.BaselineDesiredState.cs"/>
         <Compile Include="CharacterDropManager.ReferenceArtifacts.cs"/>
         <Compile Include="CharacterDropManager.ScaffoldWriter.cs"/>

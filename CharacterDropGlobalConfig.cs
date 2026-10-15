@@ -19,6 +19,12 @@ internal static class CharacterDropGlobalConfig
         CalculateChance
     }
 
+    internal enum ChanceOnlyDropChanceScaling
+    {
+        Vanilla,
+        Linear
+    }
+
     private static readonly object DropInStackBlacklistLock = new();
     private static readonly object TrophyLevelMultiplierBlacklistLock = new();
     private static readonly object PlayerAlignedKillerBlacklistLock = new();
@@ -36,6 +42,8 @@ internal static class CharacterDropGlobalConfig
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _monsterInstantLootDrop = null!;
     private static ConfigEntry<string> _monsterInstantLootDropBlacklistEntry = null!;
     private static ConfigEntry<CharacterLootSystem> _characterLootSystem = null!;
+    private static ConfigEntry<ChanceOnlyDropChanceScaling> _chanceOnlyDropChanceScaling = null!;
+    private static ConfigEntry<int> _chanceOnlyDropChanceIncreasePerStar = null!;
     private static ConfigEntry<DropNSpawnPlugin.Toggle> _disableCharacterLootScalingWhenCreatureLevelControlLoaded = null!;
     private static ConfigEntry<int> _additionalLootChancePerStarCreature = null!;
     private static ConfigEntry<int> _additionalLootChancePerStarBoss = null!;
@@ -62,7 +70,7 @@ internal static class CharacterDropGlobalConfig
             "2 - Character",
             "player-aligned killer character drop blacklist",
             "",
-            "Comma, semicolon, or newline separated victim prefab names that are exempt from the player-aligned killer requirement and keep their normal CharacterDrop regardless of the death source. Example: Blob,Deathsquito",
+            "Comma, semicolon, or newline separated victim creature prefab names, not dropped item names. Listed creatures are exempt from the player-aligned killer requirement for both original and YAML CharacterDrop, regardless of Enable Character Overrides. YAML drop-row fields do not override this exception. Other loot rules still apply. Case-insensitive; empty means no exceptions. Example: Blob,Deathsquito",
             synchronizedSetting: true,
             configManagerOrder: 590);
         _onePerPlayerNearbyRange = plugin.BindConfigEntry(
@@ -85,21 +93,21 @@ internal static class CharacterDropGlobalConfig
             "2 - Character",
             "monster instant loot drop blacklist",
             DefaultMonsterInstantLootDropBlacklist,
-            "Comma, semicolon, or newline separated creature prefab names excluded from monster instant loot drop. Uses the original creature prefab, not the ragdoll or dropped item name. Names are case-insensitive. Excluded creatures keep their normal ragdoll loot timing; drop amounts and other loot settings are unchanged. Empty means no exclusions. Changes apply to newly created ragdolls.",
+            "Comma, semicolon, or newline separated original creature prefab names, not ragdoll or dropped item names. Listed creatures keep normal ragdoll loot timing for both original and YAML CharacterDrop, regardless of Enable Character Overrides. YAML drop-row fields do not override this exception. Drop amounts are unchanged. Case-insensitive; empty means no exceptions. Changes affect newly created ragdolls. Example: Dragon,Hatchling",
             synchronizedSetting: true,
             configManagerOrder: 445);
         _characterLootSystem = plugin.BindConfigEntry(
             "2 - Character",
             "character loot system",
             CharacterLootSystem.CalculateChance,
-            "Vanilla leaves character-drop level scaling to the game and YAML levelMultiplier values. CalculateChance replaces vanilla exponential level scaling with configured per-star amount scaling only for non-trophy item drops whose levelMultiplier is true. Drops with both levelMultiplier and levelMultiplierNotAmount true retain vanilla chance-only scaling; all rows sharing that drop prefab retain vanilla star scaling. The global trophy level multiplier setting separately controls trophies and can override their levelMultiplier value, except for these chance-only groups.",
+            "Vanilla leaves ordinary character-drop level scaling to the game and YAML levelMultiplier values. CalculateChance replaces vanilla exponential level scaling with configured per-star amount scaling only for non-trophy item drops whose levelMultiplier is true. Drops with both levelMultiplier and levelMultiplierNotAmount true use chance-only drop chance scaling independently; all rows sharing that drop prefab are excluded from DNS amount scaling. The global trophy level multiplier setting separately controls other trophies, except YAML rows with explicit levelMultiplier: false.",
             synchronizedSetting: true,
             configManagerOrder: 440);
         _disableCharacterLootScalingWhenCreatureLevelControlLoaded = plugin.BindConfigEntry(
             "2 - Character",
             "disable DNS character loot scaling when CLLC is loaded",
             DropNSpawnPlugin.Toggle.On,
-            "If on and Creature Level & Loot Control is loaded, DropNSpawn does not rewrite this config file but treats character loot system, both per-star loot chance options, and global trophy level multiplier as inactive at runtime. CLLC can then own loot quantities while Character YAML overrides, drop-in-stack, instant loot, and OnePerPlayer range still work. Turn this off only when CLLC loot is Vanilla and DropNSpawn should own loot scaling.",
+            "If on and Creature Level & Loot Control is loaded, DropNSpawn does not rewrite this config file but treats character loot system, both per-star loot chance options, global trophy level multiplier, and chance-only drop chance scaling as inactive at runtime. CLLC can then own loot scaling while Character YAML overrides, drop-in-stack, instant loot, and OnePerPlayer range still work. Turn this off only when CLLC loot is Vanilla and DropNSpawn should own loot scaling.",
             synchronizedSetting: true,
             configManagerOrder: 435);
         _additionalLootChancePerStarCreature = plugin.BindConfigEntry(
@@ -120,32 +128,48 @@ internal static class CharacterDropGlobalConfig
                 new AcceptableValueRange<int>(0, 100)),
             synchronizedSetting: true,
             configManagerOrder: 420);
+        _chanceOnlyDropChanceScaling = plugin.BindConfigEntry(
+            "2 - Character",
+            "chance-only drop chance scaling",
+            ChanceOnlyDropChanceScaling.Linear,
+            "Applies only to character drops with both levelMultiplier and levelMultiplierNotAmount true, including original game drops and YAML overrides, regardless of item type or Enable Character Overrides. Linear uses chance-only drop chance increase per star (%), default 50: a 10% base becomes 10%, 15%, 20%, 25%, up to 100%. Vanilla keeps the game's exponential chance scaling: 10%, 20%, 40%, 80%. Does not change amounts or use the additional-loot amount percentages. Independent of character loot system and global trophy level multiplier; inactive when the CLLC loot-scaling handoff is enabled and CLLC is loaded.",
+            synchronizedSetting: true,
+            configManagerOrder: 410);
+        _chanceOnlyDropChanceIncreasePerStar = plugin.BindConfigEntry(
+            "2 - Character",
+            "chance-only drop chance increase per star (%)",
+            50,
+            new ConfigDescription(
+                "Only used when chance-only drop chance scaling is Linear. Each star adds this percentage of the base drop chance, not percentage points. Formula: base chance * (1 + stars * value / 100), capped at 100% final chance. A 10% base with 50 gives 10%, 15%, 20%; with 25 gives 10%, 12.5%, 15%. Zero keeps the base chance at every star level. Applies equally to creatures and bosses, changes no quantities, and does not use the additional-loot amount settings. Changes affect subsequent drop rolls. Ignored in Vanilla mode or while the CLLC loot-scaling handoff is active.",
+                new AcceptableValueRange<int>(0, 100)),
+            synchronizedSetting: true,
+            configManagerOrder: 405);
         _globalDropInStack = plugin.BindConfigEntry(
             "2 - Character",
             "global drop in stack",
             DropNSpawnPlugin.Toggle.Off,
-            "If on, all character loot drops in stacks whenever possible, including vanilla drops that are not overridden in YAML. Items listed in global drop in stack blacklist always stay as separate drops. Non-stackable items and single-quantity drops are unchanged. Turning this off only disables the global default; per-entry YAML dropInStack still works unless the item is blacklisted.",
+            "Default for character drops with no YAML dropInStack value, including original game drops. Omitted/null inherits this setting; explicit true enables stacks and explicit false keeps separate drops. Items listed in global drop in stack blacklist always stay separate, even with YAML true. Non-stackable items are unchanged. Requires Enable Character Overrides. Saved ragdolls retain the YAML choice from their drop roll; inherited defaults and the blacklist are read when loot spawns.",
             synchronizedSetting: true,
             configManagerOrder: 400);
         _dropInStackBlacklistEntry = plugin.BindConfigEntry(
             "2 - Character",
             "global drop in stack blacklist",
             "",
-            "Comma, semicolon, or newline separated item prefab names that should never use character loot drop-in-stack. Applies to both vanilla character drops and YAML-driven character drops when they pass through CharacterDrop. This blacklist has higher priority than the global default and higher priority than per-entry YAML dropInStack. Example: Coins,TrophyDeer",
+            "Comma, semicolon, or newline separated dropped item prefab names, not creature names. Listed items stay separate across creatures' original and YAML CharacterDrop, including saved ragdoll loot. This overrides both the global stack default and explicit YAML dropInStack: true. Requires Enable Character Overrides. Read when loot spawns. Case-insensitive; empty means no exceptions. Example: Coins,TrophyDeer",
             synchronizedSetting: true,
             configManagerOrder: 300);
         _globalTrophyLevelMultiplier = plugin.BindConfigEntry(
             "2 - Character",
             "global trophy level multiplier",
             DropNSpawnPlugin.Toggle.Off,
-            "If on, successful character trophy drops keep their original drop chance and scale their final amount by the configured creature or boss additional-loot chance per star. Eligible trophies are kept out of vanilla levelMultiplier amount scaling to avoid very large 2^(level-1) trophy stacks. Items listed in global trophy level multiplier blacklist are exempt and keep their vanilla or YAML levelMultiplier behavior. A drop with both levelMultiplier and levelMultiplierNotAmount true also exempts all rows sharing that trophy prefab.",
+            "If on, eligible successful character trophy drops use their base drop chance and scale their final amount by the configured creature or boss additional-loot chance per star instead of vanilla exponential scaling. Explicit YAML levelMultiplier: false opts that row out; omitted/null and true permit this global policy. Original game rows remain eligible even when their native levelMultiplier is false. Blacklisted trophies skip this amount policy; existing level flags and the separate chance-only drop chance scaling setting still apply. A drop with both levelMultiplier and levelMultiplierNotAmount true also exempts all rows sharing that trophy prefab.",
             synchronizedSetting: true,
             configManagerOrder: 200);
         _trophyLevelMultiplierBlacklistEntry = plugin.BindConfigEntry(
             "2 - Character",
             "global trophy level multiplier blacklist",
             "",
-            "Comma, semicolon, or newline separated trophy item prefab names that should not use global trophy amount scaling. Blacklisted items follow the vanilla or YAML levelMultiplier value exactly. Example: TrophyEikthyr,TrophyDragonQueen",
+            "Comma, semicolon, or newline separated trophy item prefab names, not creature names. Excludes these trophies from DNS global trophy amount scaling across original and YAML CharacterDrop. Unlike YAML levelMultiplier: false, this does not disable the existing level flags or chance-only drop chance scaling. Explicit YAML levelMultiplier: true does not override this exclusion. Case-insensitive; empty means no exceptions. Changes affect subsequent drop rolls. Example: TrophyEikthyr,TrophyDragonQueen",
             synchronizedSetting: true,
             configManagerOrder: 100);
     }
@@ -215,6 +239,15 @@ internal static class CharacterDropGlobalConfig
     {
         return _characterLootSystem?.Value == CharacterLootSystem.CalculateChance;
     }
+
+    internal static bool IsLinearChanceOnlyDropScalingEnabled()
+    {
+        return _chanceOnlyDropChanceScaling?.Value == ChanceOnlyDropChanceScaling.Linear &&
+               !ShouldDisableLootScalingForCreatureLevelControl();
+    }
+
+    internal static int GetChanceOnlyDropChanceIncreasePerStar() =>
+        Mathf.Clamp(_chanceOnlyDropChanceIncreasePerStar?.Value ?? 50, 0, 100);
 
     internal static bool ShouldDisableLootScalingForCreatureLevelControl()
     {

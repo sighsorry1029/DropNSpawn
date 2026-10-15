@@ -58,6 +58,12 @@ internal static class PluginSettingsFacade
     internal static bool IsCharacterDropCalculateChanceLootSystemEnabled() =>
         CharacterDropGlobalConfig.IsCalculateChanceLootSystemEnabled();
 
+    internal static bool IsLinearChanceOnlyDropScalingEnabled() =>
+        CharacterDropGlobalConfig.IsLinearChanceOnlyDropScalingEnabled();
+
+    internal static int GetChanceOnlyDropChanceIncreasePerStar() =>
+        CharacterDropGlobalConfig.GetChanceOnlyDropChanceIncreasePerStar();
+
     internal static bool ShouldDisableCharacterLootScalingForCreatureLevelControl() =>
         CharacterDropGlobalConfig.ShouldDisableLootScalingForCreatureLevelControl();
 

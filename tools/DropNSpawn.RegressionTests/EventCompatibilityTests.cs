@@ -7,8 +7,105 @@ internal static partial class Program
     private static void CheckEventCompatibilityContracts(ModContract mod)
     {
         CheckEventCloneMetadataLifetime(mod);
+        CheckEventExplicitOverrides(mod);
         CheckNearestEventOrdering(mod);
         CheckVneiSubscriptionShutdown(mod);
+    }
+
+    private static void CheckEventExplicitOverrides(ModContract mod)
+    {
+        Type manager = mod.Type("EventManager");
+        Type definitionType = mod.Type("EventDefinition");
+        Type listType = typeof(List<>).MakeGenericType(definitionType);
+        Type eventType = mod.LoadGameAssembly("assembly_valheim").GetType("RandomEvent", true)!;
+        object target = RuntimeHelpers.GetUninitializedObject(eventType);
+        object table = manager.GetField("EventMetadata", All)!.GetValue(null)!;
+        object Definition(string json)
+        {
+            object value = System.Text.Json.JsonSerializer.Deserialize(json, definitionType, JsonOptions)!;
+            var list = (IList)Activator.CreateInstance(listType)!;
+            list.Add(value);
+            Invoke(manager, null, "NormalizeDefinitions", list, "override-fixture");
+            return value;
+        }
+        void Apply(string json) => Invoke(manager, null, "ApplyDefinition", target, Definition(json), "override-fixture");
+        object Metadata()
+        {
+            Check(TryReadWeakValue(table, target, out object? value), "event metadata retained");
+            return value!;
+        }
+        object? Read(object value, string name) => value.GetType().GetProperty(name, All)!.GetValue(value);
+        try
+        {
+            Apply("""{"Settings":["true","true","60"],"Messages":["start","end"],"Conditions":{"Biomes":["Meadows"],"RequiredGlobalKeys":["key"],"PlayerBase":["away"],"RequiredEnvironments":["Mist"],"Players":["2~4","42"]}}""");
+            Apply("""{"Messages":["","end only"],"Settings":["false","false","0"]}""");
+            Check((string)eventType.GetField("m_startMessage")!.GetValue(target)! == "" &&
+                  (string)eventType.GetField("m_endMessage")!.GetValue(target)! == "end only", "message tuple preserves empty first position");
+            Check(!(bool)eventType.GetField("m_enabled")!.GetValue(target)! &&
+                  (float)eventType.GetField("m_duration")!.GetValue(target)! == 0, "event false and zero are explicit values");
+            Check(Read(Metadata(), "PlayerBase") != null && ((List<string>)Read(Metadata(), "RequiredEnvironments")!).Single() == "mist",
+                "later unrelated definition preserves earlier metadata fields");
+            Check((float)Read(Metadata(), "PlayerDistance")! == 42f, "omitted players preserves earlier tuple");
+            Apply("""{"Conditions":{"Players":["bad","7"]}}""");
+            object retainedRange = Read(Metadata(), "PlayerLimit")!;
+            Check((int?)Read(retainedRange, "Min") == 2 && (int?)Read(retainedRange, "Max") == 4 &&
+                  (float)Read(Metadata(), "PlayerDistance")! == 42f, "invalid player tuple preserves earlier range and distance");
+            Apply("""{"Conditions":{"Players":["1~3"]}}""");
+            Check((float)Read(Metadata(), "PlayerDistance")! == 100f, "supplied players tuple uses default omitted distance");
+            Apply("""{"Messages":[],"Conditions":{"RequiredGlobalKeys":[],"Biomes":[],"RequiredEnvironments":[]}}""");
+            Check(((IList)eventType.GetField("m_requiredGlobalKeys")!.GetValue(target)!).Count == 0, "explicit empty keys clears baseline");
+            Check(Convert.ToInt32(eventType.GetField("m_biome")!.GetValue(target)) == 0, "explicit empty biomes clears restriction");
+            Check((string)eventType.GetField("m_startMessage")!.GetValue(target)! == "" &&
+                  (string)eventType.GetField("m_endMessage")!.GetValue(target)! == "", "explicit empty messages clears both messages");
+            Check(((List<string>)Read(Metadata(), "RequiredEnvironments")!).Count == 0 && Read(Metadata(), "PlayerBase") != null,
+                "empty environment list clears only that metadata field");
+            // Command execution needs EWD; metadata merging itself does not.
+            Call(table, "Remove", target);
+            object first = System.Text.Json.JsonSerializer.Deserialize("""{"StartCommands":["start"]}""", definitionType, JsonOptions)!;
+            object second = System.Text.Json.JsonSerializer.Deserialize("""{"EndCommands":["end"]}""", definitionType, JsonOptions)!;
+            Invoke(manager, null, "ApplyDefinition", target, first, "fixture");
+            Invoke(manager, null, "ApplyDefinition", target, second, "fixture");
+            object old = Metadata();
+            Apply("""{"StartCommands":[]}""");
+            Check(((List<string>)Read(Metadata(), "StartCommands")!).Count == 0 &&
+                  ((List<string>)Read(Metadata(), "EndCommands")!).Single() == "end", "clear one command field preserves the other");
+            Check(((List<string>)Read(old, "StartCommands")!).Single() == "start", "metadata merge owns cloned lists");
+            Apply("""{"EndCommands":[]}""");
+            Check(!TryReadWeakValue(table, target, out _), "clearing last metadata field removes old metadata");
+
+            const string yaml = """
+                - event: override_fixture
+                  messages: ['', 'end only']
+                  startCommands: []
+                  endCommands: null
+                  conditions:
+                    biomes: []
+                    requiredGlobalKeys: []
+                    requiredEnvironments: []
+                    playerBase: []
+                    players: []
+                """;
+            object?[] parseArgs = { yaml, "override-fixture.yml", null, "" };
+            Check((bool)Invoke(manager, null, "TryParseYaml", parseArgs)!, "event explicit-empty YAML parses: " + parseArgs[3]);
+            var local = (IList)parseArgs[2]!;
+            object schema = Invoke(mod.Type("NetworkPayloadSyncSupport"), null, "CreateEventEntrySchema")!;
+            byte[] bytes = (byte[])Call(schema, "SerializeEntries", local)!;
+            var restored = (IList)Call(schema, "DeserializeEntries", bytes)!;
+            Invoke(manager, null, "BuildSyncedConfigurationState", restored, "wire-fixture");
+            Check(bytes.SequenceEqual((byte[])Call(schema, "SerializeEntries", restored)!), "event wire and repeated normalization retain explicit values");
+            object restoredDefinition = restored[0]!;
+            object conditions = Read(restoredDefinition, "Conditions")!;
+            Check(((IList)Read(restoredDefinition, "Messages")!).Cast<string>().SequenceEqual(new[] { "", "end only" }) &&
+                  ((IList)Read(restoredDefinition, "StartCommands")!).Count == 0 && Read(restoredDefinition, "EndCommands") == null &&
+                  ((IList)Read(conditions, "RequiredGlobalKeys")!).Count == 0 && ((IList)Read(conditions, "Biomes")!).Count == 0 &&
+                  Read(conditions, "PlayerBase") == null && Read(conditions, "Players") == null, "event wire preserves empty list versus omitted tuple semantics");
+            Apply("""{"Messages":["start","end"],"Conditions":{"Biomes":["Meadows"],"RequiredGlobalKeys":["key"]}}""");
+            Invoke(manager, null, "ApplyDefinition", target, restoredDefinition, "wire-fixture");
+            Check((string)eventType.GetField("m_endMessage")!.GetValue(target)! == "end only" &&
+                  ((IList)eventType.GetField("m_requiredGlobalKeys")!.GetValue(target)!).Count == 0 &&
+                  Convert.ToInt32(eventType.GetField("m_biome")!.GetValue(target)) == 0, "received event values clear and replace original game fields");
+        }
+        finally { Call(table, "Remove", target); }
     }
 
     private static void CheckEventCloneMetadataLifetime(ModContract mod)

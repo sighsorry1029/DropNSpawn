@@ -1,3 +1,12 @@
+## 1.4.6 — Predictable loot overrides and configurable star chance
+
+- Add server-synchronized `chance-only drop chance scaling`, default `Linear`, for original and YAML drops with both `levelMultiplier` and `levelMultiplierNotAmount` enabled. The new `chance-only drop chance increase per star (%)` defaults to 50: a 10% base chance becomes 10%, 15%, 20%, up to 100%. Set the increase to 0 to keep the base chance, or select `Vanilla` to retain exponential chance scaling. Amount settings remain separate, and the existing CLLC handoff disables DNS chance and amount scaling.
+- Make YAML `dropInStack` explicit: omitted/null inherits the global setting, `true` requests stacks, and `false` keeps separate drops. The stack blacklist still takes priority. Explicit trophy `levelMultiplier: false` now also opts out of global trophy amount scaling; original game rows keep their global eligibility.
+- Track successful drop rows so failed rolls for duplicate item prefabs cannot transfer their amount limit or stack choice to another row. Apply final amount limits, including zero, and preserve explicit stack choices in newly saved ragdoll loot for delayed and instant delivery. Older ragdolls without policy metadata inherit the global stack default; invalid metadata preserves saved loot. Keep the existing same-prefab chance-only exclusion from DNS amount scaling.
+- Preserve omitted event metadata across successive YAML overrides, honor explicit empty condition/command lists, and retain empty message positions. Keep explicit false/zero values and documented tuple defaults.
+- Keep all four blacklists and clarify their target prefab types, YAML priority and timing in config descriptions. The trophy blacklist excludes DNS trophy amount scaling only; it does not disable chance-only scaling. Instant-loot and killer-filter exceptions apply to victim creatures and have no per-drop YAML override.
+- Update YAML templates and documentation. Existing user YAML is not rewritten: remove `dropInStack: false` or use `null` where global inheritance is intended. Update the server and all clients to 1.4.6 together and restart.
+
 ## 1.4.5 — Valheim 1.0.20 character loot compatibility
 
 - Preserve the game's new chance-only star-scaling flag when capturing, copying and restoring creature drops, including Vanilla loot mode and disabled character overrides.

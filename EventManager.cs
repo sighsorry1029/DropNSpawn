@@ -626,11 +626,11 @@ internal static class EventManager
             definition.Event = NormalizeOptionalString(definition.Event);
             definition.Settings = NormalizePositionalStringList(definition.Settings);
             NormalizeConditions(definition.Conditions);
-            definition.Messages = NormalizeOptionalStringList(definition.Messages);
+            definition.Messages = definition.Messages?.Select(value => (value ?? "").Trim()).ToList();
             definition.ForceEnvironment = NormalizeOptionalStringPreserveEmpty(definition.ForceEnvironment);
             definition.ForceMusic = NormalizeOptionalStringPreserveEmpty(definition.ForceMusic);
-            definition.StartCommands = NormalizeOptionalStringList(definition.StartCommands);
-            definition.EndCommands = NormalizeOptionalStringList(definition.EndCommands);
+            definition.StartCommands = NormalizeOptionalStringList(definition.StartCommands, preserveEmpty: true);
+            definition.EndCommands = NormalizeOptionalStringList(definition.EndCommands, preserveEmpty: true);
             NormalizeSpawns(definition.Spawns);
             string context = sourceName + "/event:" + definition.Event;
             if (definition.StartCommands?.Count > 0) ExpandWorldDataCompatibility.RequireFeature("startCommands", context);
@@ -652,19 +652,19 @@ internal static class EventManager
             return;
         }
 
-        conditions.Biomes = NormalizeOptionalStringList(conditions.Biomes);
+        conditions.Biomes = NormalizeOptionalStringList(conditions.Biomes, preserveEmpty: true);
         conditions.PlayerBase = NormalizeOptionalStringList(conditions.PlayerBase);
-        conditions.RequiredEnvironments = NormalizeOptionalStringList(conditions.RequiredEnvironments)
+        conditions.RequiredEnvironments = NormalizeOptionalStringList(conditions.RequiredEnvironments, preserveEmpty: true)
             ?.Select(value => value.ToLowerInvariant())
             .ToList();
         conditions.Players = NormalizeOptionalStringList(conditions.Players);
-        conditions.RequiredGlobalKeys = NormalizeOptionalStringList(conditions.RequiredGlobalKeys);
-        conditions.ForbiddenGlobalKeys = NormalizeOptionalStringList(conditions.ForbiddenGlobalKeys);
-        conditions.RequiredPlayerKeysAny = NormalizeOptionalStringList(conditions.RequiredPlayerKeysAny);
-        conditions.RequiredPlayerKeysAll = NormalizeOptionalStringList(conditions.RequiredPlayerKeysAll);
-        conditions.ForbiddenPlayerKeys = NormalizeOptionalStringList(conditions.ForbiddenPlayerKeys);
-        conditions.RequiredKnownItems = NormalizeOptionalStringList(conditions.RequiredKnownItems);
-        conditions.ForbiddenKnownItems = NormalizeOptionalStringList(conditions.ForbiddenKnownItems);
+        conditions.RequiredGlobalKeys = NormalizeOptionalStringList(conditions.RequiredGlobalKeys, preserveEmpty: true);
+        conditions.ForbiddenGlobalKeys = NormalizeOptionalStringList(conditions.ForbiddenGlobalKeys, preserveEmpty: true);
+        conditions.RequiredPlayerKeysAny = NormalizeOptionalStringList(conditions.RequiredPlayerKeysAny, preserveEmpty: true);
+        conditions.RequiredPlayerKeysAll = NormalizeOptionalStringList(conditions.RequiredPlayerKeysAll, preserveEmpty: true);
+        conditions.ForbiddenPlayerKeys = NormalizeOptionalStringList(conditions.ForbiddenPlayerKeys, preserveEmpty: true);
+        conditions.RequiredKnownItems = NormalizeOptionalStringList(conditions.RequiredKnownItems, preserveEmpty: true);
+        conditions.ForbiddenKnownItems = NormalizeOptionalStringList(conditions.ForbiddenKnownItems, preserveEmpty: true);
     }
 
     private static void NormalizeSpawns(List<EventSpawnDefinition>? spawns)
@@ -1234,13 +1234,13 @@ internal static class EventManager
 
         bool durationOverridden = ApplySettings(target, definition.Settings, context);
         ApplyStandalone(target, definition.Standalone);
-        EventRuntimeMetadata metadata = BuildMetadata(definition, context);
+        EventRuntimeMetadata metadata = BuildMetadata(target, definition, context);
         ApplyConditions(target, definition.Conditions, metadata, context);
         ApplyMessages(target, definition.Messages);
         ApplyForces(target, definition);
+        EventMetadata.Remove(target);
         if (metadata.HasValues())
         {
-            EventMetadata.Remove(target);
             EventMetadata.Add(target, metadata);
         }
 
@@ -1317,13 +1317,13 @@ internal static class EventManager
         }
     }
 
-    private static EventRuntimeMetadata BuildMetadata(EventDefinition definition, string context)
+    private static EventRuntimeMetadata BuildMetadata(RandomEvent target, EventDefinition definition, string context)
     {
-        EventRuntimeMetadata metadata = new()
-        {
-            StartCommands = definition.StartCommands?.ToList(),
-            EndCommands = definition.EndCommands?.ToList()
-        };
+        EventRuntimeMetadata metadata = EventMetadata.TryGetValue(target, out EventRuntimeMetadata previous)
+            ? CloneMetadata(previous)
+            : new EventRuntimeMetadata();
+        if (definition.StartCommands != null) metadata.StartCommands = definition.StartCommands.ToList();
+        if (definition.EndCommands != null) metadata.EndCommands = definition.EndCommands.ToList();
 
         EventConditionsDefinition? conditions = definition.Conditions;
         if (conditions == null)
@@ -1343,14 +1343,14 @@ internal static class EventManager
 
         if (conditions.Players != null && conditions.Players.Count > 0)
         {
+            // A supplied tuple replaces that field; its omitted distance keeps
+            // the tuple's documented default, not an earlier rule's distance.
             if (TryParseIntRange(conditions.Players[0], context, "conditions.players[0]", out IntRangeDefinition playerLimit))
             {
                 metadata.PlayerLimit = playerLimit;
-            }
-
-            if (TryParseFloat(conditions.Players, 1, metadata.PlayerDistance, context, "conditions.players[1]", out float playerDistance))
-            {
-                metadata.PlayerDistance = Math.Max(0f, playerDistance);
+                metadata.PlayerDistance = 100f;
+                if (TryParseFloat(conditions.Players, 1, metadata.PlayerDistance, context, "conditions.players[1]", out float playerDistance))
+                    metadata.PlayerDistance = Math.Max(0f, playerDistance);
             }
         }
 
@@ -2427,12 +2427,14 @@ internal static class EventManager
             : values.Select(value => (value ?? "").Trim()).ToList();
     }
 
-    private static List<string>? NormalizeOptionalStringList(List<string>? values)
+    private static List<string>? NormalizeOptionalStringList(List<string>? values, bool preserveEmpty = false)
     {
         if (values == null)
         {
             return null;
         }
+
+        if (preserveEmpty && values.Count == 0) return new List<string>();
 
         List<string> normalized = values
             .Select(value => (value ?? "").Trim())

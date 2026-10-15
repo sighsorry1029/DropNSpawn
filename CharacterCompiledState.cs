@@ -13,10 +13,11 @@ internal sealed class CompiledCharacterDropDefinition
     public float Chance { get; set; }
     public bool DontScale { get; set; }
     public bool LevelMultiplier { get; set; }
+    public bool? LevelMultiplierOverride { get; set; }
     public bool LevelMultiplierNotAmount { get; set; }
     public bool OnePerPlayer { get; set; }
     public int? AmountLimit { get; set; }
-    public bool DropInStack { get; set; }
+    public bool? DropInStack { get; set; }
 }
 
 internal sealed class CompiledCharacterDropRule

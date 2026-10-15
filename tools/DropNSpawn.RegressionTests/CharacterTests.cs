@@ -121,6 +121,7 @@ internal static partial class Program
             CheckCharacterDropOwnership(manager, mod, compiled);
             CheckCharacterBaselineNormalization(manager, mod);
             CheckChanceOnlyDropContracts(manager, mod);
+            CheckChanceOnlyChanceScaling(manager, mod);
 
             // Local input is still cloned; owned transport data is normalized in place.
             object local = JsonSerializer.Deserialize("{\"Prefab\":\" Creature \",\"Enabled\":false,\"RuleId\":\" local \",\"CharacterDrop\":{\"Drops\":[]}}", entryType, JsonOptions)!;
@@ -316,6 +317,31 @@ internal static partial class Program
         Check(signatures.Count == 3, "wire signatures distinguish omitted/false/true chance-only flags");
         Check(fingerprints[false] != fingerprints[true], "chance-only changes invalidate compiled row fingerprints");
 
+        var stackFingerprints = new HashSet<string>();
+        foreach (bool? flag in new bool?[] { null, false, true })
+        {
+            string flagLine = flag.HasValue ? ", dropInStack: " + flag.Value.ToString().ToLowerInvariant() : "";
+            object parsed = Invoke(manager, null, "ParseConfiguration",
+                "- prefab: Boar\n  characterDrop:\n    drops:\n      - {item: Wood, levelMultiplier: false" + flagLine + "}\n", "stack.yml")!;
+            IList entries = (IList)Property(parsed, "Configuration")!;
+            object Row(IList list) => ((IList)Property(Property(list[0]!, "CharacterDrop")!, "Drops")!)[0]!;
+            byte[] bytes = (byte[])Call(schema, "SerializeEntries", entries)!;
+            foreach (IList list in new[] { entries, (IList)Call(schema, "CloneEntries", entries)!, (IList)Call(schema, "DeserializeEntries", bytes)! })
+                Check(Equals(Property(Row(list), "DropInStack"), flag), "nullable stack survives YAML/clone/wire: " + flag);
+            object row = Row(entries);
+            stackFingerprints.Add((string)Invoke(manager, null, "BuildDropRowFingerprint", row, false)!);
+            var builder = new System.Text.StringBuilder();
+            Invoke(manager, null, "AppendScaffoldCharacterDropEntry", builder, 0, row);
+            Check(builder.ToString().Contains("dropInStack: " + (flag?.ToString().ToLowerInvariant() ?? "null")),
+                "full scaffold preserves stack inheritance instead of exporting false");
+            SetProperty(row, "LevelMultiplier", null);
+            string omitted = (string)Invoke(manager, null, "BuildDropRowFingerprint", row, true)!;
+            SetProperty(row, "LevelMultiplier", true);
+            Check(omitted == (string)Invoke(manager, null, "BuildDropRowFingerprint", row, true)!,
+                "equivalent omitted/true item level flags still deduplicate");
+        }
+        Check(stackFingerprints.Count == 3, "inherit/false/true stack policies remain distinct matching rows");
+
         Type dropType = mod.LoadGameAssembly("assembly_valheim").GetType("CharacterDrop+Drop", true)!;
         Type compiledType = mod.Type("CompiledCharacterDropDefinition");
         Type prefabType = dropType.GetField("m_prefab")!.FieldType;
@@ -376,6 +402,105 @@ internal static partial class Program
             MethodInfo helper = manager.GetMethods(All).Single(m => m.Name == "HasChanceOnlyDropForPrefab" &&
                 m.GetParameters()[0].ParameterType.IsInstanceOfType(rows));
             return (bool)helper.Invoke(null, new[] { rows, prefab })!;
+        }
+    }
+
+    private static void CheckChanceOnlyChanceScaling(Type manager, ModContract mod)
+    {
+        Type settings = mod.Type("CharacterDropGlobalConfig");
+        string[] names = { "_chanceOnlyDropChanceScaling", "_disableCharacterLootScalingWhenCreatureLevelControlLoaded", "_isCreatureLevelControlLoaded",
+            "_chanceOnlyDropChanceIncreasePerStar", "_additionalLootChancePerStarCreature", "_additionalLootChancePerStarBoss" };
+        FieldInfo[] fields = names.Select(name => settings.GetField(name, All)!).ToArray();
+        object?[] previous = fields.Select(field => field.GetValue(null)).ToArray();
+        Type configType = mod.LoadGameAssembly("BepInEx").GetType("BepInEx.Configuration.ConfigFile", true)!;
+        string path = Path.Combine(Path.GetTempPath(), "dns-unsaved-chance-scaling-" + Guid.NewGuid().ToString("N") + ".cfg");
+        object config = Activator.CreateInstance(configType, new object?[] { path, false, null })!;
+        SetProperty(config, "SaveOnConfigSet", false);
+        MethodInfo bind = configType.GetMethods().Single(method => method.Name == "Bind" && method.IsGenericMethodDefinition &&
+            method.GetParameters().Length == 4 && method.GetParameters()[0].ParameterType == typeof(string) &&
+            method.GetParameters()[3].ParameterType == typeof(string));
+        object Bind(FieldInfo field, object value)
+        {
+            Type valueType = field.FieldType.GenericTypeArguments[0];
+            object entry = bind.MakeGenericMethod(valueType).Invoke(config,
+                new object[] { "2 - Character", field.Name, valueType.IsEnum ? Enum.Parse(valueType, (string)value) : value, "" })!;
+            field.SetValue(null, entry);
+            return entry;
+        }
+        try
+        {
+            object mode = Bind(fields[0], "Linear");
+            object handoff = Bind(fields[1], "On");
+            fields[2].SetValue(null, false);
+            fields[3].SetValue(null, null);
+            foreach (var sample in new[] { (1, .1f), (2, .15f), (3, .2f), (4, .25f), (19, 1f), (100, 1f) })
+            {
+                object[] args = { .1f, sample.Item1, true, true, 0f };
+                bool changed = (bool)Invoke(manager, null, "TryScaleChanceOnlyDropChance", args)!;
+                Check(changed == (sample.Item1 > 1) && Math.Abs((float)args[4] - sample.Item2) < .00001f,
+                    "linear chance-only probability and cap at level " + sample.Item1);
+            }
+            foreach (bool level in new[] { false, true })
+            foreach (bool chanceOnly in new[] { false, true })
+            {
+                object[] args = { .1f, 3, level, chanceOnly, 0f };
+                bool changed = (bool)Invoke(manager, null, "TryScaleChanceOnlyDropChance", args)!;
+                Check(changed == (level && chanceOnly) && Math.Abs((float)args[4] - (changed ? .2f : .1f)) < .00001f,
+                    "linear chance requires both level flags: " + level + "/" + chanceOnly);
+            }
+            foreach (float chance in new[] { 0f, 1f })
+            {
+                object[] args = { chance, 50, true, true, 0f };
+                Invoke(manager, null, "TryScaleChanceOnlyDropChance", args);
+                Check((float)args[4] == chance, "zero and guaranteed probabilities stay bounded");
+            }
+            object rate = Bind(fields[3], 50);
+            object quantityCreature = Bind(fields[4], 0), quantityBoss = Bind(fields[5], 100);
+            foreach (var sample in new[] { (0, .1f), (25, .15f), (50, .2f), (100, .3f), (-10, .1f), (150, .3f) })
+            {
+                SetProperty(rate, "Value", sample.Item1);
+                object[] args = { .1f, 3, true, true, 0f };
+                Check((bool)Invoke(manager, null, "TryScaleChanceOnlyDropChance", args)! && Math.Abs((float)args[4] - sample.Item2) < .00001f,
+                    "live linear percentage is bounded and zero still replaces native scaling: " + sample.Item1);
+            }
+            SetProperty(rate, "Value", 100);
+            object[] capped = { .4f, 3, true, true, 0f };
+            Check((bool)Invoke(manager, null, "TryScaleChanceOnlyDropChance", capped)! && (float)capped[4] == 1f,
+                "configured increase caps final chance at 100 percent");
+            SetProperty(rate, "Value", 25);
+            SetProperty(quantityCreature, "Value", 100); SetProperty(quantityBoss, "Value", 0);
+            object[] independent = { .1f, 3, true, true, 0f };
+            Invoke(manager, null, "TryScaleChanceOnlyDropChance", independent);
+            Check(Math.Abs((float)independent[4] - .15f) < .00001f, "chance percentage is independent of both amount percentages");
+            SetProperty(mode, "Value", Enum.Parse(fields[0].FieldType.GenericTypeArguments[0], "Vanilla"));
+            CheckUnchanged("Vanilla leaves original probability input and star handling intact");
+            SetProperty(mode, "Value", Enum.Parse(fields[0].FieldType.GenericTypeArguments[0], "Linear"));
+            fields[2].SetValue(null, true);
+            CheckUnchanged("CLLC handoff disables new probability scaling");
+            SetProperty(handoff, "Value", Enum.Parse(fields[1].FieldType.GenericTypeArguments[0], "Off"));
+            object[] enabled = { .1f, 3, true, true, 0f };
+            Check((bool)Invoke(manager, null, "TryScaleChanceOnlyDropChance", enabled)! && Math.Abs((float)enabled[4] - .15f) < .00001f,
+                "live handoff disable restores configured probability policy");
+            Check(!File.Exists(path), "chance-scaling checks never write a config profile");
+
+            void CheckUnchanged(string message)
+            {
+                object[] args = { .1f, 3, true, true, 0f };
+                Check(!(bool)Invoke(manager, null, "TryScaleChanceOnlyDropChance", args)! && (float)args[4] == .1f, message);
+            }
+        }
+        finally
+        {
+            for (int i = 0; i < fields.Length; i++) fields[i].SetValue(null, previous[i]);
+        }
+
+        using var module = Mono.Cecil.ModuleDefinition.ReadModule(mod.Assembly.Location);
+        var managerType = module.Types.Single(type => type.FullName == "DropNSpawn.CharacterDropManager");
+        foreach (string name in new[] { "PrepareCharacterLootScalingDrops", "GenerateConfiguredDrops" })
+        {
+            var method = managerType.Methods.Single(method => method.Name == name);
+            Check(method.Body.Instructions.Any(i => i.Operand is Mono.Cecil.MethodReference call && call.Name == "TryScaleChanceOnlyDropChance"),
+                name + " uses the tested chance policy");
         }
     }
 

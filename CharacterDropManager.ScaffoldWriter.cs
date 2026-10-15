@@ -60,7 +60,7 @@ internal static partial class CharacterDropManager
         AppendScaffoldLine(builder, indent + 1, $"levelMultiplierNotAmount: {FormatYamlBool(definition.LevelMultiplierNotAmount ?? false)}");
         AppendScaffoldLine(builder, indent + 1, $"onePerPlayer: {FormatYamlBool(definition.OnePerPlayer ?? false)}");
         AppendScaffoldNullableIntLine(builder, indent + 1, "amountLimit", definition.AmountLimit);
-        AppendScaffoldLine(builder, indent + 1, $"dropInStack: {FormatYamlBool(definition.DropInStack ?? false)}");
+        AppendScaffoldLine(builder, indent + 1, $"dropInStack: {(definition.DropInStack.HasValue ? FormatYamlBool(definition.DropInStack.Value) : "null")}");
     }
 
     private static void AppendScaffoldLine(StringBuilder builder, int indent, string text)

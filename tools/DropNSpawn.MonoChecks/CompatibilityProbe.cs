@@ -75,6 +75,8 @@ namespace DropNSpawn.Tests
             Check(ZDOExtraData.GetAllZDOIDsWithHash(ZDOExtraData.Type.String, ruleTag) != null, "original public ZDO metadata lookup for unloaded dungeon cap restore");
             CheckDungeonRpcLifecycle(dungeon);
             CheckSpawnSystemTimers(mod);
+            ChanceScalingFixture.Run(mod);
+            checks += LootPriorityProbe.Run(mod);
             DungeonPlacementFixture.Run(mod);
             foreach (string name in new[] { "EventManager+GameAccess", "CharacterDropKillerFilter", "RagdollSetupMonsterInstantLootDropPatch", "VneiCompatibility" })
             {
@@ -418,6 +420,136 @@ namespace DropNSpawn.Tests
                 }
                 yield return instruction;
             }
+        }
+
+        private static class ChanceScalingFixture
+        {
+            private static Character character;
+            private static int characterLookups;
+
+            internal static void Run(Assembly mod)
+            {
+                Type settings = mod.GetType("DropNSpawn.CharacterDropGlobalConfig", true);
+                Type manager = mod.GetType("DropNSpawn.CharacterDropManager", true);
+                Type patch = mod.GetType("DropNSpawn.CharacterDropGenerateDropListPatch", true);
+                Type bound = mod.GetType("DropNSpawn.PluginBoundSettings", true);
+                var previous = new Dictionary<FieldInfo, object>();
+                var config = new ConfigFile(Path.Combine(Path.GetTempPath(), "dns-unsaved-chance-mono-" + Guid.NewGuid() + ".cfg"), false) { SaveOnConfigSet = false };
+                var fixture = new Harmony("DropNSpawn.isolated.chance-scaling");
+                MethodInfo prefix = patch.GetMethod("Prefix", All), postfix = patch.GetMethod("Postfix", All), finalizer = patch.GetMethod("Finalizer", All);
+                try
+                {
+                    object mode = Bind(settings, "_chanceOnlyDropChanceScaling", "Linear");
+                    Bind(settings, "_characterLootSystem", "Vanilla");
+                    Bind(settings, "_globalTrophyLevelMultiplier", "Off");
+                    Bind(settings, "_disableCharacterLootScalingWhenCreatureLevelControlLoaded", "On");
+                    Bind(bound, "EnableCharacterOverrides", "Off");
+                    Set(settings.GetField("_isCreatureLevelControlLoaded", All), false);
+                    fixture.Patch(manager.GetMethod("PrepareCharacterLootScalingDrops", All),
+                        transpiler: new HarmonyMethod(typeof(ChanceScalingFixture), nameof(Isolate)));
+                    fixture.Patch(mod.GetType("DropNSpawn.CharacterDropKillerFilter", true).GetMethod("SuppressScopedGeneratedDrops", All),
+                        transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateTimerIdentity)));
+                    character = (Character)FormatterServices.GetUninitializedObject(typeof(Character));
+                    var component = (CharacterDrop)FormatterServices.GetUninitializedObject(typeof(CharacterDrop));
+                    var prefab = (UnityEngine.GameObject)FormatterServices.GetUninitializedObject(typeof(UnityEngine.GameObject));
+                    var ordinary = new CharacterDrop.Drop { m_prefab = prefab, m_chance = .25f, m_levelMultiplier = true };
+                    var chanceOnly = new CharacterDrop.Drop { m_prefab = prefab, m_chance = .1f, m_levelMultiplier = true,
+                        m_levelMultiplierNotAmount = true, m_onePerPlayer = true, m_dontScale = true, m_amountMin = 2, m_amountMax = 3 };
+                    var inactive = new CharacterDrop.Drop { m_prefab = prefab, m_chance = .2f, m_levelMultiplier = false, m_levelMultiplierNotAmount = true };
+                    var original = new List<CharacterDrop.Drop> { ordinary, chanceOnly, inactive };
+                    component.m_drops = original;
+                    for (int pass = 0; pass < 2; pass++)
+                    {
+                        characterLookups = 0;
+                        object[] args = { component, null };
+                        prefix.Invoke(null, args);
+                        object state = args[1];
+                        var active = component.m_drops;
+                        Check(!ReferenceEquals(active, original) && !ReferenceEquals(active[1], chanceOnly) && characterLookups == 1,
+                            "chance-only native preparation owns its rows and resolves the character once");
+                        Check(Math.Abs(active[1].m_chance - .2f) < .00001f && !active[1].m_levelMultiplier && active[1].m_levelMultiplierNotAmount,
+                            "native effective chance is linear with no second star multiplication");
+                        Check(active[0].m_levelMultiplier && active[0].m_chance == .25f && !active[2].m_levelMultiplier && active[2].m_chance == .2f,
+                            "mixed ordinary and disabled rows retain their chance and amount policies");
+                        Check(active[1].m_onePerPlayer && active[1].m_dontScale && active[1].m_amountMin == 2 && active[1].m_amountMax == 3,
+                            "chance preparation preserves amount and one-per-player fields");
+                        Check(ReferenceEquals(state.GetType().GetProperty("AmountSourceDrops", All).GetValue(state), original) &&
+                            chanceOnly.m_levelMultiplier && chanceOnly.m_chance == .1f,
+                            "postfix source preserves original chance-only identity without cumulative changes");
+                        MethodInfo protectedRows = manager.GetMethods(All).Single(m => m.Name == "HasChanceOnlyDropForPrefab" &&
+                            m.GetParameters()[0].ParameterType.GetGenericArguments()[0] == typeof(CharacterDrop.Drop));
+                        Check((bool)protectedRows.Invoke(null, new object[] { original, prefab }), "same-prefab group remains excluded from DNS amount scaling");
+                        if (pass == 0)
+                        {
+                            postfix.Invoke(null, new object[] { component, new List<KeyValuePair<UnityEngine.GameObject, int>>(), state });
+                            Check(ReferenceEquals(component.m_drops, original), "normal postfix restores original list reference");
+                            finalizer.Invoke(null, new object[] { component, state, null, null });
+                        }
+                        else
+                        {
+                            var error = new InvalidOperationException("fixture failure");
+                            Check(ReferenceEquals(finalizer.Invoke(null, new object[] { component, state, null, error }), error), "finalizer preserves original exception");
+                        }
+                        Check(ReferenceEquals(component.m_drops, original), "finalizer restores original rows on success and failure");
+                    }
+                    foreach (string value in new[] { "Vanilla", "Linear" })
+                    {
+                        mode.GetType().GetProperty("Value").SetValue(mode, Enum.Parse(mode.GetType().GetGenericArguments()[0], value));
+                        if (value == "Linear") settings.GetField("_isCreatureLevelControlLoaded", All).SetValue(null, true);
+                        characterLookups = 0;
+                        object[] args = { component, null };
+                        prefix.Invoke(null, args);
+                        finalizer.Invoke(null, new object[] { component, args[1], null, null });
+                        Check(ReferenceEquals(component.m_drops, original) && characterLookups == 0,
+                            value == "Vanilla" ? "Vanilla mode skips new chance preparation" : "CLLC handoff skips new chance preparation");
+                    }
+                }
+                finally
+                {
+                    fixture.UnpatchSelf();
+                    foreach (var pair in previous) pair.Key.SetValue(null, pair.Value);
+                    character = null;
+                }
+
+                void Set(FieldInfo field, object value)
+                {
+                    if (!previous.ContainsKey(field)) previous.Add(field, field.GetValue(null));
+                    field.SetValue(null, value);
+                }
+                object Bind(Type holder, string fieldName, string value)
+                {
+                    FieldInfo field = holder.GetField(fieldName, All) ?? holder.GetField("<" + fieldName + ">k__BackingField", All);
+                    Type type = field.FieldType.GetGenericArguments()[0];
+                    MethodInfo bind = typeof(ConfigFile).GetMethods().Single(m => m.Name == "Bind" && m.IsGenericMethodDefinition &&
+                        m.GetParameters().Length == 4 && m.GetParameters()[0].ParameterType == typeof(string) && m.GetParameters()[3].ParameterType == typeof(string));
+                    object entry = bind.MakeGenericMethod(type).Invoke(config, new object[] { "fixture", fieldName, Enum.Parse(type, value), "" });
+                    Set(field, entry);
+                    return entry;
+                }
+            }
+
+            private static IEnumerable<CodeInstruction> Isolate(IEnumerable<CodeInstruction> instructions)
+            {
+                foreach (CodeInstruction instruction in IsolateTimerIdentity(instructions))
+                {
+                    if (instruction.operand is MethodInfo method && method.DeclaringType == typeof(UnityEngine.Component) &&
+                        method.Name == "GetComponent" && method.IsGenericMethod && method.GetGenericArguments()[0] == typeof(Character))
+                    {
+                        instruction.opcode = OpCodes.Call;
+                        instruction.operand = AccessTools.Method(typeof(ChanceScalingFixture), nameof(GetCharacter));
+                    }
+                    else if (instruction.operand is MethodInfo levelMethod && levelMethod.DeclaringType == typeof(Character) && levelMethod.Name == "GetLevel")
+                    {
+                        // Scene input only: invoking Character triggers Unity-native static initialization.
+                        instruction.opcode = OpCodes.Call;
+                        instruction.operand = AccessTools.Method(typeof(ChanceScalingFixture), nameof(GetCharacterLevel));
+                    }
+                    yield return instruction;
+                }
+            }
+
+            private static Character GetCharacter(UnityEngine.Component component) { characterLookups++; return character; }
+            private static int GetCharacterLevel(Character value) => 3;
         }
 
         private static int timerChanceDraws;

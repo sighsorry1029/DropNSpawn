@@ -54,7 +54,7 @@ internal static partial class CharacterDropManager
     {
         public GameObject Prefab { get; set; } = null!;
         public int Amount { get; set; }
-        public bool DropInStack { get; set; }
+        public bool? DropInStack { get; set; }
     }
 
     private sealed class CharacterConfigurationState
@@ -788,21 +788,27 @@ internal static partial class CharacterDropManager
 
     private static bool HasCustomDropHandling(IReadOnlyList<CompiledCharacterDropDefinition>? drops)
     {
-        return drops?.Any(drop => (drop.AmountLimit.HasValue && drop.AmountLimit.Value >= 0) || drop.DropInStack) == true;
+        return drops?.Any(drop => drop.AmountLimit.HasValue || drop.DropInStack == true) == true;
     }
 
     internal static void ApplyGlobalDropInStack(ref List<KeyValuePair<GameObject, int>> drops, Vector3 centerPos, float dropArea, bool cheated)
     {
-        if (!PluginSettingsFacade.IsGlobalCharacterDropInStackEnabled() || drops.Count == 0)
+        if (drops.Count == 0)
         {
             return;
         }
 
+        if (!DropRowTrackingAvailable || !SavedStackPolicyAvailable) return;
+        List<GeneratedDropPolicy>? policies = GetMatchingGeneratedPolicies(drops);
+        if (policies == null && GeneratedPolicies.TryGetValue(drops, out _)) return;
+        if (!PluginSettingsFacade.IsGlobalCharacterDropInStackEnabled() &&
+            policies?.Exists(policy => policy.DropInStack == true) != true) return;
         List<KeyValuePair<GameObject, int>> normalDrops = new(drops.Count);
         bool changed = false;
-        foreach (KeyValuePair<GameObject, int> drop in drops)
+        for (int index = 0; index < drops.Count; index++)
         {
-            if (!ShouldDropInStack(drop.Key, drop.Value, explicitDropInStack: false))
+            KeyValuePair<GameObject, int> drop = drops[index];
+            if (!ShouldDropInStack(drop.Key, drop.Value, policies?[index].DropInStack))
             {
                 normalDrops.Add(drop);
                 continue;
@@ -829,12 +835,14 @@ internal static partial class CharacterDropManager
                PluginSettingsFacade.IsGlobalCharacterDropTrophyLevelMultiplierEnabled();
     }
 
-    internal static List<CharacterDrop.Drop>? SuppressGlobalCharacterLootLevelMultiplierDrops(
+    internal static List<CharacterDrop.Drop>? PrepareCharacterLootScalingDrops(
         CharacterDrop characterDrop,
         out IReadOnlyList<CharacterDrop.Drop>? sourceDrops)
     {
         sourceDrops = null;
-        if (!IsGlobalCharacterLootLevelScalingEnabled() ||
+        bool scaleAmounts = DropRowTrackingAvailable && IsGlobalCharacterLootLevelScalingEnabled();
+        bool scaleChanceOnly = PluginSettingsFacade.IsLinearChanceOnlyDropScalingEnabled();
+        if ((!scaleAmounts && !scaleChanceOnly) ||
             characterDrop == null ||
             characterDrop.m_drops == null ||
             characterDrop.m_drops.Count == 0)
@@ -845,13 +853,33 @@ internal static partial class CharacterDropManager
         List<CharacterDrop.Drop> originalDrops = characterDrop.m_drops;
         sourceDrops = originalDrops;
         List<CharacterDrop.Drop>? adjustedDrops = null;
+        int? characterLevel = null;
         for (int index = 0; index < originalDrops.Count; index++)
         {
             CharacterDrop.Drop drop = originalDrops[index];
-            if (drop == null ||
-                !drop.m_levelMultiplier ||
+            if (drop == null || !drop.m_levelMultiplier)
+            {
+                continue;
+            }
+
+            if (scaleChanceOnly && drop.m_levelMultiplierNotAmount)
+            {
+                characterLevel ??= characterDrop.GetComponent<Character>()?.GetLevel() ?? 1;
+                if (TryScaleChanceOnlyDropChance(drop.m_chance, characterLevel.Value,
+                        drop.m_levelMultiplier, drop.m_levelMultiplierNotAmount, out float chance))
+                {
+                    adjustedDrops ??= CloneDrops(originalDrops);
+                    adjustedDrops[index].m_chance = chance;
+                    // The chance already includes stars; the original source rows still
+                    // protect this prefab from the postfix's amount scaling.
+                    adjustedDrops[index].m_levelMultiplier = false;
+                }
+                continue;
+            }
+
+            if (!scaleAmounts ||
                 HasChanceOnlyDropForPrefab(originalDrops, drop.m_prefab) ||
-                !ShouldApplyGlobalCharacterLootLevelMultiplier(drop.m_prefab, drop.m_levelMultiplier))
+                !ShouldApplyGlobalCharacterLootLevelMultiplier(drop.m_prefab, drop.m_levelMultiplier, GetRowPolicy(drop)?.LevelMultiplierOverride))
             {
                 continue;
             }
@@ -866,7 +894,25 @@ internal static partial class CharacterDropManager
         }
 
         characterDrop.m_drops = adjustedDrops;
+        for (int index = 0; index < adjustedDrops.Count; index++)
+            OriginalRows.Add(adjustedDrops[index], originalDrops[index]);
         return originalDrops;
+    }
+
+    private static bool TryScaleChanceOnlyDropChance(
+        float chance, int characterLevel, bool levelMultiplier, bool levelMultiplierNotAmount,
+        out float scaledChance)
+    {
+        scaledChance = chance;
+        if (!levelMultiplier || !levelMultiplierNotAmount || characterLevel <= 1 ||
+            !PluginSettingsFacade.IsLinearChanceOnlyDropScalingEnabled())
+        {
+            return false;
+        }
+
+        float increasePerStar = PluginSettingsFacade.GetChanceOnlyDropChanceIncreasePerStar() / 100f;
+        scaledChance = Mathf.Clamp01(chance * (1f + (characterLevel - 1) * increasePerStar));
+        return true;
     }
 
     internal static void ApplyGlobalCharacterLootLevelMultiplier(
@@ -874,77 +920,42 @@ internal static partial class CharacterDropManager
         List<KeyValuePair<GameObject, int>> drops,
         IReadOnlyList<CharacterDrop.Drop>? sourceDrops)
     {
-        if (!IsGlobalCharacterLootLevelScalingEnabled() ||
-            characterDrop == null ||
-            drops == null ||
-            drops.Count == 0)
+        List<GeneratedDropPolicy>? policies = GetMatchingGeneratedPolicies(drops);
+        if (policies == null || policies.Count == 0 || characterDrop == null)
         {
             return;
         }
 
         Character? character = characterDrop.GetComponent<Character>();
         int characterLevel = character != null ? character.GetLevel() : 1;
-        if (characterLevel <= 1)
-        {
-            return;
-        }
-
         bool isBoss = IsBossCharacter(character);
-        int vanillaLevelFactor = GetVanillaDropLevelFactor(characterLevel);
-        int sourceIndex = 0;
+        sourceDrops ??= characterDrop.m_drops;
+        bool scaleAmounts = IsGlobalCharacterLootLevelScalingEnabled();
         for (int index = 0; index < drops.Count; index++)
         {
             KeyValuePair<GameObject, int> result = drops[index];
-            CharacterDrop.Drop? sourceDrop = FindNextMatchingSourceDrop(sourceDrops, ref sourceIndex, result.Key);
-            if (HasChanceOnlyDropForPrefab(sourceDrops, result.Key) ||
-                !ShouldApplyGlobalCharacterLootLevelMultiplier(
-                    result.Key,
-                    sourceDrop?.m_levelMultiplier == true))
+            GeneratedDropPolicy policy = policies[index];
+            CharacterDrop.Drop? row = policy.Source;
+            if (row == null) continue;
+            CompiledCharacterDropDefinition? yaml = GetRowPolicy(row);
+            int amount = result.Value;
+            if (scaleAmounts && policy.NativeAmountUnscaled && !row.m_onePerPlayer &&
+                !HasChanceOnlyDropForPrefab(sourceDrops, result.Key) &&
+                ShouldApplyGlobalCharacterLootLevelMultiplier(result.Key, row.m_levelMultiplier, yaml?.LevelMultiplierOverride))
+                amount = ScaleGlobalCharacterLootAmount(amount, characterLevel, isBoss);
+            if (yaml?.AmountLimit is int limit) amount = Math.Min(amount, limit);
+            if (amount <= 0)
             {
+                drops.RemoveAt(index);
+                policies.RemoveAt(index--);
                 continue;
             }
-
-            if (sourceDrop?.m_onePerPlayer == true)
-            {
-                continue;
-            }
-
-            int baseAmount = NormalizeGeneratedLevelScaledAmount(result.Value, vanillaLevelFactor, sourceDrop);
-            int scaledAmount = ScaleGlobalCharacterLootAmount(baseAmount, characterLevel, isBoss);
-            if (scaledAmount != result.Value)
-            {
-                drops[index] = new KeyValuePair<GameObject, int>(result.Key, scaledAmount);
-            }
+            drops[index] = policy.Result = new KeyValuePair<GameObject, int>(result.Key, amount);
         }
     }
 
-    private static CharacterDrop.Drop? FindNextMatchingSourceDrop(
-        IReadOnlyList<CharacterDrop.Drop>? sourceDrops,
-        ref int sourceIndex,
-        GameObject prefab)
-    {
-        if (sourceDrops == null || prefab == null)
-        {
-            return null;
-        }
-
-        for (; sourceIndex < sourceDrops.Count; sourceIndex++)
-        {
-            CharacterDrop.Drop candidate = sourceDrops[sourceIndex];
-            if (candidate == null || candidate.m_prefab != prefab)
-            {
-                continue;
-            }
-
-            sourceIndex++;
-            return candidate;
-        }
-
-        return null;
-    }
-
-    // GenerateDropList results have no row identity. If duplicate rows for one prefab mix
-    // chance-only and ordinary scaling, preserve the game's calculation for that whole prefab.
+    // Preserve the existing mixed-prefab policy: if duplicate rows mix chance-only
+    // and ordinary scaling, keep the game's amount calculation for that whole prefab.
     // Use the original list in both the suppression and result passes, including failed rolls.
     private static bool HasChanceOnlyDropForPrefab(IReadOnlyList<CharacterDrop.Drop>? drops, GameObject? prefab)
     {
@@ -967,40 +978,6 @@ internal static partial class CharacterDropManager
         }
         return false;
     }
-
-    private static int NormalizeGeneratedLevelScaledAmount(
-        int amount,
-        int vanillaLevelFactor,
-        CharacterDrop.Drop? sourceDrop)
-    {
-        if (amount <= 0 || vanillaLevelFactor <= 1)
-        {
-            return amount;
-        }
-
-        if (sourceDrop != null)
-        {
-            int configuredMax = Math.Max(1, Math.Max(sourceDrop.m_amountMin, sourceDrop.m_amountMax));
-            if (amount <= configuredMax)
-            {
-                return amount;
-            }
-
-            if (amount >= 100 && vanillaLevelFactor > configuredMax)
-            {
-                return configuredMax;
-            }
-        }
-        else if (amount < vanillaLevelFactor)
-        {
-            return amount;
-        }
-
-        return amount % vanillaLevelFactor == 0
-            ? Math.Max(1, amount / vanillaLevelFactor)
-            : amount;
-    }
-
     private static int ScaleGlobalCharacterLootAmount(int amount, int characterLevel, bool isBoss)
     {
         if (amount <= 0 || characterLevel <= 1)
@@ -1310,12 +1287,13 @@ internal static partial class CharacterDropManager
             Chance = Mathf.Max(0f, definition.Chance ?? 1f),
             DontScale = definition.DontScale ?? false,
             LevelMultiplier = levelMultiplier,
+            LevelMultiplierOverride = definition.LevelMultiplier,
             LevelMultiplierNotAmount = definition.LevelMultiplierNotAmount ?? false,
             OnePerPlayer = definition.OnePerPlayer ?? false,
             AmountLimit = definition.AmountLimit.HasValue && definition.AmountLimit.Value >= 0
                 ? definition.AmountLimit.Value
                 : null,
-            DropInStack = definition.DropInStack == true
+            DropInStack = definition.DropInStack
         };
         return true;
     }
@@ -2004,7 +1982,7 @@ internal static partial class CharacterDropManager
 
     private static bool RequiresRuntimeCharacterDropHandling(CompiledCharacterDropDefinition definition)
     {
-        return definition.AmountLimit.HasValue || definition.DropInStack;
+        return definition.AmountLimit.HasValue || definition.DropInStack == true;
     }
 
     private static bool EntryMatchesCharacter(CharacterDropPrefabEntry? entry, Character character)
@@ -2028,7 +2006,7 @@ internal static partial class CharacterDropManager
             AmountLimit = definition.AmountLimit.HasValue && definition.AmountLimit.Value >= 0
                 ? definition.AmountLimit.Value
                 : null,
-            DropInStack = definition.DropInStack == true
+            DropInStack = definition.DropInStack
         };
 
         return NetworkPayloadSyncSupport.ComputeCharacterDropRowSignature(normalizedDefinition);
@@ -2119,6 +2097,8 @@ internal static partial class CharacterDropManager
                 m_levelMultiplierNotAmount = drop.m_levelMultiplierNotAmount,
                 m_dontScale = drop.m_dontScale
             });
+            if (GetRowPolicy(drop) is CompiledCharacterDropDefinition policy)
+                RowPolicies.Add(clone[clone.Count - 1], policy);
         }
 
         return clone;
@@ -2140,6 +2120,7 @@ internal static partial class CharacterDropManager
                 m_levelMultiplierNotAmount = definition.LevelMultiplierNotAmount,
                 m_dontScale = definition.DontScale
             });
+            RowPolicies.Add(drops[drops.Count - 1], definition);
         }
 
         return drops;
@@ -2157,9 +2138,11 @@ internal static partial class CharacterDropManager
         {
             float chance = definition.Chance;
             bool applyGlobalCharacterLootMultiplier = !HasChanceOnlyDropForPrefab(definitions, definition.Prefab) &&
-                ShouldApplyGlobalCharacterLootLevelMultiplier(definition.Prefab, definition.LevelMultiplier);
+                ShouldApplyGlobalCharacterLootLevelMultiplier(definition.Prefab, definition.LevelMultiplier, definition.LevelMultiplierOverride);
             bool applyVanillaLevelMultiplier = definition.LevelMultiplier && !applyGlobalCharacterLootMultiplier;
-            if (applyVanillaLevelMultiplier)
+            if (applyVanillaLevelMultiplier &&
+                !TryScaleChanceOnlyDropChance(chance, characterLevel, definition.LevelMultiplier,
+                    definition.LevelMultiplierNotAmount, out chance))
             {
                 chance *= levelFactor;
             }
@@ -2268,16 +2251,16 @@ internal static partial class CharacterDropManager
         return IsItemDropPrefab(dropPrefab) && levelMultiplier;
     }
 
-    private static bool ShouldApplyGlobalCharacterLootLevelMultiplier(GameObject? itemPrefab, bool levelMultiplier)
+    private static bool ShouldApplyGlobalCharacterLootLevelMultiplier(GameObject? itemPrefab, bool levelMultiplier, bool? levelMultiplierOverride = null)
     {
-        if (!IsItemDropPrefab(itemPrefab))
+        if (PluginSettingsFacade.ShouldDisableCharacterLootScalingForCreatureLevelControl() || !IsItemDropPrefab(itemPrefab))
         {
             return false;
         }
 
         if (IsTrophyItemPrefab(itemPrefab!))
         {
-            return ShouldApplyGlobalTrophyLevelMultiplier(itemPrefab);
+            return levelMultiplierOverride != false && ShouldApplyGlobalTrophyLevelMultiplier(itemPrefab);
         }
 
         return levelMultiplier && PluginSettingsFacade.IsCharacterDropCalculateChanceLootSystemEnabled();
@@ -2313,7 +2296,7 @@ internal static partial class CharacterDropManager
         return prefab != null && prefab.TryGetComponent(out itemDrop);
     }
 
-    private static bool ShouldDropInStack(GameObject prefab, int amount, bool explicitDropInStack)
+    private static bool ShouldDropInStack(GameObject prefab, int amount, bool? explicitDropInStack)
     {
         if (prefab == null ||
             !prefab.TryGetComponent(out ItemDrop itemDrop) ||
@@ -2323,7 +2306,7 @@ internal static partial class CharacterDropManager
             return false;
         }
 
-        return explicitDropInStack || (PluginSettingsFacade.IsGlobalCharacterDropInStackEnabled() && amount > 1);
+        return explicitDropInStack ?? (amount > 1 && PluginSettingsFacade.IsGlobalCharacterDropInStackEnabled());
     }
 
     private static void SpawnStackedDrops(GameObject prefab, int amount, Vector3 centerPos, float dropArea, bool cheated)

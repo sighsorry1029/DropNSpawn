@@ -235,6 +235,25 @@ internal static partial class Program
                         List<CodeInstruction> input = PatchProcessor.GetOriginalInstructions(original);
                         object[] arguments = patch.GetParameters().Length == 2 ? new object[] { input, original } : new object[] { input };
                         var output = ((IEnumerable<CodeInstruction>)patch.Invoke(null, arguments)!).ToList();
+                        if (type.Name is "CharacterDropGenerateDropListPatch" or "RagdollSaveDropPolicyPatch" or "RagdollLoadDropPolicyPatch")
+                        {
+                            string hook = type.Name == "CharacterDropGenerateDropListPatch" ? "RecordGeneratedDrop"
+                                : type.Name == "RagdollSaveDropPolicyPatch" ? "GenerateAndSaveStackPolicy" : "RecordSavedDrop";
+                            if (output.Count(i => i.operand is MethodInfo call && call.Name == hook) != 1)
+                                failures.Add(type.Name + ": expected one exact loot row hook");
+                            var missing = input.Where(i => !(i.operand is MethodInfo call &&
+                                (hook == "GenerateAndSaveStackPolicy" ? call.Name == "GenerateDropList"
+                                    : call.Name == "Add" && call.DeclaringType?.Name == "List`1"))).ToList();
+                            object[] missingArgs = patch.GetParameters().Length == 2 ? new object[] { missing, original } : new object[] { missing };
+                            var fallback = ((IEnumerable<CodeInstruction>)patch.Invoke(null, missingArgs)!).ToList();
+                            string availability = hook == "RecordGeneratedDrop" ? "DropRowTrackingAvailable"
+                                : hook == "GenerateAndSaveStackPolicy" ? "SaveStackPolicyAvailable" : "LoadStackPolicyAvailable";
+                            if (!fallback.SequenceEqual(missing) || (bool)mod.Type("CharacterDropManager").GetField(availability, All)!.GetValue(null)!)
+                                failures.Add(type.Name + ": missing hook must preserve input and disable affected policies");
+                            patch.Invoke(null, arguments); // Restore availability for subsequent checks.
+                            transpilers++;
+                            continue;
+                        }
                         if (type.Name == "SpawnSystemTimerPatch")
                         {
                             if (output.Count != input.Count + 8 ||

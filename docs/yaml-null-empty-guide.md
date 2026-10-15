@@ -81,6 +81,9 @@ They mean:
 - `''` = empty string
 
 These values are explicit inputs and are not the same as `null`.
+Some fields intentionally treat them like omission: Event `settings: []`,
+`standalone: []`, `conditions.playerBase: []` and `conditions.players: []` are
+unspecified tuples, rather than requests to clear earlier values.
 
 ## Important Field-Type Rule
 
@@ -104,7 +107,7 @@ The same empty-looking value can mean different things depending on the field.
 
 ### Example: `conditions.biomes`
 
-These all effectively mean "do not filter by biome":
+For Character/Object rule selectors, these all effectively mean "do not filter by biome":
 
 ```yaml
 conditions:
@@ -126,6 +129,9 @@ Reason:
 
 - this is a selector field
 - an empty or missing biome list means there is no biome restriction
+
+Event conditions are different: omitted/`null` `biomes` preserves the event's
+previous biome condition; `biomes: []` explicitly removes that restriction.
 
 ### Example: `drops: []`
 
@@ -187,6 +193,16 @@ Use these rules when editing YAML:
 - do not assume that `[]` always means "ignore this field"
 
 ## Domain Note
+
+For Character `dropInStack`, omitted/`null` inherits the global stack default;
+`false` explicitly keeps singles, and `true` enables stacks unless blacklisted.
+
+For Event definitions, supported empty lists (biomes, keys, known items,
+environments, commands and spawns) clear that field. `messages: []` clears both
+messages; `messages: ['', 'end']` preserves the empty first tuple position.
+`forceEnvironment: ''` and `forceMusic: ''` clear their values. Omitted/`null`
+preserves earlier values, including metadata from another definition of the same
+event. See the [override guide](override-logic-guide.md#events) for tuple exceptions.
 
 For most domains:
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using BepInEx.Bootstrap;
 using HarmonyLib;
 using UnityEngine;
@@ -11,6 +12,21 @@ namespace DropNSpawn;
 [HarmonyPatch(typeof(CharacterDrop), nameof(CharacterDrop.GenerateDropList))]
 internal static class CharacterDropGenerateDropListPatch
 {
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
+    {
+        return CharacterLootPatchInstructions.TryRewrite(instructions, ref CharacterDropManager.DropRowTrackingAvailable, input =>
+        {
+            int index = CharacterLootPatchInstructions.FindSingleCall(input, CharacterLootPatchInstructions.AddDrop);
+            if (index < 4 || input[index - 3].opcode != OpCodes.Ldfld ||
+                !Equals(input[index - 3].operand, AccessTools.Field(typeof(CharacterDrop.Drop), nameof(CharacterDrop.Drop.m_prefab))))
+                throw new InvalidOperationException("CharacterDrop successful-row contract changed; refusing partial loot scaling.");
+            CodeInstruction row = CharacterLootPatchInstructions.LoadLocal(input[index - 4], typeof(CharacterDrop.Drop), __originalMethod);
+            CharacterLootPatchInstructions.ReplaceCall(input, index, new[] { row },
+                AccessTools.Method(typeof(CharacterDropManager), nameof(CharacterDropManager.RecordGeneratedDrop)));
+            return input;
+        });
+    }
+
     private readonly struct State
     {
         internal State(
@@ -33,7 +49,8 @@ internal static class CharacterDropGenerateDropListPatch
         __state = new State(previousDrops: null, hasOnePerPlayerScope: false, amountSourceDrops: null);
         bool isCharacterDomainEnabled = PluginSettingsFacade.IsCharacterDomainEnabled();
         if (!isCharacterDomainEnabled &&
-            !CharacterDropManager.IsGlobalCharacterLootLevelScalingEnabled())
+            !CharacterDropManager.IsGlobalCharacterLootLevelScalingEnabled() &&
+            !PluginSettingsFacade.IsLinearChanceOnlyDropScalingEnabled())
         {
             return;
         }
@@ -42,7 +59,7 @@ internal static class CharacterDropGenerateDropListPatch
             ? CharacterDropManager.OverrideConditionalDrops(__instance)
             : null;
         __state = new State(previousDrops, hasOnePerPlayerScope: false, amountSourceDrops: null);
-        List<CharacterDrop.Drop>? previousScaledDrops = CharacterDropManager.SuppressGlobalCharacterLootLevelMultiplierDrops(
+        List<CharacterDrop.Drop>? previousScaledDrops = CharacterDropManager.PrepareCharacterLootScalingDrops(
             __instance,
             out IReadOnlyList<CharacterDrop.Drop>? amountSourceDrops);
         previousDrops ??= previousScaledDrops;
@@ -58,6 +75,7 @@ internal static class CharacterDropGenerateDropListPatch
     [HarmonyPriority(Priority.Last)]
     private static void Postfix(CharacterDrop __instance, List<KeyValuePair<GameObject, int>> __result, State __state)
     {
+        CharacterDropManager.KeepUnmatchedDropsLoose(__result);
         CharacterDropManager.ApplyGlobalCharacterLootLevelMultiplier(__instance, __result, __state.AmountSourceDrops);
 
         if (__state.PreviousDrops != null)
@@ -68,7 +86,8 @@ internal static class CharacterDropGenerateDropListPatch
         CharacterDropKillerFilter.SuppressScopedGeneratedDrops(__instance, __result);
     }
 
-    private static Exception? Finalizer(CharacterDrop __instance, State __state, Exception? __exception)
+    private static Exception? Finalizer(CharacterDrop __instance, State __state,
+        List<KeyValuePair<GameObject, int>>? __result, Exception? __exception)
     {
         if (__state.PreviousDrops != null)
         {
@@ -80,7 +99,115 @@ internal static class CharacterDropGenerateDropListPatch
             CharacterDropManager.EndOnePerPlayerNearbyPlayerScope();
         }
 
+        // Observe replacements by later postfixes as well, before DropItems or
+        // SaveLootList consumes the result. Never alter a failing call's result.
+        if (__exception == null && __result != null) CharacterDropManager.KeepUnmatchedDropsLoose(__result);
         return __exception;
+    }
+}
+
+// Preserve the existing SaveLootList/SpawnLoot bodies and their caller-owned
+// ownership/consumption rules. These hooks only carry row policy alongside loot.
+[HarmonyPatch(typeof(Ragdoll), "SaveLootList")]
+internal static class RagdollSaveDropPolicyPatch
+{
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions)
+    {
+        return CharacterLootPatchInstructions.TryRewrite(instructions, ref CharacterDropManager.SaveStackPolicyAvailable, input =>
+        {
+            int index = CharacterLootPatchInstructions.FindSingleCall(input,
+                AccessTools.Method(typeof(CharacterDrop), nameof(CharacterDrop.GenerateDropList)));
+            CharacterLootPatchInstructions.ReplaceCall(input, index, new[] { new CodeInstruction(OpCodes.Ldarg_0) },
+                AccessTools.Method(typeof(CharacterDropManager), nameof(CharacterDropManager.GenerateAndSaveStackPolicy)));
+            return input;
+        });
+    }
+}
+
+[HarmonyPatch(typeof(Ragdoll), "SpawnLoot")]
+internal static class RagdollLoadDropPolicyPatch
+{
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
+    {
+        return CharacterLootPatchInstructions.TryRewrite(instructions, ref CharacterDropManager.LoadStackPolicyAvailable, input =>
+        {
+            CodeInstruction[] FindLocals(string key)
+            {
+                int[] matches = input.Select((instruction, index) => (instruction, index))
+                    .Where(pair => pair.instruction.opcode == OpCodes.Ldstr && Equals(pair.instruction.operand, key))
+                    .Select(pair => pair.index).ToArray();
+                if (matches.Length != 1 || matches[0] < 1 || matches[0] + 1 >= input.Count)
+                    throw new InvalidOperationException("Ragdoll saved-row contract changed: " + key);
+                int position = matches[0];
+                return new[] {
+                    CharacterLootPatchInstructions.LoadLocal(input[position - 1], typeof(ZDO), __originalMethod),
+                    CharacterLootPatchInstructions.LoadLocal(input[position + 1], typeof(int), __originalMethod, address: true) };
+            }
+            CodeInstruction[] hash = FindLocals("drop_hash"), amount = FindLocals("drop_amount");
+            if (!Equals(hash[0].operand, amount[0].operand) || !Equals(hash[1].operand, amount[1].operand))
+                throw new InvalidOperationException("Ragdoll saved rows no longer share a ZDO/index.");
+            int index = CharacterLootPatchInstructions.FindSingleCall(input, CharacterLootPatchInstructions.AddDrop);
+            CharacterLootPatchInstructions.ReplaceCall(input, index, hash,
+                AccessTools.Method(typeof(CharacterDropManager), nameof(CharacterDropManager.RecordSavedDrop)));
+            return input;
+        });
+    }
+}
+
+internal static class CharacterLootPatchInstructions
+{
+    internal static readonly MethodInfo AddDrop = AccessTools.Method(typeof(List<KeyValuePair<GameObject, int>>), "Add");
+
+    internal static IEnumerable<CodeInstruction> TryRewrite(IEnumerable<CodeInstruction> instructions,
+        ref bool available, Func<List<CodeInstruction>, List<CodeInstruction>> rewrite)
+    {
+        List<CodeInstruction> original = instructions.ToList();
+        available = false;
+        try
+        {
+            List<CodeInstruction> result = rewrite(original.Select(instruction => new CodeInstruction(instruction)).ToList());
+            available = true;
+            return result;
+        }
+        catch (InvalidOperationException error)
+        {
+            DropNSpawnPlugin.DropNSpawnLogger?.LogWarning(
+                "Loot row tracking hook unavailable; affected native amount/stack overrides are disabled, and existing loot is preserved. " + error.Message);
+            return original;
+        }
+    }
+
+    internal static int FindSingleCall(List<CodeInstruction> instructions, MethodInfo target)
+    {
+        int[] matches = instructions.Select((instruction, index) => (instruction, index))
+            .Where(pair => pair.instruction.Calls(target)).Select(pair => pair.index).ToArray();
+        if (matches.Length != 1) throw new InvalidOperationException("Loot row hook requires one call to " + target);
+        return matches[0];
+    }
+
+    internal static CodeInstruction LoadLocal(CodeInstruction instruction, Type type, MethodBase method, bool address = false)
+    {
+        int index;
+        if (!address && instruction.opcode == OpCodes.Ldloc_0) index = 0;
+        else if (!address && instruction.opcode == OpCodes.Ldloc_1) index = 1;
+        else if (!address && instruction.opcode == OpCodes.Ldloc_2) index = 2;
+        else if (!address && instruction.opcode == OpCodes.Ldloc_3) index = 3;
+        else if (address ? instruction.opcode == OpCodes.Ldloca || instruction.opcode == OpCodes.Ldloca_S
+            : instruction.opcode == OpCodes.Ldloc || instruction.opcode == OpCodes.Ldloc_S)
+            index = instruction.operand is LocalVariableInfo local ? local.LocalIndex
+                : instruction.operand is LocalBuilder builder ? builder.LocalIndex : Convert.ToInt32(instruction.operand);
+        else throw new InvalidOperationException("Unexpected loot local instruction.");
+        if (index < 0 || index >= method.GetMethodBody()!.LocalVariables.Count || method.GetMethodBody()!.LocalVariables[index].LocalType != type)
+            throw new InvalidOperationException("Unexpected loot local type.");
+        return new CodeInstruction(OpCodes.Ldloc, index);
+    }
+
+    internal static void ReplaceCall(List<CodeInstruction> instructions, int index, CodeInstruction[] arguments, MethodInfo target)
+    {
+        arguments[0].labels.AddRange(instructions[index].labels);
+        arguments[0].blocks.AddRange(instructions[index].blocks);
+        instructions[index] = new CodeInstruction(OpCodes.Call, target);
+        instructions.InsertRange(index, arguments);
     }
 }
 
