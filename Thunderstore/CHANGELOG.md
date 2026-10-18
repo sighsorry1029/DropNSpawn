@@ -1,3 +1,10 @@
+## 1.4.7 — Object prefab lifetime and world re-entry fix
+
+- Fix object override restoration failing on destroyed prefab templates, as reported with PathOfValheiman. Cache snapshot names and skip destroyed static targets so unrelated objects can still restore and apply normally. This is generic lifetime handling, not a mod-version exception.
+- Detect same-name prefab replacements and capture their own defaults while preserving original baselines for surviving or temporarily unregistered templates. Keep duplicate-name lookup priority and refresh bindings after name changes without recapturing DNS-modified values.
+- Defer static application and live reconciliation while snapshots are rebuilt, recheck the registry before publication, and invalidate stale compiled drop plans. Existing conditional drops on live objects continue using the published baseline during rebuilding.
+- Add isolated regression coverage for destruction, replacement, re-registration, interrupted capture and automatic refresh. Configuration keys, YAML, RPC and saved-data formats are unchanged. Update the server and all clients to 1.4.7 together and restart; actual world re-entry with the full mod pack remains an in-game verification step.
+
 ## 1.4.6 — Predictable loot overrides and configurable star chance
 
 - Add server-synchronized `chance-only drop chance scaling`, default `Linear`, for original and YAML drops with both `levelMultiplier` and `levelMultiplierNotAmount` enabled. The new `chance-only drop chance increase per star (%)` defaults to 50: a 10% base chance becomes 10%, 15%, 20%, up to 100%. Set the increase to 0 to keep the base chance, or select `Vanilla` to retain exponential chance scaling. Amount settings remain separate, and the existing CLLC handoff disables DNS chance and amount scaling.

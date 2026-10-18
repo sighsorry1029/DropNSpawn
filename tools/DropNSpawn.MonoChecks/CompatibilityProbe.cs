@@ -77,6 +77,7 @@ namespace DropNSpawn.Tests
             CheckSpawnSystemTimers(mod);
             ChanceScalingFixture.Run(mod);
             checks += LootPriorityProbe.Run(mod);
+            checks += ObjectSnapshotProbe.Run(mod);
             DungeonPlacementFixture.Run(mod);
             foreach (string name in new[] { "EventManager+GameAccess", "CharacterDropKillerFilter", "RagdollSetupMonsterInstantLootDropPatch", "VneiCompatibility" })
             {

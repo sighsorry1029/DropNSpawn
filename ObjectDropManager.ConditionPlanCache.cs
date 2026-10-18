@@ -166,7 +166,7 @@ internal static partial class ObjectDropManager
             return false;
         }
 
-        string groupKey = BuildObjectReconcileGroupKey(gameObject, snapshot.Prefab.name);
+        string groupKey = BuildObjectReconcileGroupKey(gameObject, snapshot.PrefabName);
         StaticConditionContextSnapshot conditionContext = GetOrBuildStaticConditionContextSnapshot(gameObject, usesLocation, usesBiome, usesInDungeon);
         string? resolvedLocationName = usesLocation ? conditionContext.ResolvedLocationName : null;
         string cacheKey = BuildGroupConditionalApplyPlanCacheKey(groupKey, usesLocation, usesBiome, usesInDungeon, conditionContext);
@@ -177,7 +177,7 @@ internal static partial class ObjectDropManager
         }
 
         EnsureRuntimeDropConfigurationState();
-        DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(snapshot.Prefab.name, out CompiledObjectPrefabPlan? prefabPlan);
+        DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(snapshot.PrefabName, out CompiledObjectPrefabPlan? prefabPlan);
         List<CompiledObjectDropRule>? compiledRules = prefabPlan?.Rules;
 
         GroupConditionalApplyPlan builtPlan = new();

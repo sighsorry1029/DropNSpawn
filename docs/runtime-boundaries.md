@@ -214,6 +214,20 @@ Called by:
 - Game data/runtime hooks
 
 ## ObjectDropManager
+
+Prefab baselines belong to individual Unity objects, not just prefab names. The snapshot
+stores its name before destruction. A registry refresh reuses the original baseline for
+surviving objects (including temporarily unregistered templates), captures replacements,
+and prunes destroyed baseline-cache entries. Duplicate-name lookup still selects the first
+registry entry. YAML reload does not recapture already overridden values.
+
+Incremental capture blocks static apply and live reconciliation until publication; the
+current registry identity is rechecked before publishing. Publication invalidates compiled
+drop plans and last-applied state, including name-only changes. Conditional one-shot drops
+on live instances continue using the published baseline during capture. Destroyed static
+targets are skipped, while surviving instances may still use cached scalar/drop data.
+This is generic lifetime handling, not a PathOfValheiman version or GUID exception.
+
 Owns:
 - Object YAML parse/build/apply orchestration
 - Object component profile catalog

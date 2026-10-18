@@ -106,6 +106,19 @@ The first-check regression also executes original `UpdateSpawnList` timing under
 
 ### Other isolated checks
 
+The object-snapshot probe runs the shipped capture, restore, identity-cache and incremental
+publication methods against original game assemblies. Unity liveness/name/component lookup,
+registry input, frame time and the final file/sync callback are fixtures. It covers destroyed
+source/target handling, restoration of unaffected objects, surviving clones, same-name
+replacement, retained overridden baselines, temporary unregister/re-register, renames,
+duplicate names/order, native-ID reuse, replacement during capture, scene loss, pending-apply
+gating, compiled-state invalidation and an empty registry. The pre-fix DLL fails at the
+reported `CreateRestoreMask` name lookup. These are managed lifecycle regressions, not proof
+of native destruction order or successful PathOfValheiman world re-entry. On Valheim 1.0.20,
+repeat world → lobby → world with PathOfValheiman 5.0.9, then reload/remove object overrides
+and check both recreated templates and unrelated objects. Replacing only a referenced item
+prefab while its parent survives remains a separate, unverified lifetime case.
+
 The probe also installs the CreatureSpawner spawn prefix/postfix and group transpiler, checks the original private network-view accessor, and executes the native weighted group loop with exhausted/eligible members. Fixture identity, scene/config-dependent candidate setup, native RNG, logging and actual spawning are isolated; the real limit predicate and original group algorithm run. This verifies managed selection and patch installation, not Instantiate, world persistence or multiplayer ownership transfer. Native RNG/Quaternion JIT-resolution warnings can occur in this scene-free host.
 
 The killer-filter probe runs the shipped DoT bookkeeping with scene identity/health/source lookup and the enabled setting isolated. It covers accepted/rejected poison replacement, PlayerSpawned, mixed known/unknown contributors, actual hit channels, last ticks with zero remaining damage, status replacement, pre-damage snapshots, recovery and cleanup. One hundred status updates without damage perform zero ledger identity lookups; an actual DoT hit performs one. These are operation counts, not frame-time or multiplayer measurements. The relaxed filter accepts a confirmed player-aligned contribution in the lethal DoT pool, regardless of damage share; unrelated active DoT cannot qualify direct/environmental deaths, and unknown-only damage remains denied.

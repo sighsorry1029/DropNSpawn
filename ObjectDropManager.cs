@@ -182,6 +182,15 @@ internal static partial class ObjectDropManager
     private sealed class PrefabSnapshot
     {
         public GameObject Prefab { get; set; } = null!;
+        public string PrefabName { get; set; } = "";
+
+        public PrefabSnapshot WithName(string name)
+        {
+            // Baseline payloads are immutable; keep the previously published name intact.
+            PrefabSnapshot copy = (PrefabSnapshot)MemberwiseClone();
+            copy.PrefabName = name;
+            return copy;
+        }
         public HealthSnapshot? Health { get; set; }
         public MinToolTierSnapshot? MinToolTier { get; set; }
         public DropTable? DropOnDestroyed { get; set; }
@@ -387,6 +396,7 @@ internal static partial class ObjectDropManager
     private static DomainLoadState LoadState => ConfigurationRuntime.LoadState;
     private static bool _initialized;
     private static int? _lastProcessedSnapshotSignature;
+    private static int? _publishedSnapshotSignature;
     private static int? _lastProcessedGameDataSignature;
     private static readonly ObjectRuntimeDropState DropRuntimeState = new();
 
@@ -586,12 +596,13 @@ internal static partial class ObjectDropManager
 
             int gameDataSignature = ComputeGameDataSignature();
             int snapshotSignature = ComputeSnapshotSignature();
-            if (_lastProcessedGameDataSignature == gameDataSignature)
+            if (_lastProcessedGameDataSignature == gameDataSignature &&
+                _lastProcessedSnapshotSignature == snapshotSignature)
             {
                 return;
             }
 
-            bool snapshotsChanged = _lastProcessedSnapshotSignature != snapshotSignature || SnapshotState.Snapshots.Count == 0;
+            bool snapshotsChanged = _publishedSnapshotSignature != snapshotSignature;
             if (snapshotsChanged)
             {
                 ScheduleSnapshotBuildLocked(source, gameDataSignature, snapshotSignature);
@@ -633,7 +644,7 @@ internal static partial class ObjectDropManager
             buildState.NextIndex++;
         }
 
-        PrefabSnapshot? snapshot = prefab != null ? CaptureSnapshot(prefab) : null;
+        PrefabSnapshot? snapshot = SnapshotState.GetOrCapture(prefab);
 
         lock (Sync)
         {
@@ -647,9 +658,9 @@ internal static partial class ObjectDropManager
             if (snapshot != null)
             {
                 buildState.Snapshots.Add(snapshot);
-                if (!buildState.SnapshotsByPrefab.ContainsKey(snapshot.Prefab.name))
+                if (!buildState.SnapshotsByPrefab.ContainsKey(snapshot.PrefabName))
                 {
-                    buildState.SnapshotsByPrefab.Add(snapshot.Prefab.name, snapshot);
+                    buildState.SnapshotsByPrefab.Add(snapshot.PrefabName, snapshot);
                 }
             }
 
@@ -780,6 +791,7 @@ internal static partial class ObjectDropManager
             return;
         }
 
+        SnapshotState.PruneDestroyedBaselines();
         PendingSnapshotBuildState buildState = new()
         {
             GameDataSignature = gameDataSignature,
@@ -797,7 +809,27 @@ internal static partial class ObjectDropManager
             return;
         }
 
+        if (!IsGameDataReady())
+        {
+            _pendingSnapshotBuild = null;
+            return;
+        }
+
+        // A mod may replace templates between incremental steps, even in the same frame.
+        // Never publish a build against an older registry or use the per-frame hash cache here.
+        int gameDataSignature = ComputeGameDataSignatureCore();
+        int snapshotSignature = ComputeSnapshotSignatureCore();
+        if (gameDataSignature != buildState.GameDataSignature || snapshotSignature != buildState.SnapshotSignature)
+        {
+            ScheduleSnapshotBuildLocked(buildState.Source, gameDataSignature, snapshotSignature);
+            return;
+        }
+
         SnapshotState.ReplaceWith(buildState);
+        _publishedSnapshotSignature = snapshotSignature;
+        _cachedGameDataSignatureFrame = _cachedSnapshotSignatureFrame = -1;
+        _lastAppliedGameDataSignature = null;
+        DropRuntimeState.Reset();
 
         _pendingSnapshotBuild = null;
         CompleteGameDataReadyLocked(buildState.Source, buildState.GameDataSignature, buildState.SnapshotSignature);
@@ -1660,18 +1692,20 @@ internal static partial class ObjectDropManager
 
         foreach (GameObject prefab in EnumerateRelevantPrefabs())
         {
-            PrefabSnapshot? snapshot = CaptureSnapshot(prefab);
+            PrefabSnapshot? snapshot = SnapshotState.GetOrCapture(prefab);
             if (snapshot == null)
             {
                 continue;
             }
 
             SnapshotState.Snapshots.Add(snapshot);
-            if (!SnapshotState.SnapshotsByPrefab.ContainsKey(snapshot.Prefab.name))
+            if (!SnapshotState.SnapshotsByPrefab.ContainsKey(snapshot.PrefabName))
             {
-                SnapshotState.SnapshotsByPrefab.Add(snapshot.Prefab.name, snapshot);
+                SnapshotState.SnapshotsByPrefab.Add(snapshot.PrefabName, snapshot);
             }
         }
+
+        _publishedSnapshotSignature = ComputeSnapshotSignatureCore();
     }
 
     private static IEnumerable<GameObject> EnumeratePrefabs()
@@ -1771,8 +1805,8 @@ internal static partial class ObjectDropManager
         unchecked
         {
             int hash = 17;
-            hash = HashNamedGameObjectCollection(hash, EnumerateRelevantPrefabs());
-            hash = HashNamedGameObjectCollection(hash, ObjectDB.instance.m_items);
+            hash = HashSnapshotGameObjectCollection(hash, EnumerateRelevantPrefabs());
+            hash = HashSnapshotGameObjectCollection(hash, ObjectDB.instance.m_items);
             return hash;
         }
     }
@@ -1798,20 +1832,17 @@ internal static partial class ObjectDropManager
         return hash;
     }
 
-    private static int HashNamedGameObjectCollection(int hash, IEnumerable<GameObject> prefabs)
+    private static int HashSnapshotGameObjectCollection(int hash, IEnumerable<GameObject> prefabs)
     {
         unchecked
         {
-            List<string> names = prefabs
-                .Where(prefab => prefab != null)
-                .Select(prefab => prefab.name)
-                .OrderBy(name => name, StringComparer.Ordinal)
-                .ToList();
-
-            hash = hash * 31 + names.Count;
-            foreach (string name in names)
+            // Registry order selects the first of any duplicate names. Identity changes
+            // must invalidate bindings even when every name stays exactly the same.
+            foreach (GameObject prefab in prefabs)
             {
-                hash = hash * 31 + name.GetHashCode();
+                if (prefab == null) continue;
+                hash = hash * 31 + prefab.GetInstanceID();
+                hash = hash * 31 + prefab.name.GetHashCode();
             }
         }
 
@@ -1880,6 +1911,7 @@ internal static partial class ObjectDropManager
 
     private static PrefabSnapshot? CaptureSnapshot(GameObject prefab)
     {
+        if (prefab == null) return null;
         DropOnDestroyed? dropOnDestroyed = prefab.GetComponent<DropOnDestroyed>();
         MineRock? mineRock = prefab.GetComponent<MineRock>();
         MineRock5? mineRock5 = prefab.GetComponent<MineRock5>();
@@ -1908,6 +1940,7 @@ internal static partial class ObjectDropManager
         return new PrefabSnapshot
         {
             Prefab = prefab,
+            PrefabName = prefab.name,
             Health = CreateHealthSnapshot(destructible, mineRock, mineRock5, treeBase, treeLog),
             MinToolTier = CreateMinToolTierSnapshot(destructible, mineRock, mineRock5, treeBase, treeLog),
             DropOnDestroyed = dropOnDestroyed != null ? CloneDropTable(dropOnDestroyed.m_dropWhenDestroyed) : null,
@@ -2112,8 +2145,15 @@ internal static partial class ObjectDropManager
 
     private static void ApplyIfReady(bool queueLiveReconcile = false)
     {
-        if (!IsGameDataReady() || SnapshotState.Snapshots.Count == 0)
+        if (!IsGameDataReady() || _pendingSnapshotBuild != null)
         {
+            return;
+        }
+
+        int snapshotSignature = ComputeSnapshotSignature();
+        if (_publishedSnapshotSignature != snapshotSignature)
+        {
+            ScheduleSnapshotBuildLocked("Object apply", ComputeGameDataSignature(), snapshotSignature);
             return;
         }
 
@@ -2606,6 +2646,7 @@ internal static partial class ObjectDropManager
         {
             foreach (PrefabSnapshot snapshot in SnapshotState.Snapshots)
             {
+                if (snapshot.Prefab == null) continue;
                 RestoreConfiguredComponents(snapshot.Prefab, snapshot, CreateRestoreMask(snapshot), updateRuntimeState: false);
             }
 
@@ -2614,7 +2655,7 @@ internal static partial class ObjectDropManager
 
         foreach (string prefabName in targetPrefabs)
         {
-            if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
+            if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot) || snapshot.Prefab == null)
             {
                 continue;
             }
@@ -2651,7 +2692,7 @@ internal static partial class ObjectDropManager
     {
         return new PrefabConfigurationEntry
         {
-            Prefab = snapshot.Prefab.name,
+            Prefab = snapshot.PrefabName,
             Destructible = CreateRestoreDestructibleMask(snapshot),
             DropOnDestroyed = snapshot.DropOnDestroyed != null ? CreateRestoreDropTableMask() : null,
             MineRock = CreateRestoreDamageableDropTableMask(snapshot.MineRock, snapshot.Health?.MineRock, snapshot.MinToolTier?.MineRock),
@@ -2733,9 +2774,10 @@ internal static partial class ObjectDropManager
         GroupConditionalApplyPlan? groupPlan = null,
         bool includeEventOnlyKinds = true)
     {
+        if (gameObject == null) return;
         List<CompiledObjectDropRule>? compiledRules;
         EnsureRuntimeDropConfigurationState();
-        if (!DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(snapshot.Prefab.name, out CompiledObjectPrefabPlan? prefabPlan) ||
+        if (!DropRuntimeState.Configuration.PlansByPrefab.TryGetValue(snapshot.PrefabName, out CompiledObjectPrefabPlan? prefabPlan) ||
             (compiledRules = prefabPlan.Rules) == null ||
             compiledRules.Count == 0)
         {
@@ -2746,7 +2788,7 @@ internal static partial class ObjectDropManager
             gameObject.TryGetComponent(out DropOnDestroyed dropOnDestroyed) &&
             TryBuildEffectiveDropTable(
                 gameObject,
-                snapshot.Prefab.name,
+                snapshot.PrefabName,
                 compiledRules,
                 rule => rule.DropOnDestroyed,
                 snapshot.DropOnDestroyed,
@@ -2762,7 +2804,7 @@ internal static partial class ObjectDropManager
             gameObject.TryGetComponent(out MineRock mineRock) &&
             TryBuildEffectiveDropTable(
                 gameObject,
-                snapshot.Prefab.name,
+                snapshot.PrefabName,
                 compiledRules,
                 rule => rule.MineRock,
                 snapshot.MineRock,
@@ -2778,7 +2820,7 @@ internal static partial class ObjectDropManager
             gameObject.TryGetComponent(out MineRock5 mineRock5) &&
             TryBuildEffectiveDropTable(
                 gameObject,
-                snapshot.Prefab.name,
+                snapshot.PrefabName,
                 compiledRules,
                 rule => rule.MineRock5,
                 snapshot.MineRock5,
@@ -2794,7 +2836,7 @@ internal static partial class ObjectDropManager
             gameObject.TryGetComponent(out Container container) &&
             TryBuildEffectiveDropTable(
                 gameObject,
-                snapshot.Prefab.name,
+                snapshot.PrefabName,
                 compiledRules,
                 rule => rule.Container,
                 snapshot.Container,
@@ -2810,7 +2852,7 @@ internal static partial class ObjectDropManager
             gameObject.TryGetComponent(out TreeBase treeBase) &&
             TryBuildEffectiveDropTable(
                 gameObject,
-                snapshot.Prefab.name,
+                snapshot.PrefabName,
                 compiledRules,
                 rule => rule.TreeBase,
                 snapshot.TreeBase,
@@ -2826,7 +2868,7 @@ internal static partial class ObjectDropManager
             gameObject.TryGetComponent(out TreeLog treeLog) &&
             TryBuildEffectiveDropTable(
                 gameObject,
-                snapshot.Prefab.name,
+                snapshot.PrefabName,
                 compiledRules,
                 rule => rule.TreeLog,
                 snapshot.TreeLog,
@@ -2838,11 +2880,11 @@ internal static partial class ObjectDropManager
             treeLog.m_dropWhenDestroyed = treeLogTable!;
         }
 
-        if ((includeEventOnlyKinds || RequiresLiveReconcileForPrefab(snapshot.Prefab.name, LiveObjectComponentKind.Pickable)) &&
+        if ((includeEventOnlyKinds || RequiresLiveReconcileForPrefab(snapshot.PrefabName, LiveObjectComponentKind.Pickable)) &&
             gameObject.TryGetComponent(out Pickable pickable) &&
             TryBuildEffectiveDropTable(
                 gameObject,
-                snapshot.Prefab.name,
+                snapshot.PrefabName,
                 compiledRules,
                 rule => rule.PickableExtraDrops,
                 snapshot.Pickable?.ExtraDrops,
@@ -2854,11 +2896,11 @@ internal static partial class ObjectDropManager
             pickable.m_extraDrops = pickableExtraDrops!;
         }
 
-        if ((includeEventOnlyKinds || RequiresLiveReconcileForPrefab(snapshot.Prefab.name, LiveObjectComponentKind.Fish)) &&
+        if ((includeEventOnlyKinds || RequiresLiveReconcileForPrefab(snapshot.PrefabName, LiveObjectComponentKind.Fish)) &&
             gameObject.TryGetComponent(out Fish fish) &&
             TryBuildEffectiveDropTable(
                 gameObject,
-                snapshot.Prefab.name,
+                snapshot.PrefabName,
                 compiledRules,
                 rule => rule.FishExtraDrops,
                 snapshot.Fish?.ExtraDrops,
@@ -2976,18 +3018,19 @@ internal static partial class ObjectDropManager
 
     private static void RestoreConfiguredComponents(GameObject gameObject, PrefabSnapshot snapshot, PrefabConfigurationEntry entry, bool updateRuntimeState)
     {
+        if (gameObject == null) return;
         RestoreResourceComponents(gameObject, snapshot, entry, updateRuntimeState);
         RestoreInteractiveComponents(gameObject, snapshot, entry, updateRuntimeState);
     }
 
     private static void ApplyConfiguredComponents(GameObject gameObject, PrefabSnapshot snapshot, PrefabConfigurationEntry entry, bool updateRuntimeState, bool allowConditionalMatches)
     {
-        if (!EntryMatches(gameObject, entry, allowConditionalMatches))
+        if (gameObject == null || !EntryMatches(gameObject, entry, allowConditionalMatches))
         {
             return;
         }
 
-        string contextRoot = $"{snapshot.Prefab.name}@{gameObject.name}";
+        string contextRoot = $"{snapshot.PrefabName}@{gameObject.name}";
         TryGetCompiledObjectDropRule(entry, out CompiledObjectDropRule? compiledRule);
         ApplyResourceComponents(gameObject, entry, compiledRule, contextRoot, updateRuntimeState);
         ApplyInteractiveComponents(gameObject, entry, compiledRule, contextRoot, updateRuntimeState);

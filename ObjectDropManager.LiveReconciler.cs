@@ -28,7 +28,7 @@ internal static partial class ObjectDropManager
         }
 
         bool hasConfiguredEntries = RuntimeState.ActiveEntriesByPrefab.TryGetValue(prefabName, out List<PrefabConfigurationEntry>? entries) && entries.Count > 0;
-        if (!IsGameDataReady() ||
+        if (!IsGameDataReady() || _pendingSnapshotBuild != null ||
             DropNSpawnPlugin.IsGameDataRefreshDeferred(DropNSpawnPlugin.ReloadDomain.Object))
         {
             return;

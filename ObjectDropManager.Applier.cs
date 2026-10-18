@@ -64,7 +64,7 @@ internal static partial class ObjectDropManager
 
             List<PrefabConfigurationEntry> entries = plan.ActiveEntries;
 
-            if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot))
+            if (!SnapshotState.SnapshotsByPrefab.TryGetValue(prefabName, out PrefabSnapshot? snapshot) || snapshot.Prefab == null)
             {
                 foreach (PrefabConfigurationEntry entry in entries)
                 {

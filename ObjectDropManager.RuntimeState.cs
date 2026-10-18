@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace DropNSpawn;
 
@@ -25,11 +26,40 @@ internal static partial class ObjectDropManager
     {
         public List<PrefabSnapshot> Snapshots { get; } = new();
         public Dictionary<string, PrefabSnapshot> SnapshotsByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);
+        // Retain the original values for surviving templates, including temporarily
+        // unregistered ones. Recapturing a DNS-modified template would corrupt its baseline.
+        private readonly Dictionary<int, PrefabSnapshot> _baselinesByInstance = new();
+
+        public PrefabSnapshot? GetOrCapture(GameObject? prefab)
+        {
+            if (prefab == null) return null;
+            int id = prefab.GetInstanceID();
+            if (_baselinesByInstance.TryGetValue(id, out PrefabSnapshot? snapshot) &&
+                ReferenceEquals(snapshot.Prefab, prefab))
+            {
+                if (!string.Equals(snapshot.PrefabName, prefab.name, StringComparison.Ordinal))
+                    _baselinesByInstance[id] = snapshot = snapshot.WithName(prefab.name);
+                return snapshot;
+            }
+
+            snapshot = CaptureSnapshot(prefab);
+            if (snapshot != null) _baselinesByInstance[id] = snapshot;
+            return snapshot;
+        }
+
+        public void PruneDestroyedBaselines()
+        {
+            List<int> dead = new();
+            foreach (var pair in _baselinesByInstance)
+                if (pair.Value.Prefab == null) dead.Add(pair.Key);
+            foreach (int id in dead) _baselinesByInstance.Remove(id);
+        }
 
         public void Clear()
         {
             Snapshots.Clear();
             SnapshotsByPrefab.Clear();
+            _baselinesByInstance.Clear();
         }
 
         public void ReplaceWith(PendingSnapshotBuildState buildState)

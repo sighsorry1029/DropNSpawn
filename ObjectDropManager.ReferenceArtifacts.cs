@@ -12,7 +12,7 @@ internal static partial class ObjectDropManager
         Dictionary<string, LocationReferenceBucket> locationBuckets)
     {
         List<PrefabOwnerSection<PrefabConfigurationEntry>> sections = PrefabOutputSections.BuildSections(
-            SnapshotState.Snapshots.Select(BuildConfigurationEntry),
+            SnapshotState.Snapshots.Where(snapshot => snapshot.Prefab != null).Select(BuildConfigurationEntry),
             entry => entry.Prefab,
             entry => ResolveObjectOwnerName(entry.Prefab, locationBuckets));
 
@@ -200,7 +200,7 @@ internal static partial class ObjectDropManager
     {
         return new PrefabConfigurationEntry
         {
-            Prefab = snapshot.Prefab.name,
+            Prefab = snapshot.PrefabName,
             Enabled = true,
             Destructible = ConvertDestructible(snapshot),
             DropOnDestroyed = snapshot.DropOnDestroyed != null ? ConvertDropTable(snapshot.DropOnDestroyed) : null,
