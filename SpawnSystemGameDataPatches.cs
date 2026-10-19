@@ -178,7 +178,8 @@ internal static class SpawnSystemSpawnPatch
     {
         __state = false;
         if (!PluginSettingsFacade.IsSpawnSystemDomainEnabled() &&
-            !SpawnSystemCustomDataSupport.HasPreparedPayload(critter))
+            !SpawnSystemCustomDataSupport.HasPreparedPayload(critter) &&
+            !ExpandWorldDataCompatibility.HasAltBiomeKeyConsumer(critter))
         {
             return;
         }
@@ -194,7 +195,7 @@ internal static class SpawnSystemSpawnPatch
             return;
         }
 
-        if (PluginSettingsFacade.IsSpawnSystemDomainEnabled())
+        if (!ExpandWorldDataCompatibility.ConsumeAltBiomeKeys(critter) && PluginSettingsFacade.IsSpawnSystemDomainEnabled())
         {
             SpawnSystemManager.ConsumeExtendedRequiredGlobalKeyAfterSpawn(critter);
         }

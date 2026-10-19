@@ -901,7 +901,7 @@ internal static partial class SpawnerManager
         locationPrefab = "";
         if (!_expandWorldDataCurrentLocationFieldResolved)
         {
-            Type? locationSpawningType = SafeTypeLookup.FindLoadedType("ExpandWorldData.LocationSpawning", "ExpandWorldData");
+            Type? locationSpawningType = ExpandWorldDataCompatibility.FindType("ExpandWorldData.LocationSpawning");
             _expandWorldDataCurrentLocationField = locationSpawningType?.GetField("CurrentLocation", BindingFlags.Public | BindingFlags.Static);
             _expandWorldDataCurrentLocationFieldResolved = true;
         }

@@ -1,3 +1,11 @@
+## 1.4.8 — Expand World Data API compatibility
+
+- Support EWD's reorganized data, blueprint, spawn, event, drop, biome, command and location APIs, including the supplied EWD 1.79. Select compatible types and exact signatures rather than plugin/assembly version numbers; reject incomplete integrations instead of silently allowing overlapping ownership.
+- Keep DNS in control of normal spawn tables, events and drops, including when DNS overrides are Off. Adapt transactional loaders and explicitly reject disabled loads with EWD's failure result. EWD configuration values and YAML files are not rewritten.
+- Preserve AltBiome data and auxiliary objects across transactional metadata replacement, and retain complex key, environment, location and object conditions through export/synchronization. Keep EWD's AltBiome requirement checks active and consume complex numeric-key alternatives once, without changing DNS's existing simple-key policy.
+- Resolve blueprint creation/spawning through cached API adapters and share the unchanged object parser across spawn domains. Preserve offsets, chance, data callbacks and exactly one auxiliary-object dispatch.
+- Keep EWD optional, the existing YAML/RPC/save formats and pinned dependencies unchanged. Update the server and all clients to 1.4.8 together and restart. Original-DLL contract and isolated Unity Mono checks cover EWD absence, old/new API layouts and version-label changes; full mod-pack startup, actual spawning and multiplayer remain in-game verification steps.
+
 ## 1.4.7 — Object prefab lifetime and world re-entry fix
 
 - Fix object override restoration failing on destroyed prefab templates, as reported with PathOfValheiman. Cache snapshot names and skip destroyed static targets so unrelated objects can still restore and apply normally. This is generic lifetime handling, not a mod-version exception.

@@ -3,13 +3,9 @@ extern alias ewd;
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using EwdData = ewd::Data;
-using EwdBlueprintObject = ewd::ExpandWorldData.BlueprintObject;
-using EwdSpawn = ewd::ExpandWorldData.Spawn;
 
 namespace DropNSpawn;
 
@@ -82,7 +78,7 @@ internal static class SpawnSystemCustomDataSupport
         PreparedPayload payload = new()
         {
             CustomData = BuildCustomData(spawnData, entry, context),
-            CustomObjects = BuildCustomObjects(entry.SpawnSystem?.Objects, context)
+            CustomObjects = ExpandWorldSpawnDataSupport.BuildCustomObjects(entry.SpawnSystem?.Objects, context, $"{DropNSpawnPlugin.ModName}_spawnsystem:{context}")
         };
 
         return payload.HasValues() ? payload : null;
@@ -162,21 +158,7 @@ internal static class SpawnSystemCustomDataSupport
             return;
         }
 
-        SpawnEwdObjects(spawnPoint, payload.CustomObjects);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void SpawnEwdObjects(Vector3 spawnPoint, IList objects)
-    {
-        foreach (EwdBlueprintObject obj in objects)
-        {
-            if (obj.Chance < 1f && UnityEngine.Random.value > obj.Chance)
-            {
-                continue;
-            }
-
-            EwdSpawn.BPO(obj, spawnPoint, Quaternion.identity, Vector3.one, ObjectDataIdentity, ObjectPrefabIdentity, null);
-        }
+        ExpandWorldDataCompatibility.SpawnObjects(spawnPoint, payload.CustomObjects);
     }
 
     private static EwdData.DataEntry? BuildCustomData(SpawnSystem.SpawnData spawnData, CanonicalSpawnSystemEntry entry, string context)
@@ -206,81 +188,4 @@ internal static class SpawnSystemCustomDataSupport
         return EwdData.DataHelper.Merge(dataFromEntry, inlineData);
     }
 
-    private static List<EwdBlueprintObject>? BuildCustomObjects(List<string>? configuredObjects, string context)
-    {
-        if (configuredObjects == null || configuredObjects.Count == 0)
-        {
-            return null;
-        }
-
-        List<EwdBlueprintObject> objects = new();
-        foreach (string rawDefinition in configuredObjects)
-        {
-            if (TryParseObjectDefinition(rawDefinition, context, out EwdBlueprintObject? obj))
-            {
-                objects.Add(obj!);
-            }
-        }
-
-        return objects.Count == 0 ? null : objects;
-    }
-
-    private static bool TryParseObjectDefinition(string? rawDefinition, string context, out EwdBlueprintObject? obj)
-    {
-        obj = null;
-        if (string.IsNullOrWhiteSpace(rawDefinition))
-        {
-            return false;
-        }
-
-        string[] split = rawDefinition!
-            .Split(',', StringSplitOptions.None)
-            .Select(part => part.Trim())
-            .ToArray();
-        if (split.Length == 0 || split[0].Length == 0)
-        {
-            DropNSpawnPlugin.DropNSpawnLogger.LogWarning($"Entry '{context}' contains an invalid objects entry '{rawDefinition}'. Expected format: Prefab,posX,posZ,posY,chance,data.");
-            return false;
-        }
-
-        if (!TryParseObjectFloat(split, 1, 0f, context, rawDefinition, out float posX) ||
-            !TryParseObjectFloat(split, 2, 0f, context, rawDefinition, out float posZ) ||
-            !TryParseObjectFloat(split, 3, 0f, context, rawDefinition, out float posY) ||
-            !TryParseObjectFloat(split, 4, 1f, context, rawDefinition, out float chance))
-        {
-            return false;
-        }
-
-        string dataName = split.Length > 5 ? split[5] : "";
-        EwdData.DataEntry? data = EwdData.DataHelper.Get(dataName, $"{DropNSpawnPlugin.ModName}_spawnsystem:{context}");
-        obj = new EwdBlueprintObject(split[0], new Vector3(posX, posY, posZ), Quaternion.identity, Vector3.one, data, chance);
-        return true;
-    }
-
-    private static bool TryParseObjectFloat(string[] split, int index, float defaultValue, string context, string rawDefinition, out float value)
-    {
-        value = defaultValue;
-        if (index >= split.Length || split[index].Length == 0)
-        {
-            return true;
-        }
-
-        if (float.TryParse(split[index], NumberStyles.Any, CultureInfo.InvariantCulture, out value))
-        {
-            return true;
-        }
-
-        DropNSpawnPlugin.DropNSpawnLogger.LogWarning($"Entry '{context}' contains an invalid objects entry '{rawDefinition}'. '{split[index]}' is not a valid number.");
-        return false;
-    }
-
-    private static EwdData.DataEntry? ObjectDataIdentity(EwdData.DataEntry? data, string prefab)
-    {
-        return data;
-    }
-
-    private static string ObjectPrefabIdentity(string prefab)
-    {
-        return prefab;
-    }
 }

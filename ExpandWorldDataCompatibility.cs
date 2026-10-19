@@ -5,6 +5,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
@@ -21,16 +22,43 @@ namespace DropNSpawn;
 internal static class ExpandWorldDataCompatibility
 {
     private static readonly ConditionalWeakTable<SpawnSystem.SpawnData, object> SourceData = new();
-    private static IDictionary? _data;
-    private static IDictionary? _objects;
+    private static FieldInfo? _data;
+    private static FieldInfo? _objects;
+    private static FieldInfo? _requirements;
+    private static FieldInfo? _requiredKeys;
+    private static Action<SpawnSystem.SpawnData>? _consumeAltBiomeKeys;
     private static FieldInfo[] _sourceFields = Array.Empty<FieldInfo>();
     private static Assembly? _assembly;
     // Opaque returns keep EWD types out of the standalone class initialization path.
     private static Func<string, object>? _stringConstant;
     private static Func<int, object>? _intConstant;
+    private static Func<string, Vector3, object?, float, object>? _createObject;
+    private static Func<object, float>? _objectChance;
+    private static Action<object, Vector3>? _spawnObject;
 
     internal static bool IsAvailable => _assembly != null;
-    internal static Type? FindType(string name) => _assembly?.GetType(name);
+    internal static Type? FindType(string name) => _assembly == null ? null : FindType(_assembly, name);
+
+    private static Type? FindType(Assembly assembly, string name)
+    {
+        Type? exact = assembly.GetType(name);
+        if (exact != null) return exact;
+        // Known semantic moves, not fuzzy simple-name matching or VERSION gates.
+        string? moved = name switch
+        {
+            "ExpandWorldData.BlueprintObject" => "ExpandWorldData.Data.BlueprintObject",
+            "ExpandWorldData.Spawn" => "ExpandWorldData.Create",
+            "ExpandWorldData.BiomeManager" => "ExpandWorldData.Biome.BiomeManager",
+            "ExpandWorldData.DataManager" => "ExpandWorldData.Data.DataManager",
+            "ExpandWorldData.CommandManager" => "ExpandWorldData.Data.CommandManager",
+            "ExpandWorldData.LocationSpawning" => "ExpandWorldData.Locations.LocationSpawning",
+            _ when name.StartsWith("ExpandWorld.Spawn.", StringComparison.Ordinal) => name.Replace("ExpandWorld.Spawn.", "ExpandWorldData.Spawn."),
+            _ when name.StartsWith("ExpandWorld.Event.", StringComparison.Ordinal) => name.Replace("ExpandWorld.Event.", "ExpandWorldData.Event."),
+            _ when name.StartsWith("ExpandWorld.Drops.", StringComparison.Ordinal) => name.Replace("ExpandWorld.Drops.", "ExpandWorldData.Drop."),
+            _ => null
+        };
+        return moved == null ? null : assembly.GetType(moved);
+    }
 
     internal static void DetectDependency()
     {
@@ -53,6 +81,9 @@ internal static class ExpandWorldDataCompatibility
     {
         Func<string, object>? stringConstant = null;
         Func<int, object>? intConstant = null;
+        Func<string, Vector3, object?, float, object>? createObject = null;
+        Func<object, float>? objectChance = null;
+        Action<object, Vector3>? spawnObject = null;
         if (assembly != null)
         {
             // VERSION is informational, not a compatibility key (including suffixes
@@ -60,7 +91,6 @@ internal static class ExpandWorldDataCompatibility
             // helpers on the standalone path. Ownership contracts are checked below.
             Type data = RequireType(assembly, "Data.DataEntry");
             Type helper = RequireType(assembly, "Data.DataHelper");
-            RequireType(assembly, "ExpandWorldData.BlueprintObject");
             RequireMethod(helper, "Get", data, typeof(string), typeof(string));
             RequireMethod(helper, "Merge", data, data, data);
             RequireMethod(helper, "Init", typeof(ZDO), typeof(GameObject), typeof(Vector3),
@@ -72,12 +102,64 @@ internal static class ExpandWorldDataCompatibility
                 RequireConstantFactory(values, typeof(int), RequireType(assembly, "Data.IIntValue")));
             foreach (string valueType in new[] { "String", "Int", "Float", "Long", "Bool", "Vector3", "Quaternion" })
                 RequireMethod(values, valueType, RequireType(assembly, $"Data.I{valueType}Value"), typeof(string));
+            (createObject, objectChance, spawnObject) = BuildObjectAccessors(assembly, data);
         }
         // Publish only a complete contract. A failed probe retains any existing one;
         // startup aborts before DNS installs patches or replaces game tables.
         _stringConstant = stringConstant;
         _intConstant = intConstant;
+        _createObject = createObject;
+        _objectChance = objectChance;
+        _spawnObject = spawnObject;
         _assembly = assembly;
+    }
+
+    private static (Func<string, Vector3, object?, float, object>, Func<object, float>, Action<object, Vector3>)
+        BuildObjectAccessors(Assembly assembly, Type data)
+    {
+        Type blueprint = RequireType(assembly, "ExpandWorldData.BlueprintObject");
+        ConstructorInfo constructor = blueprint.GetConstructor(new[] { typeof(string), typeof(Vector3), typeof(Quaternion),
+            typeof(Vector3), data, typeof(float), typeof(bool) }) ?? throw new MissingMethodException(blueprint.FullName, ".ctor");
+        FieldInfo chance = RequireField(blueprint, "Chance");
+        if (!chance.IsPublic || chance.IsStatic || chance.FieldType != typeof(float))
+            throw new MissingFieldException(blueprint.FullName, "public float Chance");
+        Type dataTransform = typeof(Func<,,>).MakeGenericType(data, typeof(string), data);
+        MethodInfo spawn = RequireMethod(RequireType(assembly, "ExpandWorldData.Spawn"), "BPO", typeof(void),
+            blueprint, typeof(Vector3), typeof(Quaternion), typeof(Vector3), dataTransform,
+            typeof(Func<string, string>), typeof(List<GameObject>));
+        if (!spawn.IsPublic) throw new MissingMethodException(spawn.DeclaringType!.FullName, "public BPO");
+
+        var prefab = Expression.Parameter(typeof(string), "prefab");
+        var position = Expression.Parameter(typeof(Vector3), "position");
+        var payload = Expression.Parameter(typeof(object), "data");
+        var probability = Expression.Parameter(typeof(float), "chance");
+        var obj = Expression.Parameter(typeof(object), "obj");
+        var typedData = Expression.Parameter(data, "data");
+        // Compile once during dependency detection; no reflection or boxed argument
+        // arrays on the spawn path. Opaque delegates keep standalone loading safe.
+        var create = Expression.Lambda<Func<string, Vector3, object?, float, object>>(
+            Expression.New(constructor, prefab, position, Expression.Constant(Quaternion.identity),
+                Expression.Constant(Vector3.one), Expression.Convert(payload, data), probability, Expression.Constant(false)),
+            prefab, position, payload, probability).Compile();
+        var readChance = Expression.Lambda<Func<object, float>>(Expression.Field(Expression.Convert(obj, blueprint), chance), obj).Compile();
+        Delegate identity = Expression.Lambda(dataTransform, typedData, typedData, prefab).Compile();
+        var invoke = Expression.Lambda<Action<object, Vector3>>(Expression.Call(spawn, Expression.Convert(obj, blueprint), position,
+            Expression.Constant(Quaternion.identity), Expression.Constant(Vector3.one), Expression.Constant(identity, dataTransform),
+            Expression.Constant((Func<string, string>)(name => name)), Expression.Constant(null, typeof(List<GameObject>))), obj, position).Compile();
+        return (create, readChance, invoke);
+    }
+
+    internal static object CreateObject(string prefab, Vector3 position, object? data, float chance) =>
+        _createObject!(prefab, position, data, chance);
+
+    internal static void SpawnObjects(Vector3 position, IList objects)
+    {
+        foreach (object obj in objects)
+        {
+            float chance = _objectChance!(obj);
+            if (chance < 1f && UnityEngine.Random.value > chance) continue;
+            _spawnObject!(obj, position);
+        }
     }
 
     private static MethodInfo RequireConstantFactory(Type values, Type argument, Type returns)
@@ -139,7 +221,7 @@ internal static class ExpandWorldDataCompatibility
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void InitializePresent(Harmony harmony, Assembly assembly)
     {
-        if (assembly.GetType("ExpandWorld.Spawn.Patcher") == null) return;
+        if (!HasIntegratedDomains(assembly)) return;
         var ewdHarmony = (Harmony)RequireField(RequireType(assembly, "ExpandWorldData.EWD"), "Harmony").GetValue(null);
         InstallPatches(harmony, assembly, ewdHarmony);
         DropNSpawnPlugin.DropNSpawnLogger.LogInfo(
@@ -155,9 +237,15 @@ internal static class ExpandWorldDataCompatibility
 
         Type loader = RequireType(assembly, "ExpandWorld.Spawn.Loader");
         Type source = RequireType(assembly, "ExpandWorld.Spawn.Data");
-        _data = (IDictionary)RequireField(loader, "Data").GetValue(null);
-        _objects = (IDictionary)RequireField(loader, "Objects").GetValue(null);
-        _sourceFields = new[] { "data", "fields", "objects", "faction" }.Select(name => RequireField(source, name)).ToArray();
+        _data = RequireField(loader, "Data");
+        _objects = RequireField(loader, "Objects");
+        _sourceFields = GetSourceFields(source);
+        Type? requirements = FindType(assembly, "ExpandWorld.Spawn.Requirements");
+        _requirements = requirements == null ? null : RequireField(loader, "Requirements");
+        _requiredKeys = requirements == null ? null : RequireField(requirements, "Keys");
+        _consumeAltBiomeKeys = requirements == null ? null :
+            (Action<SpawnSystem.SpawnData>)Delegate.CreateDelegate(typeof(Action<SpawnSystem.SpawnData>),
+                RequireMethod(RequireType(assembly, "ExpandWorld.Spawn.GlobalKeys"), "Consume", typeof(void), typeof(SpawnSystem.SpawnData)));
 
         // The handoff immediately calls the code we patch below. StartupAccelerator
         // normally defers executable wrapper updates until Chainloader has finished.
@@ -193,7 +281,7 @@ internal static class ExpandWorldDataCompatibility
                 var info = Harmony.GetPatchInfo(target);
                 if (info != null && info.Prefixes.Concat(info.Postfixes).Concat(info.Transpilers).Concat(info.Finalizers)
                     .Any(patch => patch.owner == ewdHarmony.Id && patch.PatchMethod.DeclaringType?.Assembly == assembly &&
-                                  IsOwnedDomain(patch.PatchMethod.DeclaringType)))
+                                  IsOwnedDomain(patch.PatchMethod.DeclaringType, patch.PatchMethod.Name)))
                     throw new InvalidOperationException($"EWD still owns a DNS domain patch on {target.DeclaringType?.FullName}.{target.Name}; restart required.");
             }
         }
@@ -241,7 +329,7 @@ internal static class ExpandWorldDataCompatibility
 
     private static void RefreshEwdPatches(Assembly assembly, Harmony ewdHarmony)
     {
-        foreach (string domain in assembly.GetType("ExpandWorld.Spawn.SpawnManager") != null
+        foreach (string domain in FindType(assembly, "ExpandWorld.Spawn.SpawnManager") != null
                      ? new[] { "Spawn", "Event", "Drops" } : new[] { "Spawn", "Event" })
             RequireMethod(RequireType(assembly, $"ExpandWorld.{domain}.Patcher"), "Patch", typeof(void), typeof(Harmony))
                 .Invoke(null, new object[] { ewdHarmony });
@@ -253,10 +341,11 @@ internal static class ExpandWorldDataCompatibility
     internal static List<(MethodInfo Target, HarmonyPatchType Kind, string Callback)> GetPatchPlan(Assembly assembly)
     {
         var result = new List<(MethodInfo, HarmonyPatchType, string)>();
-        if (assembly.GetType("ExpandWorld.Spawn.Patcher") == null) return result;
+        if (!HasIntegratedDomains(assembly)) return result;
 
-        if (assembly.GetType("ExpandWorld.Spawn.SpawnManager") != null)
+        if (FindType(assembly, "ExpandWorld.Spawn.SpawnManager") != null)
         {
+            bool transactional = false;
             // The synced-manager layout uses one patch registry, with unconditional
             // lifecycle hooks and independent event scheduling gates. Let its own
             // unpatch path maintain registry state and run cleanup callbacks.
@@ -271,18 +360,32 @@ internal static class ExpandWorldDataCompatibility
                 RequireMethod(RequireType(assembly, $"ExpandWorld.{domain}.Patcher"), "Patch", typeof(void), typeof(Harmony));
                 Add(manager, "ReadConfigs", typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
                 Add(manager, "FromSetting", typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(string));
-                Add(manager, "Set", typeof(bool), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(Dictionary<string, string>));
+                MethodInfo set = AccessTools.DeclaredMethod(manager, "Set", new[] { typeof(Dictionary<string, string>) })
+                    ?? throw new MissingMethodException(manager.FullName, "Set");
+                if (set.ReturnType == typeof(bool))
+                    Add(manager, "Set", typeof(bool), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(Dictionary<string, string>));
+                else
+                {
+                    Type setResult = RequireType(assembly, "ExpandWorldData.Data.SetResult");
+                    RequireFailedResult(setResult);
+                    Add(manager, "Set", setResult, HarmonyPatchType.Transpiler, nameof(RejectOwnedSet), typeof(Dictionary<string, string>));
+                    if (domain == "Spawn") transactional = true;
+                }
                 Add(manager, domain == "Drops" ? "ToReferenceFile" : "CreateConfigs", typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
             }
             Add(RequireType(assembly, "ExpandWorld.Spawn.SpawnManager"), "ApplySpawnData", typeof(void),
                 HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(SpawnSystem));
-            Add(RequireType(assembly, "ExpandWorld.Spawn.SpawnManager"), "InitializeData", typeof(void),
-                HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
             Add(RequireType(assembly, "ExpandWorld.Spawn.SpawnManager"), "InitializeSpawnSystem", typeof(void),
                 HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(SpawnSystem));
             Add(RequireType(assembly, "ExpandWorld.Event.EventManager"), "ApplyTiming", typeof(void),
                 HarmonyPatchType.Prefix, nameof(SkipOwnedDomain), typeof(RandEventSystem));
-            foreach (string name in new[] { "DelayClientLoad", "InitializeServerData", "InitializeClientData" })
+            Type events = RequireType(assembly, "ExpandWorld.Event.EventManager");
+            if (transactional)
+                RequireMethod(events, "Initialize", typeof(void)); // shared content initializer only snapshots native tables
+            else
+                Add(RequireType(assembly, "ExpandWorld.Spawn.SpawnManager"), "InitializeData", typeof(void),
+                    HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
+            foreach (string name in transactional ? new[] { "InitializeServerData" } : new[] { "DelayClientLoad", "InitializeServerData", "InitializeClientData" })
                 Add(RequireType(assembly, "ExpandWorld.Event.EventManager"), name, typeof(void), HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
             Add(RequireType(assembly, "ExpandWorld.Drops.DropManager"), "InitializeData", typeof(void),
                 HarmonyPatchType.Prefix, nameof(SkipOwnedDomain));
@@ -304,6 +407,31 @@ internal static class ExpandWorldDataCompatibility
 
         Type data = RequireType(assembly, "ExpandWorld.Spawn.Data");
         Type loader = RequireType(assembly, "ExpandWorld.Spawn.Loader");
+        GetSourceFields(data);
+        foreach (string name in new[] { "Data", "Objects" })
+        {
+            FieldInfo field = RequireField(loader, name);
+            if (!field.IsStatic || !typeof(IDictionary).IsAssignableFrom(field.FieldType))
+                throw new MissingFieldException(loader.FullName, name);
+        }
+        Type? requirements = FindType(assembly, "ExpandWorld.Spawn.Requirements");
+        if (requirements != null)
+        {
+            FieldInfo map = RequireField(loader, "Requirements");
+            FieldInfo keysField = RequireField(requirements, "Keys");
+            if (!map.IsStatic || !typeof(IDictionary).IsAssignableFrom(map.FieldType))
+                throw new MissingFieldException(loader.FullName, "static Requirements dictionary");
+            if (keysField.IsStatic || keysField.FieldType != typeof(List<string[]>))
+                throw new MissingFieldException(requirements.FullName, "List<string[]> Keys");
+            foreach (string name in new[] { "TranspileKeys", "TranspileEnvironments" })
+                RequireMethod(requirements, name, typeof(IEnumerable<CodeInstruction>), typeof(IEnumerable<CodeInstruction>));
+            foreach (string name in new[] { "CheckLocations", "CheckObjects" })
+                RequireMethod(requirements, name, typeof(void), typeof(SpawnSystem.SpawnData), typeof(Vector3), typeof(bool).MakeByRefType());
+            Type keys = RequireType(assembly, "ExpandWorld.Spawn.GlobalKeys");
+            RequireMethod(keys, "Consume", typeof(void), typeof(SpawnSystem.SpawnData));
+            RequireMethod(keys, "CheckRequirement", typeof(bool), typeof(ZoneSystem), typeof(string), typeof(bool).MakeByRefType());
+            RequireMethod(keys, "Mutate", typeof(void), typeof(ZoneSystem), typeof(string).MakeByRefType());
+        }
         Add(RequireType(assembly, "ExpandWorld.Spawn.LoaderFields"), "HandleCustomData", typeof(EwdData.DataEntry),
             HarmonyPatchType.Transpiler, nameof(DisableSpawnDrops), data, typeof(SpawnSystem.SpawnData));
         Add(loader, "FromData", typeof(SpawnSystem.SpawnData), HarmonyPatchType.Postfix,
@@ -316,7 +444,18 @@ internal static class ExpandWorldDataCompatibility
     }
 
     private static Type RequireType(Assembly assembly, string name) =>
-        assembly.GetType(name, throwOnError: true)!;
+        FindType(assembly, name) ?? throw new TypeLoadException($"EWD requires type {name} or its supported relocated API.");
+
+    private static bool HasIntegratedDomains(Assembly assembly)
+    {
+        if (FindType(assembly, "ExpandWorld.Spawn.Patcher") != null) return true;
+        foreach (string name in new[] { "ExpandWorld.Spawn.Manager", "ExpandWorld.Spawn.SpawnManager", "ExpandWorld.Spawn.Loader",
+                     "ExpandWorld.Spawn.Data", "ExpandWorld.Event.Patcher", "ExpandWorld.Event.EventManager",
+                     "ExpandWorld.Drops.Patcher", "ExpandWorld.Drops.DropManager" })
+            if (FindType(assembly, name) != null)
+                throw new TypeLoadException("EWD integrated domains are present but the Spawn.Patcher ownership contract is missing.");
+        return false;
+    }
 
     private static FieldInfo RequireField(Type type, string name) =>
         AccessTools.DeclaredField(type, name) ?? throw new MissingFieldException(type.FullName, name);
@@ -331,16 +470,67 @@ internal static class ExpandWorldDataCompatibility
 
     private static bool SkipOwnedDomain() => false;
 
-    private static void DisableOwnedPatch(ref bool __1, Type __4)
+    private static void DisableOwnedPatch(ref bool __1, Type __4, string __5)
     {
         // Arguments are shouldPatch and patchType. Do not affect the shared
         // registry's world, AltBiome, blueprint or common-data patches.
-        if (IsOwnedDomain(__4))
+        if (IsOwnedDomain(__4, __5))
             __1 = false;
     }
 
-    private static bool IsOwnedDomain(Type type) =>
-        type.Namespace is "ExpandWorld.Spawn" or "ExpandWorld.Event" or "ExpandWorld.Drops";
+    private static bool IsOwnedDomain(Type type, string method)
+    {
+        // These operate on EWD's AltBiome requirement metadata, not normal tables.
+        // Keep EWD's own activation/refresh gates; do not force them on globally.
+        if (type.FullName is "ExpandWorldData.Spawn.Requirements" or "ExpandWorld.Spawn.Requirements" &&
+            method is "TranspileKeys" or "TranspileEnvironments" or "CheckLocations" or "CheckObjects") return false;
+        if (type.FullName is "ExpandWorldData.Spawn.GlobalKeys" or "ExpandWorld.Spawn.GlobalKeys" &&
+            method is "CheckRequirement" or "Mutate" && FindType(type.Assembly, "ExpandWorld.Spawn.Requirements") != null) return false;
+        return type.Namespace is "ExpandWorld.Spawn" or "ExpandWorld.Event" or "ExpandWorld.Drops" or
+            "ExpandWorldData.Spawn" or "ExpandWorldData.Event" or "ExpandWorldData.Drop";
+    }
+
+    private static int RequireFailedResult(Type result)
+    {
+        FieldInfo? failed = result.GetField("Failed");
+        if (!result.IsEnum || Enum.GetUnderlyingType(result) != typeof(int) || failed?.IsLiteral != true)
+            throw new MissingFieldException(result.FullName, "Failed (int enum)");
+        return (int)failed.GetRawConstantValue();
+    }
+
+    private static IEnumerable<CodeInstruction> RejectOwnedSet(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod)
+    {
+        // New loaders return Applied=0; skipping with the default return value would
+        // falsely report success. Return their declared failure value without loading.
+        yield return new CodeInstruction(OpCodes.Ldc_I4, RequireFailedResult(((MethodInfo)__originalMethod).ReturnType));
+        yield return new CodeInstruction(OpCodes.Ret);
+    }
+
+    private static FieldInfo[] GetSourceFields(Type source)
+    {
+        var fields = new List<FieldInfo>(new[] { "data", "fields", "objects", "faction" }.Select(name => RequireField(source, name)));
+        if (FindType(source.Assembly, "ExpandWorld.Spawn.Requirements") != null)
+            fields.AddRange(new[] { "requiredGlobalKeys", "forbiddenGlobalKeys", "requiredEnvironments", "forbiddenEnvironments",
+                "requiredLocations", "forbiddenLocations", "requiredObjects", "forbiddenObjects" }.Select(name => RequireField(source, name)));
+        return fields.ToArray();
+    }
+
+    internal static bool HasAltBiomeKeyConsumer(SpawnSystem.SpawnData critter)
+    {
+        if (_consumeAltBiomeKeys == null || !SourceData.TryGetValue(critter, out _)) return false;
+        // Only complex required-key rows need EWD's per-row AND/OR consumption.
+        // Simple native keys retain DNS's existing enabled/disabled behavior; EWD
+        // does not activate numeric helpers for simple AltBiome keys alone.
+        object? requirements = ((IDictionary)_requirements!.GetValue(null))[critter];
+        return requirements != null && _requiredKeys!.GetValue(requirements) != null;
+    }
+
+    internal static bool ConsumeAltBiomeKeys(SpawnSystem.SpawnData critter)
+    {
+        if (!HasAltBiomeKeyConsumer(critter)) return false;
+        if (!SpawnSystem.m_nospawn && ZoneSystem.instance != null) _consumeAltBiomeKeys!(critter);
+        return true;
+    }
 
     private static IEnumerable<CodeInstruction> DisableSpawnDrops(IEnumerable<CodeInstruction> instructions)
     {
@@ -350,7 +540,7 @@ internal static class ExpandWorldDataCompatibility
             // New loaders no longer test DataDrops. Replace only the value read,
             // not the source DTO, so faction/fields and the user's YAML stay intact.
             if (instruction.opcode == OpCodes.Ldfld && instruction.operand is FieldInfo field &&
-                field.DeclaringType?.FullName == "ExpandWorld.Spawn.Data" && field.Name == "drops" && field.FieldType == typeof(string))
+                field.DeclaringType?.FullName is "ExpandWorld.Spawn.Data" or "ExpandWorldData.Spawn.Data" && field.Name == "drops" && field.FieldType == typeof(string))
             {
                 instruction.opcode = OpCodes.Pop;
                 instruction.operand = null;
@@ -387,8 +577,12 @@ internal static class ExpandWorldDataCompatibility
     private static void CaptureSpawnData(object __0, SpawnSystem.SpawnData __result)
     {
         if (__result == null) return;
-        object? data = _data![__result];
-        IList? objects = _objects![__result] as IList;
+        // Transactional EWD reloads replace these dictionaries. Cache the fields,
+        // not a retired dictionary instance; failed reloads restore their own maps.
+        var dataMap = (IDictionary)_data!.GetValue(null);
+        var objectMap = (IDictionary)_objects!.GetValue(null);
+        object? data = dataMap[__result];
+        IList? objects = objectMap[__result] as IList;
         SpawnSystemCustomDataSupport.ApplyPreparedPayload(__result, new SpawnSystemCustomDataSupport.PreparedPayload
         {
             CustomData = data,
@@ -396,8 +590,8 @@ internal static class ExpandWorldDataCompatibility
         });
         // Transfer metadata to the existing weak table: retired AltBiome rows can
         // still serve old heightmaps until regeneration, but must not leak on reload.
-        _data.Remove(__result);
-        _objects.Remove(__result);
+        dataMap.Remove(__result);
+        objectMap.Remove(__result);
         SourceData.Remove(__result);
         SourceData.Add(__result, __0);
     }

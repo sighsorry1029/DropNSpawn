@@ -8,8 +8,6 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using UnityEngine;
 using EwdData = ewd::Data;
-using EwdBlueprintObject = ewd::ExpandWorldData.BlueprintObject;
-using EwdSpawn = ewd::ExpandWorldData.Spawn;
 
 namespace DropNSpawn;
 
@@ -39,7 +37,7 @@ internal static class ExpandWorldSpawnDataSupport
     private static ExpandWorldSpawnDataPayload? BuildEwdPayload(GameObject? prefab, string? dataName, Dictionary<string, string>? fields, List<string>? objects, string context)
     {
         EwdData.DataEntry? data = BuildCustomData(prefab, dataName, fields, context);
-        List<EwdBlueprintObject>? customObjects = BuildCustomObjects(objects, context);
+        IList? customObjects = BuildCustomObjects(objects, context, $"{DropNSpawnPlugin.ModName}_spawn:{context}");
         if (data == null && (customObjects == null || customObjects.Count == 0))
         {
             return null;
@@ -69,21 +67,7 @@ internal static class ExpandWorldSpawnDataSupport
             return;
         }
 
-        SpawnEwdObjects(spawnPoint, payload.Objects);
-    }
-
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void SpawnEwdObjects(Vector3 spawnPoint, IList objects)
-    {
-        foreach (EwdBlueprintObject obj in objects)
-        {
-            if (obj.Chance < 1f && UnityEngine.Random.value > obj.Chance)
-            {
-                continue;
-            }
-
-            EwdSpawn.BPO(obj, spawnPoint, Quaternion.identity, Vector3.one, ObjectDataIdentity, ObjectPrefabIdentity, null);
-        }
+        ExpandWorldDataCompatibility.SpawnObjects(spawnPoint, payload.Objects);
     }
 
     private static EwdData.DataEntry? BuildCustomData(GameObject? prefab, string? dataName, Dictionary<string, string>? fields, string context)
@@ -134,17 +118,17 @@ internal static class ExpandWorldSpawnDataSupport
         return normalized.Count == 0 ? null : normalized;
     }
 
-    private static List<EwdBlueprintObject>? BuildCustomObjects(List<string>? configuredObjects, string context)
+    internal static IList? BuildCustomObjects(List<string>? configuredObjects, string context, string dataContext)
     {
         if (configuredObjects == null || configuredObjects.Count == 0)
         {
             return null;
         }
 
-        List<EwdBlueprintObject> objects = new();
+        List<object> objects = new();
         foreach (string rawDefinition in configuredObjects)
         {
-            if (TryParseObjectDefinition(rawDefinition, context, out EwdBlueprintObject? obj))
+            if (TryParseObjectDefinition(rawDefinition, context, dataContext, out object? obj))
             {
                 objects.Add(obj!);
             }
@@ -153,7 +137,7 @@ internal static class ExpandWorldSpawnDataSupport
         return objects.Count == 0 ? null : objects;
     }
 
-    private static bool TryParseObjectDefinition(string? rawDefinition, string context, out EwdBlueprintObject? obj)
+    private static bool TryParseObjectDefinition(string? rawDefinition, string context, string dataContext, out object? obj)
     {
         obj = null;
         if (string.IsNullOrWhiteSpace(rawDefinition))
@@ -180,8 +164,8 @@ internal static class ExpandWorldSpawnDataSupport
         }
 
         string dataName = split.Length > 5 ? split[5] : "";
-        EwdData.DataEntry? data = EwdData.DataHelper.Get(dataName, $"{DropNSpawnPlugin.ModName}_spawn:{context}");
-        obj = new EwdBlueprintObject(split[0], new Vector3(posX, posY, posZ), Quaternion.identity, Vector3.one, data, chance);
+        EwdData.DataEntry? data = EwdData.DataHelper.Get(dataName, dataContext);
+        obj = ExpandWorldDataCompatibility.CreateObject(split[0], new Vector3(posX, posY, posZ), data, chance);
         return true;
     }
 
@@ -202,13 +186,4 @@ internal static class ExpandWorldSpawnDataSupport
         return false;
     }
 
-    private static EwdData.DataEntry? ObjectDataIdentity(EwdData.DataEntry? data, string prefab)
-    {
-        return data;
-    }
-
-    private static string ObjectPrefabIdentity(string prefab)
-    {
-        return prefab;
-    }
 }

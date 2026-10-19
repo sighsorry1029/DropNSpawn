@@ -2149,10 +2149,10 @@ internal static class EventManager
         }
 
         ExpandWorldCommandRunMethodLookedUp = true;
-        Type? commandManagerType = SafeTypeLookup.FindLoadedType("ExpandWorldData.CommandManager", "ExpandWorldData");
+        Type? commandManagerType = ExpandWorldDataCompatibility.FindType("ExpandWorldData.CommandManager");
         ExpandWorldCommandRunMethod = commandManagerType?
-            .GetMethods(BindingFlags.Public | BindingFlags.Static)
-            .FirstOrDefault(method => method.Name == "Run" && method.GetParameters().Length == 3);
+            .GetMethod("Run", BindingFlags.Public | BindingFlags.Static, null,
+                new[] { typeof(IEnumerable<string>), typeof(Vector3), typeof(Vector3) }, null);
         return ExpandWorldCommandRunMethod;
     }
 

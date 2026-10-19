@@ -1529,7 +1529,8 @@ namespace DropNSpawn.Tests
             var strings = (System.Collections.IDictionary)data.GetType().GetField("Strings").GetValue(data);
             Check((string)ReadValue(strings[literalHash("faction")]) == literal, "EWD faction constant remains literal (commas/value-group tokens are not parsed)");
             var objects = (System.Collections.IList)payload.GetType().GetProperty("CustomObjects").GetValue(payload);
-            Check(objects.Count == 1 && objects[0].GetType().FullName == "ExpandWorldData.BlueprintObject", "EWD object payload still builds alongside faction");
+            Check(objects.Count == 1 && objects[0].GetType() == EwdType(ewd, "ExpandWorldData.BlueprintObject", true), "EWD object payload still builds alongside faction");
+            CheckEwdObjectDispatch(mod, ewd, payload, objects[0]);
             object plain = support.GetMethod("BuildPreparedPayload", All).Invoke(null, new[] { new SpawnSystem.SpawnData(), Activator.CreateInstance(entryType, true), "plain fixture" });
             Check(plain == null, "plain spawn still prepares successfully with EWD installed");
 
@@ -1551,12 +1552,70 @@ namespace DropNSpawn.Tests
             int literalHash(string text) => text.GetStableHashCode();
         }
 
+        private static Type EwdType(Assembly ewd, string name, bool required = false)
+        {
+            Type type = ewd.GetType(name) ?? ewd.GetType(name
+                .Replace("ExpandWorld.Spawn.", "ExpandWorldData.Spawn.")
+                .Replace("ExpandWorld.Event.", "ExpandWorldData.Event.")
+                .Replace("ExpandWorld.Drops.", "ExpandWorldData.Drop.")
+                .Replace("ExpandWorldData.BlueprintObject", "ExpandWorldData.Data.BlueprintObject"));
+            if (type == null && required) throw new TypeLoadException(name);
+            return type;
+        }
+
+        private static object observedBlueprint;
+        private static UnityEngine.Vector3 observedPosition;
+        private static int blueprintCalls;
+        private static bool ObserveBlueprint(object __0, UnityEngine.Vector3 __1, UnityEngine.Quaternion __2,
+            UnityEngine.Vector3 __3, Delegate __4, Delegate __5, object __6)
+        {
+            blueprintCalls++;
+            observedBlueprint = __0;
+            observedPosition = __1;
+            object data = __0.GetType().GetField("Data").GetValue(__0);
+            Check(ReferenceEquals(__4.DynamicInvoke(data, "fixture"), data) && (string)__5.DynamicInvoke("fixture") == "fixture",
+                "EWD BPO receives unchanged data/prefab transforms");
+            Check(__2.Equals(UnityEngine.Quaternion.identity) && __3.Equals(UnityEngine.Vector3.one) && __6 == null,
+                "EWD BPO receives identity rotation/scale and no collection");
+            return false; // only native object creation is substituted
+        }
+
+        private static void CheckEwdObjectDispatch(Assembly mod, Assembly ewd, object payload, object blueprint)
+        {
+            Type bp = blueprint.GetType();
+            Check(((UnityEngine.Vector3)bp.GetField("Pos").GetValue(blueprint)).Equals(new UnityEngine.Vector3(1, 3, 2)) &&
+                (float)bp.GetField("Chance").GetValue(blueprint) == 1f && !(bool)bp.GetField("SnapToGround").GetValue(blueprint),
+                "opaque Blueprint constructor preserves XZY offsets, chance and snap default");
+            Type create = ewd.GetType("ExpandWorldData.Spawn") ?? ewd.GetType("ExpandWorldData.Create", true);
+            MethodInfo bpo = create.GetMethods(All).Single(method => method.Name == "BPO" && method.GetParameters().Length == 7 &&
+                method.GetParameters()[0].ParameterType == bp && method.GetParameters()[1].ParameterType == typeof(UnityEngine.Vector3));
+            var fixture = new Harmony("DropNSpawn.isolated.blueprint-dispatch");
+            try
+            {
+                fixture.Patch(bpo, prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(ObserveBlueprint)));
+                var point = new UnityEngine.Vector3(10, 20, 30);
+                Type support = mod.GetType("DropNSpawn.SpawnSystemCustomDataSupport", true);
+                var row = new SpawnSystem.SpawnData();
+                support.GetMethod("ApplyPreparedPayload", All).Invoke(null, new[] { row, payload });
+                int before = blueprintCalls;
+                support.GetMethod("SpawnObjects", All).Invoke(null, new object[] { row, point });
+                Check(blueprintCalls == before + 1 && ReferenceEquals(observedBlueprint, blueprint) && observedPosition.Equals(point),
+                    "SpawnSystem opaque delegate dispatches once to original BPO");
+                Type spawner = mod.GetType("DropNSpawn.ExpandWorldSpawnDataSupport", true);
+                object spawnerPayload = spawner.GetMethod("BuildPayload", All).Invoke(null,
+                    new object[] { null, null, null, new List<string> { "Wood,1,2,3,1" }, "spawner fixture" });
+                spawner.GetMethod("SpawnObjects", All).Invoke(null, new[] { (object)point, spawnerPayload });
+                Check(blueprintCalls == before + 2 && observedPosition.Equals(point), "CreatureSpawner/SpawnArea adapter dispatches once");
+            }
+            finally { fixture.UnpatchSelf(); }
+        }
+
         private static void CheckEwdCompatibility(Assembly mod)
         {
             Assembly ewd = Assembly.Load("ExpandWorldData");
-            Type spawnPatcher = ewd.GetType("ExpandWorld.Spawn.Patcher");
+            Type spawnPatcher = EwdType(ewd, "ExpandWorld.Spawn.Patcher");
             if (spawnPatcher == null) return;
-            Type eventPatcher = ewd.GetType("ExpandWorld.Event.Patcher", true);
+            Type eventPatcher = EwdType(ewd, "ExpandWorld.Event.Patcher", true);
             Type configType = ewd.GetType("ExpandWorldData.Configuration", true);
             string configPath = Path.Combine(Path.GetTempPath(), "dns-ewd-mono-" + Guid.NewGuid().ToString("N") + ".cfg");
             var config = new ConfigFile(configPath, false) { SaveOnConfigSet = false };
@@ -1569,8 +1628,9 @@ namespace DropNSpawn.Tests
             MethodInfo spawn = spawnPatcher.GetMethod("Patch");
             MethodInfo events = eventPatcher.GetMethod("Patch");
             Type compat = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
-            bool syncedManagers = ewd.GetType("ExpandWorld.Spawn.SpawnManager") != null;
-            MethodInfo drops = ewd.GetType("ExpandWorld.Drops.Patcher")?.GetMethod("Patch");
+            bool syncedManagers = EwdType(ewd, "ExpandWorld.Spawn.SpawnManager") != null;
+            bool requirementsApi = ewd.GetType("ExpandWorldData.Spawn.Requirements") != null;
+            MethodInfo drops = EwdType(ewd, "ExpandWorld.Drops.Patcher")?.GetMethod("Patch");
             MethodInfo registry = ewd.GetType("ExpandWorldData.Patches")?.GetMethod("Apply");
             Type accelerator = null;
             HashSet<string> passthrough = null;
@@ -1582,7 +1642,7 @@ namespace DropNSpawn.Tests
                     // The new patcher queries native ZNet/Object state even when
                     // features are off. Only the server/client role is a fixture.
                     ewdServer = true;
-                    isolation.Patch(ewd.GetType("ExpandWorldData.Helper", true).GetMethod("IsServer"),
+                    isolation.Patch((ewd.GetType("ExpandWorldData.Helper") ?? ewd.GetType("Service.Helper", true)).GetMethod("IsServer"),
                         prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(EwdServerFixture)));
                 }
                 string acceleratorPath = Path.Combine(Path.GetDirectoryName(typeof(CompatibilityProbe).Assembly.Location), "StartupAccelerator.dll");
@@ -1617,7 +1677,7 @@ namespace DropNSpawn.Tests
                     // Deliberately add an EWD-owned callback outside its registry so
                     // the ownership guard must reject the handoff after refreshing.
                     upstream.Patch(AccessTools.Method(typeof(CompatibilityProbe), nameof(RegistrySentinel)),
-                        prefix: new HarmonyMethod(ewd.GetType("ExpandWorld.Event.EventManager", true).GetMethod("DelayClientLoad", All)));
+                        prefix: new HarmonyMethod(EwdType(ewd, "ExpandWorld.Event.EventManager", true).GetMethod(requirementsApi ? "InitializeServerData" : "DelayClientLoad", All)));
                     bool rejected = false;
                     try { compat.GetMethod("InstallPatches", All).Invoke(null, new object[] { compatibility, ewd, upstream }); }
                     catch (TargetInvocationException error)
@@ -1656,6 +1716,7 @@ namespace DropNSpawn.Tests
                     Check(!HasOwner(typeof(ZNet), "Awake", upstream.Id), "batch flush cannot resurrect removed EWD ownership");
                 }
                 Check(!HasOwner(typeof(SpawnSystem), "Awake", upstream.Id), "DNS removes already-installed EWD spawn lifecycle");
+                if (requirementsApi) CheckAltBiomeRequirements(mod, ewd, upstream);
                 Check(!HasOwner(typeof(RandEventSystem), "FixedUpdate", upstream.Id), "DNS keeps EWD scheduler disabled despite saved true setting");
                 spawn.Invoke(null, new object[] { upstream });
                 events.Invoke(null, new object[] { upstream });
@@ -1673,20 +1734,20 @@ namespace DropNSpawn.Tests
                     // Nonempty tables must not let later refreshes reinstall loot,
                     // spawn customization or numeric-key consumption hooks either.
                     var spawnRow = new SpawnSystem.SpawnData { m_requiredGlobalKey = "fixture 1" };
-                    ewd.GetType("ExpandWorld.Spawn.SpawnManager", true).GetField("Override").SetValue(null,
+                    EwdType(ewd, "ExpandWorld.Spawn.SpawnManager", true).GetField("Override").SetValue(null,
                         new List<SpawnSystem.SpawnData> { spawnRow });
-                    var spawnData = (System.Collections.IDictionary)ewd.GetType("ExpandWorld.Spawn.Loader", true).GetField("Data").GetValue(null);
+                    var spawnData = (System.Collections.IDictionary)EwdType(ewd, "ExpandWorld.Spawn.Loader", true).GetField("Data").GetValue(null);
                     spawnData.Add(spawnRow, Activator.CreateInstance(ewd.GetType("Data.DataEntry", true)));
-                    var dropData = (System.Collections.IDictionary)ewd.GetType("ExpandWorld.Drops.DropManager", true).GetField("DataByHash").GetValue(null);
-                    dropData.Add(1, FormatterServices.GetUninitializedObject(ewd.GetType("ExpandWorld.Drops.Data", true)));
+                    var dropData = (System.Collections.IDictionary)EwdType(ewd, "ExpandWorld.Drops.DropManager", true).GetField("DataByHash").GetValue(null);
+                    dropData.Add(1, Activator.CreateInstance(EwdType(ewd, "ExpandWorld.Drops.Data", true)));
                     spawn.Invoke(null, new object[] { upstream });
                     drops.Invoke(null, new object[] { upstream });
-                    Check(!HasOwner(typeof(SpawnSystem), "Spawn", upstream.Id) && !HasOwner(typeof(ZoneSystem), "RPC_SetGlobalKey", upstream.Id) &&
+                    Check(!HasOwner(typeof(SpawnSystem), "Spawn", upstream.Id) && (requirementsApi || !HasOwner(typeof(ZoneSystem), "RPC_SetGlobalKey", upstream.Id)) &&
                         !HasOwner(typeof(CharacterDrop), "GenerateDropList", upstream.Id) && !HasOwner(typeof(Container), "AddDefaultItems", upstream.Id),
                         "nonempty EWD tables cannot reinstall spawn, key or drop hooks");
                     spawnData.Remove(spawnRow);
                     dropData.Clear();
-                    ewd.GetType("ExpandWorld.Spawn.SpawnManager", true).GetField("Override").SetValue(null, null);
+                    EwdType(ewd, "ExpandWorld.Spawn.SpawnManager", true).GetField("Override").SetValue(null, null);
                     ewdServer = false;
                     events.Invoke(null, new object[] { upstream });
                     Check(!HasOwner(typeof(SpawnSystem), "Awake", upstream.Id) && !HasOwner(typeof(RandEventSystem), "Awake", upstream.Id),
@@ -1694,14 +1755,20 @@ namespace DropNSpawn.Tests
                 }
                 foreach (string domain in syncedManagers ? new[] { "Spawn", "Event", "Drops" } : new[] { "Spawn", "Event" })
                 {
-                    Type manager = ewd.GetType("ExpandWorld." + domain + "." + (syncedManagers ? (domain == "Drops" ? "Drop" : domain) : "") + "Manager", true);
+                    Type manager = EwdType(ewd, "ExpandWorld." + domain + "." + (syncedManagers ? (domain == "Drops" ? "Drop" : domain) : "") + "Manager", true);
                     if (syncedManagers)
                     {
                         foreach (string name in domain == "Spawn" ? new[] { "ReadConfigs", "CreateConfigs", "InitializeData" } :
                             domain == "Event" ? new[] { "ReadConfigs", "CreateConfigs", "DelayClientLoad", "InitializeServerData", "InitializeClientData" } :
                             new[] { "ReadConfigs", "ToReferenceFile", "InitializeData" })
-                            manager.GetMethod(name, All).Invoke(null, null);
-                        Check(!(bool)manager.GetMethod("Set", All).Invoke(null, new object[] { new Dictionary<string, string> { ["invalid.yaml"] = "invalid: [" } }),
+                            {
+                            MethodInfo method = manager.GetMethod(name, All);
+                            if (method != null) method.Invoke(null, null);
+                            else Check(requirementsApi && (name == "InitializeData" || name == "DelayClientLoad" || name == "InitializeClientData"),
+                                "only replaced lifecycle entrypoints may be absent");
+                        }
+                        object setResult = manager.GetMethod("Set", All).Invoke(null, new object[] { new Dictionary<string, string> { ["invalid.yaml"] = "invalid: [" } });
+                        Check(setResult is bool ? !(bool)setResult : setResult.ToString() == "Failed",
                             "EWD " + domain + " Set rejects without publishing data");
                         if (domain == "Spawn") manager.GetMethod("InitializeSpawnSystem", All).Invoke(null, new object[] { null });
                     }
@@ -1715,15 +1782,15 @@ namespace DropNSpawn.Tests
                     if (domain != "Drops") manager.GetMethod(domain == "Spawn" ? "ApplySpawnData" : "ApplyTiming", All).Invoke(null, new object[] { null });
                     Check(true, "EWD " + domain + " direct/reload/sync entrypoints skipped without scene access");
                 }
-                Type dtoType = ewd.GetType("ExpandWorld.Spawn.Data", true);
+                Type dtoType = EwdType(ewd, "ExpandWorld.Spawn.Data", true);
                 object dto = Activator.CreateInstance(dtoType);
                 dtoType.GetField("drops").SetValue(dto, "test_drop");
-                object customData = ewd.GetType("ExpandWorld.Spawn.LoaderFields", true).GetMethod("HandleCustomData")
+                object customData = EwdType(ewd, "ExpandWorld.Spawn.LoaderFields", true).GetMethod("HandleCustomData")
                     .Invoke(null, new[] { dto, (object)new SpawnSystem.SpawnData() });
                 Check(customData == null, "EWD drop conversion is disabled despite saved true setting");
                 Check((string)dtoType.GetField("drops").GetValue(dto) == "test_drop", "EWD source drop definition is not mutated");
                 dtoType.GetField("faction").SetValue(dto, "AnimalsVeg");
-                customData = ewd.GetType("ExpandWorld.Spawn.LoaderFields", true).GetMethod("HandleCustomData")
+                customData = EwdType(ewd, "ExpandWorld.Spawn.LoaderFields", true).GetMethod("HandleCustomData")
                     .Invoke(null, new[] { dto, (object)new SpawnSystem.SpawnData() });
                 Check(customData != null && customData.GetType().GetField("Hashes").GetValue(customData) == null &&
                     customData.GetType().GetField("Strings").GetValue(customData) != null, "EWD faction data survives while drop hashes stay absent");
@@ -1737,6 +1804,83 @@ namespace DropNSpawn.Tests
                 upstream.UnpatchSelf();
                 if (accelerator != null) StopStartupAccelerator(accelerator);
                 isolation.UnpatchSelf();
+            }
+        }
+
+        private static readonly List<string> altBiomeMutations = new List<string>();
+        private static bool RecordAltBiomeMutation(string __0) { altBiomeMutations.Add(__0); return false; }
+        private static bool DisableSpawnOverride(ref bool __result) { __result = false; return false; }
+
+        private static void CheckAltBiomeRequirements(Assembly mod, Assembly ewd, Harmony upstream)
+        {
+            Type compat = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
+            Type loader = ewd.GetType("ExpandWorldData.Spawn.Loader", true);
+            Type requirements = ewd.GetType("ExpandWorldData.Spawn.Requirements", true);
+            Type alt = ewd.GetType("ExpandWorldData.AltBiomes.AltBiomeManager", true);
+            FieldInfo active = alt.GetField("Active", All);
+            object savedActive = active.GetValue(null);
+            var row = new SpawnSystem.SpawnData();
+            object conditions = Activator.CreateInstance(requirements);
+            requirements.GetField("Keys").SetValue(conditions, new List<string[]> { new[] { "token 2", "other 1" }, new[] { "token 1" } });
+            requirements.GetField("Environments").SetValue(conditions, new List<string[]> { new[] { "Clear" } });
+            foreach (string field in new[] { "Locations", "Objects" })
+                requirements.GetField(field).SetValue(conditions, Activator.CreateInstance(requirements.GetField(field).FieldType));
+            var map = (System.Collections.IDictionary)loader.GetField("Requirements").GetValue(null);
+            map.Add(row, conditions);
+            object altBiome = Activator.CreateInstance(active.FieldType.GetGenericArguments()[0]);
+            altBiome.GetType().GetField("m_spawn").SetValue(altBiome, new List<SpawnSystem.SpawnData> { row });
+            var activeRows = (System.Collections.IList)Activator.CreateInstance(active.FieldType);
+            activeRows.Add(altBiome);
+            active.SetValue(null, activeRows);
+            FieldInfo zoneInstance = AccessTools.Field(typeof(ZoneSystem), "s_instance");
+            object savedZone = zoneInstance.GetValue(null);
+            var zone = (ZoneSystem)FormatterServices.GetUninitializedObject(typeof(ZoneSystem));
+            zone.m_globalKeysValues = new Dictionary<string, string> { ["token"] = "10" };
+            zoneInstance.SetValue(null, zone);
+            bool savedNoSpawn = SpawnSystem.m_nospawn;
+            var fixture = new Harmony("DropNSpawn.isolated.altbiome-requirements");
+            MethodInfo refresh = ewd.GetType("ExpandWorldData.Spawn.Patcher", true).GetMethod("Patch");
+            try
+            {
+                compat.GetMethod("CaptureSpawnData", All).Invoke(null, new[] { Activator.CreateInstance(ewd.GetType("ExpandWorldData.Spawn.Data", true)), (object)row });
+                fixture.Patch(compat.GetMethod("ConsumeAltBiomeKeys", All), transpiler: new HarmonyMethod(typeof(CompatibilityProbe), nameof(IsolateTimerIdentity)));
+                fixture.Patch(mod.GetType("DropNSpawn.PluginSettingsFacade", true).GetMethod("IsSpawnSystemDomainEnabled", All),
+                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(DisableSpawnOverride)));
+                fixture.Patch(AccessTools.Method(typeof(ZoneSystem), "SetGlobalKey", new[] { typeof(string) }),
+                    prefix: new HarmonyMethod(typeof(CompatibilityProbe), nameof(RecordAltBiomeMutation)));
+                refresh.Invoke(null, new object[] { upstream });
+                Check(HasOwner(typeof(SpawnSystem), "UpdateSpawnList", upstream.Id) && HasOwner(typeof(SpawnSystem), "IsSpawnPointGood", upstream.Id),
+                    "real EWD refresh retains AltBiome keys/weather/location/object checks");
+                Check(!HasOwner(typeof(SpawnSystem), "Spawn", upstream.Id), "EWD Consume is not also registered as a spawn postfix");
+                fixture.CreateClassProcessor(mod.GetType("DropNSpawn.SpawnSystemTimerPatch", true)).Patch();
+                Check(Harmony.GetPatchInfo(AccessTools.Method(typeof(SpawnSystem), "UpdateSpawnList")).Transpilers.Count == 3,
+                    "DNS timer transpiler composes with both EWD requirement transpilers");
+                MethodInfo requiredKey = requirements.GetMethod("RequiredKey", All);
+                Check((string)requiredKey.Invoke(null, new object[] { row }) == row.m_requiredGlobalKey, "EWD AND/OR numeric requirements accept enough keys");
+                zone.m_globalKeysValues["token"] = "0";
+                Check((string)requiredKey.Invoke(null, new object[] { row }) == "ewd_requirement_failed", "EWD AND/OR numeric requirements reject insufficient keys");
+                zone.m_globalKeysValues["token"] = "10";
+                Type patch = mod.GetType("DropNSpawn.SpawnSystemSpawnPatch", true);
+                object[] args = { row, UnityEngine.Vector3.zero, false };
+                patch.GetMethod("Prefix", All).Invoke(null, args);
+                Check((bool)args[2], "requirements-only AltBiome participates with DNS override Off");
+                altBiomeMutations.Clear(); SpawnSystem.m_nospawn = false;
+                patch.GetMethod("Postfix", All).Invoke(null, args);
+                Check(altBiomeMutations.SequenceEqual(new[] { "token --2", "token --1" }), "EWD consumes one successful numeric alternative per row exactly once");
+                SpawnSystem.m_nospawn = true;
+                patch.GetMethod("Postfix", All).Invoke(null, args);
+                Check(altBiomeMutations.Count == 2, "nospawn preserves keys even with delegated EWD consumption");
+                var ordinary = new SpawnSystem.SpawnData { m_requiredGlobalKey = "token 2" };
+                Check(!(bool)compat.GetMethod("HasAltBiomeKeyConsumer", All).Invoke(null, new object[] { ordinary }), "normal DNS rows retain DNS key policy");
+                compat.GetMethod("CaptureSpawnData", All).Invoke(null, new[] { Activator.CreateInstance(ewd.GetType("ExpandWorldData.Spawn.Data", true)), (object)ordinary });
+                Check(!(bool)compat.GetMethod("HasAltBiomeKeyConsumer", All).Invoke(null, new object[] { ordinary }), "simple AltBiome native keys retain existing DNS enabled/disabled policy");
+            }
+            finally
+            {
+                active.SetValue(null, savedActive); map.Remove(row); zoneInstance.SetValue(null, savedZone);
+                SpawnSystem.m_nospawn = savedNoSpawn;
+                fixture.UnpatchSelf();
+                refresh.Invoke(null, new object[] { upstream });
             }
         }
 
