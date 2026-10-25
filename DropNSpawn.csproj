@@ -572,6 +572,7 @@
         <Compile Include="SpawnSystemCanonicalModel.cs"/>
         <Compile Include="SpawnSystemCustomDataSupport.cs"/>
         <Compile Include="SpawnSystemManager.cs"/>
+        <Compile Include="SpawnSystemManager.Intervals.cs"/>
         <Compile Include="SpawnSystemManager.OutputFormatting.cs"/>
         <Compile Include="SpawnSystemManager.OutputWriter.cs"/>
         <Compile Include="SpawnSystemManager.CompiledTables.cs"/>

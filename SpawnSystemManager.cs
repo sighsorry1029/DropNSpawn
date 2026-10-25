@@ -35,7 +35,7 @@ internal static partial class SpawnSystemManager
             InitializeRuntime = Initialize,
             OnGameDataReady = OnGameDataReady,
             HandleExpandWorldDataReady = HandleExpandWorldDataReady,
-            DtoVersion = 4,
+            DtoVersion = 5,
             TransportProfile = DomainTransportProfile.LargeWithArtifacts,
             DisplayName = "spawnsystem",
             CacheDirectoryName = "spawnsystem",
@@ -298,7 +298,7 @@ internal static partial class SpawnSystemManager
     internal static bool ShouldReloadForPath(string? path)
     {
         return PluginSettingsFacade.IsEligibleOverrideConfigurationPath(path) &&
-               IsOverrideConfigurationFileName(Path.GetFileName(path ?? ""));
+               (IsOverrideConfigurationFileName(Path.GetFileName(path ?? "")) || IsSpawnIntervalsPath(path));
     }
 
     private static bool ShouldApplyLocally()
@@ -416,6 +416,8 @@ internal static partial class SpawnSystemManager
             bool hadPendingValidation = LoadState.PendingStrictPayload.Length > 0;
             bool hadDeferredWork = DeferredBiomeState.HasWork;
 
+            // Re-expand source masks (including All), not already materialized child rows.
+            LoadState.PendingStrictPayload = LoadState.LastLoadedPayload;
             LoadConfiguration();
             ApplyIfReady(queueEspRefreshForLiveSystems: true, queueLiveSystemAttach: true);
 
@@ -535,6 +537,7 @@ internal static partial class SpawnSystemManager
 
     private static void HandleSourceOfTruthGameDataReady()
     {
+        EnsureSpawnIntervalsFileExists();
         EnsurePrimaryOverrideConfigurationFileExists();
         LoadConfiguration();
         EnsureReferenceArtifactsUpToDate();
@@ -625,7 +628,7 @@ internal static partial class SpawnSystemManager
         if (DropNSpawnPlugin.IsSourceOfTruth)
         {
             ConfigurationRuntime.ReloadSourceOfTruth(
-                EnumerateOverrideConfigurationPaths().ToList());
+                EnumerateOverrideConfigurationPaths().Concat(EnumerateSpawnIntervalsPaths()).ToList());
             return;
         }
 
@@ -707,17 +710,19 @@ internal static partial class SpawnSystemManager
     private static LocalLoadResult<SpawnSystemConfigurationEntry> ParseLocalConfigurationDocuments(
         List<ConfigurationLoadSupport.LocalYamlDocument> documents)
     {
-        return ConfigurationLoadSupport.ParseLocalConfigurationDocuments(
-            documents,
+        LocalLoadResult<SpawnSystemConfigurationEntry> result = ConfigurationLoadSupport.ParseLocalConfigurationDocuments(
+            documents.Where(document => !IsSpawnIntervalsPath(document.Path)).ToList(),
             ParseConfiguration,
             (configuration, path, _) => CloneAndNormalizeConfigurationEntries(configuration, path),
             FormatYamlExceptionLocation,
-            "Spawnsystem authoritative YAML must use a root list with an optional first '- spawnIntervalMultiplier: 2.0' header followed by entries like '- prefab: Fox'.");
+            "Spawnsystem authoritative YAML must use a root list of entries like '- prefab: Fox'.");
+        ApplyLocalSpawnIntervals(result, documents.Where(document => IsSpawnIntervalsPath(document.Path)).ToList());
+        return result;
     }
 
     private static bool CanStrictlyValidateLocalConfigurationNow(IEnumerable<SpawnSystemConfigurationEntry> configuration)
     {
-        return ZNetScene.instance != null &&
+        return configuration is not WaitingForIntervalBiomes && ZNetScene.instance != null &&
                ObjectDB.instance != null &&
                !ShouldDeferForExpandWorldDataBiomeReady(configuration);
     }
@@ -918,8 +923,6 @@ internal static partial class SpawnSystemManager
                 "Spawnsystem authoritative YAML root must be a sequence.");
         }
 
-        float spawnIntervalMultiplier = 1f;
-        YamlMappingNode? multiplierHeader = null;
         for (int index = 0; index < sequence.Children.Count; index++)
         {
             YamlNode node = sequence.Children[index];
@@ -930,27 +933,11 @@ internal static partial class SpawnSystemManager
                 continue;
             }
 
-            if (TryGetSpawnIntervalMultiplierHeaderValue(mappingNode, out YamlNode? multiplierValue))
+            if (mappingNode.Children.Keys.OfType<YamlScalarNode>().Any(key =>
+                    string.Equals(key.Value, SpawnIntervalMultiplierHeaderKey, StringComparison.OrdinalIgnoreCase)))
             {
-                if (index != 0)
-                {
-                    throw new YamlException(
-                        mappingNode.Start,
-                        mappingNode.End,
-                        $"'{SpawnIntervalMultiplierHeaderKey}' must be the first item in a spawnsystem override file.");
-                }
-
-                if (mappingNode.Children.Count != 1)
-                {
-                    throw new YamlException(
-                        mappingNode.Start,
-                        mappingNode.End,
-                        $"The '{SpawnIntervalMultiplierHeaderKey}' header cannot contain prefab or other entry fields.");
-                }
-
-                spawnIntervalMultiplier = ParseSpawnIntervalMultiplier(multiplierValue!);
-                multiplierHeader = mappingNode;
-                continue;
+                throw new YamlException(mappingNode.Start, mappingNode.End,
+                    $"'{SpawnIntervalMultiplierHeaderKey}' is no longer supported. Remove the header and configure biome multipliers in DNS_spawnintervals.yml instead.");
             }
 
             if (index == 0 &&
@@ -961,7 +948,7 @@ internal static partial class SpawnSystemManager
                 throw new YamlException(
                     mappingNode.Start,
                     mappingNode.End,
-                    $"Unrecognized first spawnsystem list item '{firstKey.Value}'. Use '- {SpawnIntervalMultiplierHeaderKey}: 2.0' or start with a prefab entry.");
+                    $"Unrecognized first spawnsystem list item '{firstKey.Value}'. Start with a prefab entry.");
             }
 
             try
@@ -980,34 +967,7 @@ internal static partial class SpawnSystemManager
             }
         }
 
-        if (multiplierHeader != null && spawnIntervalMultiplier != 1f)
-        {
-            MaterializeSpawnIntervalMultiplier(
-                result.Configuration,
-                spawnIntervalMultiplier,
-                multiplierHeader,
-                sourcePath);
-        }
-
         return result;
-    }
-
-    private static bool TryGetSpawnIntervalMultiplierHeaderValue(
-        YamlMappingNode mappingNode,
-        out YamlNode? valueNode)
-    {
-        foreach (KeyValuePair<YamlNode, YamlNode> child in mappingNode.Children)
-        {
-            if (child.Key is YamlScalarNode scalar &&
-                string.Equals(scalar.Value, SpawnIntervalMultiplierHeaderKey, StringComparison.OrdinalIgnoreCase))
-            {
-                valueNode = child.Value;
-                return true;
-            }
-        }
-
-        valueNode = null;
-        return false;
     }
 
     private static bool IsSpawnSystemEntryTopLevelKey(string? key)
@@ -1015,68 +975,6 @@ internal static partial class SpawnSystemManager
         return string.Equals(key, "prefab", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(key, "enabled", StringComparison.OrdinalIgnoreCase) ||
                string.Equals(key, "spawnSystem", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static float ParseSpawnIntervalMultiplier(YamlNode valueNode)
-    {
-        float? multiplier;
-        try
-        {
-            multiplier = Deserializer.Deserialize<float?>(SerializeYamlNode(valueNode));
-        }
-        catch (Exception ex)
-        {
-            throw new YamlException(
-                valueNode.Start,
-                valueNode.End,
-                $"'{SpawnIntervalMultiplierHeaderKey}' must be a finite number greater than zero. {FormatEntryParseFailure(ex)}");
-        }
-
-        if (!multiplier.HasValue ||
-            float.IsNaN(multiplier.Value) ||
-            float.IsInfinity(multiplier.Value) ||
-            multiplier.Value <= 0f)
-        {
-            throw new YamlException(
-                valueNode.Start,
-                valueNode.End,
-                $"'{SpawnIntervalMultiplierHeaderKey}' must be a finite number greater than zero.");
-        }
-
-        return multiplier.Value;
-    }
-
-    private static void MaterializeSpawnIntervalMultiplier(
-        IEnumerable<SpawnSystemConfigurationEntry> configuration,
-        float multiplier,
-        YamlMappingNode header,
-        string? sourcePath)
-    {
-        float defaultSpawnInterval = new SpawnSystem.SpawnData().m_spawnInterval;
-        foreach (SpawnSystemConfigurationEntry entry in configuration)
-        {
-            float configuredSpawnInterval = entry.SpawnSystem?.SpawnInterval ?? defaultSpawnInterval;
-            float scaledSpawnInterval = configuredSpawnInterval * multiplier;
-            if (float.IsNaN(scaledSpawnInterval) || float.IsInfinity(scaledSpawnInterval))
-            {
-                string entryName = entry.Prefab ?? entry.SpawnSystem?.Name ?? "(unnamed)";
-                string entryLocation = string.IsNullOrWhiteSpace(sourcePath)
-                    ? "inline YAML"
-                    : Path.GetFileName(sourcePath);
-                if (entry.SourceLine is int sourceLine && sourceLine > 0)
-                {
-                    entryLocation = $"{entryLocation}:{sourceLine.ToString(CultureInfo.InvariantCulture)}";
-                }
-
-                throw new YamlException(
-                    header.Start,
-                    header.End,
-                    $"'{SpawnIntervalMultiplierHeaderKey}' produced a non-finite spawn interval for entry '{entryName}' at {entryLocation}.");
-            }
-
-            entry.SpawnSystem ??= new SpawnSystemSpawnDefinition();
-            entry.SpawnSystem.SpawnInterval = Math.Max(0.01f, scaledSpawnInterval);
-        }
     }
 
     private static string SerializeYamlNode(YamlNode node)

@@ -74,6 +74,14 @@ namespace DropNSpawn.Tests
             int ruleTag = (int)dungeon.GetField("RuleTag", All).GetValue(null);
             Check(ZDOExtraData.GetAllZDOIDsWithHash(ZDOExtraData.Type.String, ruleTag) != null, "original public ZDO metadata lookup for unloaded dungeon cap restore");
             CheckDungeonRpcLifecycle(dungeon);
+            // Configure the optional dependency before the interval fixture first
+            // initializes cached biome accessors. Keep ServerSync startup queued.
+            var threading = (BepInEx.ThreadingHelper)FormatterServices.GetUninitializedObject(typeof(BepInEx.ThreadingHelper));
+            AccessTools.Field(typeof(BepInEx.ThreadingHelper), "_invokeLock").SetValue(threading, new object());
+            AccessTools.PropertySetter(typeof(BepInEx.ThreadingHelper), "Instance").Invoke(null, new object[] { threading });
+            string ewdPath = Path.Combine(testRoot, "ExpandWorldData.dll");
+            Type compatibilityType = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
+            compatibilityType.GetMethod("ConfigureDependency", All).Invoke(null, new object[] { File.Exists(ewdPath) ? Assembly.LoadFrom(ewdPath) : null });
             CheckSpawnSystemTimers(mod);
             ChanceScalingFixture.Run(mod);
             checks += LootPriorityProbe.Run(mod);
@@ -135,14 +143,6 @@ namespace DropNSpawn.Tests
                 ItemDrop.OnCreateNew(item, cheated);
                 Check(item.m_itemData.m_cheated == cheated && item.m_itemData.m_worldLevel == 2, "game item provenance " + cheated);
             }
-            // EWD's managed initializer queues ServerSync startup. Keep that queue
-            // pending: full BepInEx/Unity/network startup is outside this probe.
-            var threading = (BepInEx.ThreadingHelper)FormatterServices.GetUninitializedObject(typeof(BepInEx.ThreadingHelper));
-            AccessTools.Field(typeof(BepInEx.ThreadingHelper), "_invokeLock").SetValue(threading, new object());
-            AccessTools.PropertySetter(typeof(BepInEx.ThreadingHelper), "Instance").Invoke(null, new object[] { threading });
-            string ewdPath = Path.Combine(testRoot, "ExpandWorldData.dll");
-            Type compatibilityType = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
-            compatibilityType.GetMethod("ConfigureDependency", All).Invoke(null, new object[] { File.Exists(ewdPath) ? Assembly.LoadFrom(ewdPath) : null });
             CheckEpicLootInstantCompatibility(mod, Path.Combine(testRoot, "EpicLoot.dll"));
             CheckCreatureSpawnerLimits(mod);
             if (File.Exists(ewdPath))
@@ -152,6 +152,7 @@ namespace DropNSpawn.Tests
                 CheckEwdCompatibility(mod);
             }
             else CheckStandalone(mod);
+            checks += SpawnIntervalProbe.Run(mod);
         }
 
         private static bool dungeonNetEnabled, dungeonSceneEnabled;
@@ -279,6 +280,30 @@ namespace DropNSpawn.Tests
                 Check(Attempts(now, true, "unlimited_") == 1,
                     "native unlimited-count rules retain the one-attempt catch-up cap");
                 first.m_maxSpawned = 2; second.m_enabled = true;
+
+                // Feed production-generated interval rows into the original game loop.
+                object intervalEntry = Activator.CreateInstance(entryType), intervalDefinition = Activator.CreateInstance(definitionType);
+                entryType.GetProperty("Prefab").SetValue(intervalEntry, "Wolf");
+                entryType.GetProperty("SpawnSystem").SetValue(intervalEntry, intervalDefinition);
+                definitionType.GetProperty("Biomes").SetValue(intervalDefinition, new List<string> { "Meadows", "BlackForest" });
+                definitionType.GetProperty("SpawnInterval").SetValue(intervalDefinition, 60f);
+                var intervalEntries = (System.Collections.IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(entryType));
+                intervalEntries.Add(intervalEntry);
+                var intervalPolicy = new Dictionary<Heightmap.Biome, float> { [Heightmap.Biome.Meadows] = 0.5f, [Heightmap.Biome.BlackForest] = 2f };
+                var children = (System.Collections.IList)manager.GetMethod("MaterializeSpawnIntervals", All).Invoke(null, new object[] { intervalEntries, intervalPolicy });
+                Array childIds = (Array)timers.GetMethod("CreateIds", All).Invoke(null, new object[] { children });
+                object oldConfiguredIds = configuredIds;
+                configuredIds = Activator.CreateInstance(typeof(HashSet<>).MakeGenericType(idType), new object[] { childIds });
+                rows[first] = childIds.GetValue(0); rows[second] = childIds.GetValue(1);
+                first.m_spawnInterval = (float)definitionType.GetProperty("SpawnInterval").GetValue(entryType.GetProperty("SpawnSystem").GetValue(children[0]));
+                second.m_spawnInterval = (float)definitionType.GetProperty("SpawnInterval").GetValue(entryType.GetProperty("SpawnSystem").GetValue(children[1]));
+                Attach();
+                Check(Attempts(now.AddSeconds(4000)) == 5 && Attempts(now.AddSeconds(4029)) == 0 &&
+                    Attempts(now.AddSeconds(4030)) == 1 && Attempts(now.AddSeconds(4120)) == 3,
+                    "production 30/120-second split rows retain native first-check timing and independent due/catch-up checks");
+                configuredIds = oldConfiguredIds;
+                rows[first] = ids.GetValue(0); rows[second] = ids.GetValue(1);
+                first.m_spawnInterval = 1500; second.m_spawnInterval = 3000;
 
                 // Separate fresh ZDO for the batch/save/ownership fixtures below.
                 zdo = (ZDO)FormatterServices.GetUninitializedObject(typeof(ZDO));

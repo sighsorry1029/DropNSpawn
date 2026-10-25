@@ -5,10 +5,8 @@ internal static partial class ExampleContentWriter
     private const string SpawnSystemContent = @"# SpawnSystem-domain coexistence samples.
 # Safe here as a .sample.yml file. Copy rows into DNS_spawnsystem.yml one by one.
 # IMPORTANT: spawnsystem overrides replace the live world spawn table with the rows you load.
-# Every loaded entry becomes its own native SpawnSystem row.
-# Optional first item for this file only:
-# - spawnIntervalMultiplier: 2.0
-# The multiplier must be greater than zero. 0.5 makes checks more frequent; 2.0 makes them less frequent.
+# Biome-wide interval multipliers go in DNS_spawnintervals.yml (e.g. Meadows: 0.5).
+# Different biome multipliers split a row internally; equal multipliers remain grouped.
 
 - prefab: Boar
   enabled: true

@@ -16,6 +16,10 @@ internal sealed class CanonicalSpawnSystemEntry
     [YamlIgnore]
     public string RuleId { get; set; } = "";
 
+    // Retain the original whole-row global-key filter when interval policy splits its mask.
+    [YamlIgnore]
+    public bool LowTierGlobalKeySource { get; set; }
+
     [YamlIgnore]
     public string? SourcePath { get; set; }
 

@@ -73,6 +73,7 @@ internal static partial class NetworkPayloadSyncSupport
             StringField<CanonicalSpawnSystemEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value),
             BoolField<CanonicalSpawnSystemEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value),
             OptionalField<CanonicalSpawnSystemEntry, SpawnSystemSpawnDefinition>(entry => entry.SpawnSystem, (entry, value) => entry.SpawnSystem = value, SpawnSystemSpawnValueCodec),
+            BoolField<CanonicalSpawnSystemEntry>(entry => entry.LowTierGlobalKeySource, (entry, value) => entry.LowTierGlobalKeySource = value, context => context.IncludeResolvedBiomeMask),
             CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourcePath = source.SourcePath),
             CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceLine = source.SourceLine),
             CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceColumn = source.SourceColumn),

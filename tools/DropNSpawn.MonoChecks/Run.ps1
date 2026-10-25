@@ -28,7 +28,7 @@ $references = @('mscorlib.dll','System.dll','System.Core.dll') | ForEach-Object 
 if ($LASTEXITCODE) { throw 'Mono host compilation failed.' }
 $gameReferences = @('assembly_valheim.dll','assembly_utils.dll','assembly_guiutils.dll','UnityEngine.CoreModule.dll','UnityEngine.PhysicsModule.dll','netstandard.dll') | ForEach-Object { '/reference:' + (Join-Path $managed $_) }
 $libraryReferences = @('0Harmony.dll','BepInEx.dll') | ForEach-Object { '/reference:' + (Join-Path $core $_) }
-& dotnet $compiler /nologo /noconfig /nostdlib+ /langversion:latest @references @gameReferences @libraryReferences /target:library "/out:$probe" "$PSScriptRoot/CompatibilityProbe.cs" "$PSScriptRoot/LootPriorityProbe.cs" "$PSScriptRoot/ObjectSnapshotProbe.cs"
+& dotnet $compiler /nologo /noconfig /nostdlib+ /langversion:latest @references @gameReferences @libraryReferences /target:library "/out:$probe" "$PSScriptRoot/CompatibilityProbe.cs" "$PSScriptRoot/LootPriorityProbe.cs" "$PSScriptRoot/ObjectSnapshotProbe.cs" "$PSScriptRoot/SpawnIntervalProbe.cs"
 if ($LASTEXITCODE) { throw 'Mono probe compilation failed.' }
 $isolatedMod = Join-Path $directory 'DropNSpawn.dll'
 Copy-Item -LiteralPath $ModDll -Destination $isolatedMod

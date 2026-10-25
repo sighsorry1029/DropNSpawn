@@ -1,3 +1,12 @@
+## 1.4.9 — Biome-wide SpawnSystem intervals
+
+- Add server-owned, live-reloaded `DNS_spawnintervals.yml`: use a flat mapping such as `Meadows: 0.5` and `BlackForest: 2.0` to scale normal SpawnSystem intervals across all override files. The generated file defaults to `{}`; omitted biomes use 1.0. Multipliers must be finite and greater than zero, and decimal seconds are preserved with a 0.01-second minimum.
+- Support registered EWD custom biome names and wait for biome registration before accepting unresolved policies. Reparse source rules when EWD becomes ready. Invalid values, unknown names after registration, duplicate biome aliases/files and overflowing intervals reject the reload while retaining the last accepted live configuration.
+- Split multi-biome rules internally when their multipliers differ; equal multipliers stay grouped. Preserve names, other conditions, native population/group behavior and the original low-tier/global-key filter scope. Mixed-biome zones can run independent timers. Explicit child biome names prevent `All` from widening a vanilla-only group back into custom biomes.
+- Apply multipliers once on the server and synchronize the effective rows. Event, dungeon, CreatureSpawner/SpawnArea and EWD's separate AltBiome spawn lists are unchanged. No-effect policies preserve timer identities; changing a multiplier or split group updates the affected content-based IDs with normal first-check behavior. Timer storage format is unchanged.
+- **Breaking YAML change:** remove every active `- spawnIntervalMultiplier: ...` header from SpawnSystem override files. The old per-file feature is removed and remaining headers reject the reload; there is no automatic migration. Use biome multipliers or per-entry base intervals instead. SpawnSystem synchronization advances from DTO 4 to 5: update the server and all clients to **1.4.9** together and restart.
+- Add original-DLL managed and isolated Unity Mono checks for splitting, custom biome name/bit mapping, transport, timer scheduling, registration readiness and failed-reload preservation. Actual multiplayer synchronization, mixed-biome placement and ESP display remain in-game verification steps.
+
 ## 1.4.8 — Expand World Data API compatibility
 
 - Support EWD's reorganized data, blueprint, spawn, event, drop, biome, command and location APIs, including the supplied EWD 1.79. Select compatible types and exact signatures rather than plugin/assembly version numbers; reject incomplete integrations instead of silently allowing overlapping ownership.

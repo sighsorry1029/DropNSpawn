@@ -78,19 +78,23 @@ Both `.yml` and `.yaml` are supported. Loaded names are `DNS_<domain>` and `DNS_
 
 For dungeon spawn troubleshooting, temporarily set `5 - Diagnostics` → `Dungeon spawn diagnostics = On` in the server's and reproducing clients' local cfg. It defaults to `Off`, is not synchronized, and logs bounded `[DungeonDiag]` summaries every 30 seconds without changing spawn conditions. See the [diagnostic instructions](https://github.com/sighsorry1029/DropNSpawn/blob/main/docs/dungeon-spawns.md#diagnosing-missing-spawns).
 
-### Scale spawn intervals per file
+### Scale spawn intervals by biome
 
-Place this optional header before all prefab entries in a SpawnSystem override file:
+Edit the server's `DNS_spawnintervals.yml` beside the other DNS YAML files:
 
 ```yaml
-- spawnIntervalMultiplier: 2.0
-
-- prefab: Deer
-  spawnSystem:
-    spawnInterval: 36
+Meadows: 0.5
+BlackForest: 2.0
+# MyCustomBiome: 0.75
 ```
 
-This sets an effective interval of **72 seconds**. `0.5` halves intervals; `2.0` doubles them. The multiplier must be finite and greater than zero, defaults to `1.0`, and affects only that file—not event spawns. Decimal intervals are preserved. Keep the other world spawn rows you want; this is only a header example.
+Each multiplier applies to the base `spawnInterval` of all loaded normal SpawnSystem rules for that biome, across files. A 60-second Meadows/BlackForest rule becomes a 30-second Meadows row and a 120-second BlackForest row internally. Equal multipliers stay grouped; other conditions, names and prefab limits are retained. Mixed-biome zones can run both timers, so this is not just a faster/slower shared timer.
+
+Omitted biomes use `1.0`; an empty mapping (`{}`), empty file or missing file applies no scaling. Values must be finite and greater than zero. Decimal seconds are preserved (`36 × 0.1 = 3.6`), with a minimum effective interval of 0.01 seconds. Use individual biome names, including registered **EWD custom biome names**, not `All`, `Land`, `None` or numeric masks. Only one policy file is allowed (`.yml` or `.yaml`). Duplicate aliases, unknown names after registration, invalid values and overflowing intervals reject the reload and retain the last accepted configuration.
+
+Changes reload live and are applied once on the server; clients receive the effective rows. Update DNS on **both server and clients**. Event, dungeon, CreatureSpawner/SpawnArea and EWD's separate AltBiome spawn lists are unaffected. Native prefab counting, group-spawn and catch-up behavior remain in use; splitting does not create an independent population allowance per biome or a new strict population cap.
+
+The old per-file `- spawnIntervalMultiplier: ...` header has been removed. Delete it manually; a remaining header rejects the reload. There is no migration. Use per-entry base intervals for exceptions that previously depended on separate files. Generated reference/scaffold rows show source values, not policy-expanded rows. Changing a multiplier or split group changes the affected content-based timer IDs, using the same first-check behavior as editing a spawn rule.
 
 World-spawn timers use internal content-based IDs: no `name` or `timerId` is required, and different rules for the same prefab remain independent. Reordering rows or moving them between files preserves timers when their parsed settings stay the same. New or edited rules use vanilla first-check timing, without an extra full-interval wait; existing saved timers keep their progress. DNS stores these timers together and removes retired records as zones are processed. Old timers are **not migrated or deleted**, so existing save warnings may remain. Event and AltBiome timers are unchanged; update DNS on both the server and all clients.
 

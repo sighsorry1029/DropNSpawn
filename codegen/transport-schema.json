@@ -177,6 +177,7 @@
         { "expression": "StringField<CanonicalSpawnSystemEntry>(entry => entry.Prefab, (entry, value) => entry.Prefab = value)" },
         { "expression": "BoolField<CanonicalSpawnSystemEntry>(entry => entry.Enabled, (entry, value) => entry.Enabled = value)" },
         { "expression": "OptionalField<CanonicalSpawnSystemEntry, SpawnSystemSpawnDefinition>(entry => entry.SpawnSystem, (entry, value) => entry.SpawnSystem = value, SpawnSystemSpawnValueCodec)" },
+        { "expression": "BoolField<CanonicalSpawnSystemEntry>(entry => entry.LowTierGlobalKeySource, (entry, value) => entry.LowTierGlobalKeySource = value, context => context.IncludeResolvedBiomeMask)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourcePath = source.SourcePath)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceLine = source.SourceLine)" },
         { "expression": "CopyOnlyField<CanonicalSpawnSystemEntry>((source, target) => target.SourceColumn = source.SourceColumn)" },

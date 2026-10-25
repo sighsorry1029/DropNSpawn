@@ -22,7 +22,7 @@ internal static partial class SpawnSystemManager
             static entry => entry.Entry);
     }
 
-    private static bool ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(SpawnSystem.SpawnData data)
+    private static bool ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(SpawnSystem.SpawnData data, bool lowTierSource)
     {
         if (!PluginSettingsFacade.ShouldDisableLowTierBiomeGlobalKeySpawnSystemEntries())
         {
@@ -34,7 +34,7 @@ internal static partial class SpawnSystemManager
             return false;
         }
 
-        return (data.m_biome & LowTierBiomeGlobalKeySpawnSystemFilter) != Heightmap.Biome.None;
+        return lowTierSource || (data.m_biome & LowTierBiomeGlobalKeySpawnSystemFilter) != Heightmap.Biome.None;
     }
 
     private static void QueuePreparedEntriesBuildLocked(
@@ -257,7 +257,7 @@ internal static partial class SpawnSystemManager
             cachedEntry != null &&
             cachedEntry.GameDataSignature == gameDataSignature)
         {
-            if (ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(cachedEntry.Data))
+            if (ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(cachedEntry.Data, model.Entry.LowTierGlobalKeySource))
             {
                 return false;
             }
@@ -279,7 +279,7 @@ internal static partial class SpawnSystemManager
             return false;
         }
 
-        if (ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(data))
+        if (ShouldSkipLowTierBiomeGlobalKeySpawnSystemEntry(data, model.Entry.LowTierGlobalKeySource))
         {
             return false;
         }

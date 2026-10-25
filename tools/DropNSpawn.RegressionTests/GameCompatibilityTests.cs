@@ -344,7 +344,7 @@ internal static partial class Program
         int oldVersion = (int)Property(baselineSchema, "DtoVersion")!;
         int newVersion = (int)Property(currentSchema, "DtoVersion")!;
         if (oldVersion == newVersion) return false;
-        Check((domain == "SpawnSystem" && oldVersion == 3 && newVersion == 4) ||
+        Check((domain == "SpawnSystem" && oldVersion is 3 or 4 && newVersion == 5) ||
               (domain == "Event" && oldVersion == 2 && newVersion == 3) ||
               (domain == "Spawner" && oldVersion == 7 && newVersion == 8) ||
               (domain == "Character" && oldVersion == 10 && newVersion == 11), domain + ": explicit schema upgrade");

@@ -93,9 +93,8 @@ internal static partial class SpawnSystemManager
             AppendTemplateComment(builder, line);
         }
         AppendTemplateBlankLine(builder);
-        AppendTemplateComment(builder, "Optional file header: '- spawnIntervalMultiplier: 2.0' must be the first list item and scales only this file's SpawnSystem intervals.");
-        AppendTemplateComment(builder, "The multiplier must be greater than zero. 0.5 halves intervals (more frequent checks); 2.0 doubles intervals (less frequent checks).");
-        AppendTemplateComment(builder, "- spawnIntervalMultiplier: 1.0");
+        AppendTemplateComment(builder, "Biome-wide interval multipliers belong in DNS_spawnintervals.yml, e.g. 'Meadows: 0.5'.");
+        AppendTemplateComment(builder, "Multi-biome entries are split internally when multipliers differ. Omitted biomes use 1.0.");
         builder.AppendLine();
 
         bool wroteSection = false;
