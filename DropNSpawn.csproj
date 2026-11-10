@@ -18,7 +18,7 @@
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
         <PlatformTarget>AnyCPU</PlatformTarget>
         <DebugSymbols>true</DebugSymbols>
-        <DebugType>full</DebugType>
+        <DebugType>portable</DebugType>
         <Optimize>false</Optimize>
         <OutputPath>bin\Debug\</OutputPath>
         <DefineConstants>DEBUG;TRACE</DefineConstants>
@@ -28,7 +28,7 @@
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
         <PlatformTarget>AnyCPU</PlatformTarget>
-        <DebugType>pdbonly</DebugType>
+        <DebugType>portable</DebugType>
         <Optimize>true</Optimize>
         <OutputPath>bin\Release\</OutputPath>
         <DefineConstants>TRACE</DefineConstants>
@@ -703,7 +703,7 @@
             <ManifestTemplateLines Include="  &quot;website_url&quot;: &quot;https://discord.gg/pdHgy6Bsng&quot;,"/>
             <ManifestTemplateLines Include="  &quot;description&quot;: &quot;Your mod description goes here. Do not forget to replace the icon.png file with your own. Must be 256x256. Your Readme.md file will be copied from the one in your project folder.&quot;,"/>
             <ManifestTemplateLines Include="  &quot;dependencies&quot;: ["/>
-            <ManifestTemplateLines Include="    &quot;denikson-BepInExPack_Valheim-5.4.2351&quot;"/>
+            <ManifestTemplateLines Include="    &quot;denikson-BepInExPack_Valheim-5.4.2360&quot;"/>
             <ManifestTemplateLines Include="  ]"/>
             <ManifestTemplateLines Include="}"/>
         </ItemGroup>

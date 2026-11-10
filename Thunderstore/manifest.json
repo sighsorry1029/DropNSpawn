@@ -1,9 +1,9 @@
 {
   "name": "DropNSpawn",
-  "version_number": "1.4.9",
+  "version_number": "1.4.10",
   "website_url": "https://discord.com/invite/VFRJcPwUdm",
   "description": "Easy way to configure all drops, spawns and events(raid) by reference system. Prevent high tier mobs spawning on low tier biomes. Make dungeon creaturespawners respawn. Multiple trophies and stacked drop instantly from creatures with linear scaling.",
   "dependencies": [
-    "denikson-BepInExPack_Valheim-5.4.2351"
+    "denikson-BepInExPack_Valheim-5.4.2360"
   ]
 }

@@ -24,6 +24,8 @@ Mod Release Manager 2.1.0 can automatically upload new ZIPs from registered watc
 
 `ContinuousIntegrationBuild=true` defaults `CodeGenMode` to `Verify`, which fails on stale generated sources instead of rewriting them. Local builds retain `Generate` as their default; either mode can also be selected explicitly with `-p:CodeGenMode=Verify` or `Generate`.
 
+Debug and Release use Portable PDBs, with ILRepack symbol generation kept enabled. This avoids the intermittent Windows native-PDB writer crash (`ISymUnmanagedWriter2.Close`) without discarding source/line information or changing optimization settings. After switching an existing checkout from native PDBs, run a Debug Rebuild once, then check an ordinary incremental build. Inspect the **merged** DLL together with its matching `bin/Debug/DropNSpawn.pdb`; the intermediate `obj` PDB does not describe the merged DLL. Local deployment and release packages continue to include only the mod DLL, not its PDB.
+
 ## Managed regression checks
 
 ```powershell

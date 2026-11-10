@@ -1,5 +1,7 @@
 # EWD 1.73 Spawn/Event integration
 
+For current setup instructions, use the [mod compatibility guide](compatibility.md#expand-world-data). This document records technical contracts and review history, including later EWD layouts; its filename is not a supported-version limit.
+
 Reviewed and patched on 2026-09-24 for DropNSpawn 1.3.14 and the existing Valheim 1.0.15 target. This is a DNS compatibility boundary, not an EWD fork or a game-version upgrade. Legacy standalone Expand World Spawns / Expand World Events installations are outside this change's supported/tested scope.
 
 ## Reorganized and transactional API layout (2026-10-19, DNS 1.4.8)

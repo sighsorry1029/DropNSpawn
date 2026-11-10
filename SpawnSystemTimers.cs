@@ -201,12 +201,17 @@ internal static class SpawnSystemTimers
 
     internal static void Detach(SpawnSystem system) => Zones.Remove(system);
 
+    internal static bool IsManagedList(SpawnSystem system, List<SpawnSystem.SpawnData> spawners,
+        bool eventSpawners, string groupSalt)
+        => !eventSpawners && groupSalt == "b_" && PluginSettingsFacade.IsSpawnSystemDomainEnabled() &&
+            Zones.TryGetValue(system, out ZoneState zone) && zone.Lists.Contains(spawners);
+
     internal static bool Begin(SpawnSystem system, List<SpawnSystem.SpawnData> spawners, bool eventSpawners,
         string groupSalt, ZNetView view, out ZoneState? state)
     {
         state = null;
-        if (eventSpawners || groupSalt != "b_" || !PluginSettingsFacade.IsSpawnSystemDomainEnabled() ||
-            !Zones.TryGetValue(system, out ZoneState zone) || !zone.Lists.Contains(spawners)) return true;
+        if (!IsManagedList(system, spawners, eventSpawners, groupSalt) ||
+            !Zones.TryGetValue(system, out ZoneState zone)) return true;
         if (view == null || !view.IsValid() || !view.IsOwner()) return false;
         ZDO zdo = view.GetZDO();
         if (zdo == null || !zdo.IsOwner()) return false;

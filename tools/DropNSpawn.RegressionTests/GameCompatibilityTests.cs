@@ -233,8 +233,41 @@ internal static partial class Program
                     if (patch.Name == "Transpiler")
                     {
                         List<CodeInstruction> input = PatchProcessor.GetOriginalInstructions(original);
-                        object[] arguments = patch.GetParameters().Length == 2 ? new object[] { input, original } : new object[] { input };
+                        ILGenerator generator = new DynamicMethod("PatchContract", typeof(void), Type.EmptyTypes).GetILGenerator();
+                        foreach (LocalVariableInfo local in original.GetMethodBody()!.LocalVariables)
+                            generator.DeclareLocal(local.LocalType, local.IsPinned);
+                        object[] arguments = patch.GetParameters().Select(p => p.ParameterType == typeof(ILGenerator) ? (object)generator
+                            : p.ParameterType == typeof(MethodBase) ? original : input).ToArray();
                         var output = ((IEnumerable<CodeInstruction>)patch.Invoke(null, arguments)!).ToList();
+                        if (type.Name == "SpawnSystemSpawnLimitPatch")
+                        {
+                            bool HasHooks(List<CodeInstruction> code) => new[] { "IsManagedList", "CountForLimit", "RecordSpawn" }
+                                .All(name => code.Count(i => i.operand is MethodInfo call && call.Name == name) == 1);
+                            Check(HasHooks(output), "natural spawn correction installs all ownership/count/record hooks");
+                            int countAt = input.FindIndex(i => i.operand is MethodInfo call && call.Name == "GetNrOfZDOInstances");
+                            int spawnAt = input.FindIndex(i => i.operand is MethodInfo call && call.Name == "Spawn");
+                            int remaining = input.FindIndex(countAt, i => i.opcode == OpCodes.Sub);
+                            foreach (int damaged in new[] { countAt, countAt + 4, remaining, spawnAt + 2 })
+                            {
+                                var changed = input.Select(i => new CodeInstruction(i)).ToList();
+                                changed[damaged].opcode = OpCodes.Nop;
+                                var fallback = ((IEnumerable<CodeInstruction>)patch.Invoke(null, new object[] { changed, original, generator })!).ToList();
+                                Check(fallback.SequenceEqual(changed), "unknown count/group/spawn IL is returned intact: " + damaged);
+                            }
+                            var duplicate = input.Select(i => new CodeInstruction(i)).ToList();
+                            duplicate.Insert(countAt, new CodeInstruction(input[countAt]));
+                            Check(((IEnumerable<CodeInstruction>)patch.Invoke(null, new object[] { duplicate, original, generator })!).SequenceEqual(duplicate),
+                                "ambiguous count hook refuses partial correction");
+                            MethodInfo timerPatch = mod.Type("SpawnSystemTimerPatch").GetMethod("Transpiler", All)!;
+                            var timerFirst = ((IEnumerable<CodeInstruction>)timerPatch.Invoke(null, new object[] { input, original })!).ToList();
+                            var countFirst = ((IEnumerable<CodeInstruction>)timerPatch.Invoke(null, new object[] { output, original })!).ToList();
+                            var timerThenCount = ((IEnumerable<CodeInstruction>)patch.Invoke(null, new object[] { timerFirst, original, generator })!).ToList();
+                            Check(HasHooks(countFirst) && HasHooks(timerThenCount) && new[] { countFirst, timerThenCount }
+                                .All(code => new[] { "ReadTime", "WriteTime" }.All(name => code.Count(i => i.operand is MethodInfo call && call.Name == name) == 1)),
+                                "timer and count corrections retain both contracts in either transpiler order");
+                            transpilers++;
+                            continue;
+                        }
                         if (type.Name is "CharacterDropGenerateDropListPatch" or "RagdollSaveDropPolicyPatch" or "RagdollLoadDropPolicyPatch")
                         {
                             string hook = type.Name == "CharacterDropGenerateDropListPatch" ? "RecordGeneratedDrop"

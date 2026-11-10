@@ -76,35 +76,43 @@ internal sealed class PluginBootstrapCoordinator
             "4 - Domains",
             "Enable Character Overrides",
             DropNSpawnPlugin.Toggle.On,
-            "If off, DropNSpawn character YAML files stay on disk but CharacterDrop runtime overrides are not applied and existing character changes are restored to vanilla. Turn this off with Enable Object when using Drop That!. Turn this off when using Spawner Tweaks creature overrides.",
+            "Apply DNS creature-drop YAML. Off removes DNS overrides and keeps your YAML files; DNS stacking and nearby OnePerPlayer adjustments also stop.\n" +
+            "Use Off if Drop That! or MonsterDB manages creature drops. MonsterDB stat or appearance edits alone do not require Off.\n" +
+            "Global loot scaling, instant loot and the player-aligned killer filter have their own settings under 2 - Character.",
             synchronizedSetting: true,
             configManagerOrder: 700);
         PluginBoundSettings.EnableObjectOverrides = _host.BindConfigEntry(
             "4 - Domains",
             "Enable Object Overrides",
             DropNSpawnPlugin.Toggle.On,
-            "If off, DropNSpawn object YAML files stay on disk but object runtime overrides are not applied and existing object changes are restored to vanilla. Turn this off with Enable Character when using Drop That!. Turn this off when using Spawner Tweaks features for Chests or Pickables.",
+            "Apply DNS YAML to chests, pickables, trees, rocks and other objects. Off removes DNS overrides and keeps your YAML files.\n" +
+            "Use Off if Drop That! manages object loot. You can keep Character Overrides on if DNS still manages creature drops.",
             synchronizedSetting: true,
             configManagerOrder: 600);
         PluginBoundSettings.EnableSpawnerOverrides = _host.BindConfigEntry(
             "4 - Domains",
             "Enable Spawner Overrides",
             DropNSpawnPlugin.Toggle.On,
-            "If off, DropNSpawn SpawnArea and CreatureSpawner runtime overrides are not applied and existing spawner changes are restored to vanilla. Turn this off with Enable SpawnSystem when using Spawn That!. Turn this off when using Spawner Tweaks Spawn points or Spawners features.",
+            "Apply DNS SpawnArea and CreatureSpawner settings. Off removes DNS overrides and keeps your YAML files.\n" +
+            "Use Off if Spawn That! or MonsterDB manages these local spawners. Normal world spawns have a separate switch: Enable SpawnSystem Overrides.",
             synchronizedSetting: true,
             configManagerOrder: 500);
         PluginBoundSettings.EnableSpawnSystemOverrides = _host.BindConfigEntry(
             "4 - Domains",
             "Enable SpawnSystem Overrides",
             DropNSpawnPlugin.Toggle.On,
-            "If off, DropNSpawn world SpawnSystem runtime overrides and extended global key handling are not applied and existing SpawnSystem changes are restored to vanilla. Turn this off for Expand World Spawns. Turn this off with Enable Spawner when using Spawn That! world spawning.",
+            "Use DNS YAML for normal world spawns. Off restores the captured spawn lists and disables DNS biome interval multipliers, extended global key checks and natural spawn limit correction. Your YAML files stay on disk.\n" +
+            "Use Off if Spawn That! or MonsterDB manages world spawns.\n" +
+            "Keep On if DNS manages world spawns alongside Expand World Data. Off does not turn EWD's overlapping spawn feature back on.",
             synchronizedSetting: true,
             configManagerOrder: 300);
         PluginBoundSettings.EnableEventOverrides = _host.BindConfigEntry(
             "4 - Domains",
             "Enable Event Overrides",
             DropNSpawnPlugin.Toggle.On,
-            "If off, DropNSpawn event YAML files stay on disk but RandEventSystem event overrides are not applied and existing event changes are restored to vanilla.",
+            "Apply DNS raid definitions from YAML. Off removes DNS YAML overrides and keeps your files. Use Off if Custom Raids manages raids.\n" +
+            "Settings under 3 - Events still apply: with Custom Raids, use Vanilla scheduling, Default event player base = Off, Event duration multiplier = 1, and matching chance/interval settings.\n" +
+            "Expand World Data users do not need to turn this off for DNS raids. Off does not re-enable EWD events.",
             synchronizedSetting: true,
             configManagerOrder: 200);
     }

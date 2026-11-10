@@ -40,7 +40,8 @@ internal static class EventGlobalConfig
             "3 - Events",
             "Event scheduling mode",
             EventSchedulingMode.Vanilla,
-            "Vanilla allows one active random event and performs one server-wide check per interval. MultipleGlobal allows multiple active random events while keeping one server-wide check per interval. MultiplePerPlayer allows multiple active random events and performs one independent check per player per interval. Standalone events use the same global or per-player evaluation mode.",
+            "Vanilla allows one active random event and one server-wide check per interval. MultipleGlobal allows multiple active events with one server-wide check. MultiplePerPlayer allows multiple active events with an independent check for each player. Standalone events use the same global or per-player mode.\n" +
+            "Use Vanilla when Custom Raids handles scheduling. Enable Event Overrides = Off does not disable this setting.",
             synchronizedSetting: true,
             configManagerOrder: 800);
         _eventSchedulingMode.SettingChanged += HandleRuntimeSettingChanged;
@@ -81,7 +82,7 @@ internal static class EventGlobalConfig
             "Random event chance",
             DefaultRandomEventChance,
             new ConfigDescription(
-                "Chance from 0 to 100 to try starting a random event when the random event interval elapses. This maps to RandEventSystem.m_eventChance.",
+                "Chance from 0 to 100 to try starting a random event at each interval. Still applies when Event Overrides is off. With Custom Raids, match its EventTriggerChance; its individual raid checks use separate per-raid chances.",
                 new AcceptableValueRange<float>(0f, 100f)),
             synchronizedSetting: true,
             configManagerOrder: 500);
@@ -92,7 +93,7 @@ internal static class EventGlobalConfig
             "Random event interval",
             DefaultRandomEventIntervalMinutes,
             new ConfigDescription(
-                "Minutes between random event checks. 0 removes the cooldown and attempts a check every server FixedUpdate. This maps to RandEventSystem.m_eventIntervalMin.",
+                "Minutes between random event checks. 0 removes the cooldown and attempts a check every server FixedUpdate. Still applies when Event Overrides is off. With Custom Raids, match its EventCheckInterval (also in minutes).",
                 new AcceptableValueRange<float>(0f, 10000f)),
             synchronizedSetting: true,
             configManagerOrder: 400);

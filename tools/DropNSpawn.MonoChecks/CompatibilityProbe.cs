@@ -83,6 +83,7 @@ namespace DropNSpawn.Tests
             Type compatibilityType = mod.GetType("DropNSpawn.ExpandWorldDataCompatibility", true);
             compatibilityType.GetMethod("ConfigureDependency", All).Invoke(null, new object[] { File.Exists(ewdPath) ? Assembly.LoadFrom(ewdPath) : null });
             CheckSpawnSystemTimers(mod);
+            checks += SpawnLimitProbe.Run(mod);
             ChanceScalingFixture.Run(mod);
             checks += LootPriorityProbe.Run(mod);
             checks += ObjectSnapshotProbe.Run(mod);
@@ -1878,8 +1879,13 @@ namespace DropNSpawn.Tests
                     "real EWD refresh retains AltBiome keys/weather/location/object checks");
                 Check(!HasOwner(typeof(SpawnSystem), "Spawn", upstream.Id), "EWD Consume is not also registered as a spawn postfix");
                 fixture.CreateClassProcessor(mod.GetType("DropNSpawn.SpawnSystemTimerPatch", true)).Patch();
-                Check(Harmony.GetPatchInfo(AccessTools.Method(typeof(SpawnSystem), "UpdateSpawnList")).Transpilers.Count == 3,
-                    "DNS timer transpiler composes with both EWD requirement transpilers");
+                fixture.CreateClassProcessor(mod.GetType("DropNSpawn.SpawnSystemSpawnLimitPatch", true)).Patch();
+                Check(Harmony.GetPatchInfo(AccessTools.Method(typeof(SpawnSystem), "UpdateSpawnList")).Transpilers.Count == 4,
+                    "DNS timer/count transpilers install alongside both EWD requirement transpilers");
+                List<CodeInstruction> combined = PatchProcessor.GetCurrentInstructions(AccessTools.Method(typeof(SpawnSystem), "UpdateSpawnList"));
+                Check(new[] { "CountForLimit", "RecordSpawn", "ReadTime", "WriteTime" }.All(name =>
+                    combined.Count(i => i.operand is MethodInfo call && call.DeclaringType.Namespace == "DropNSpawn" && call.Name == name) == 1),
+                    "actual EWD requirements retain the full DNS count/group/timer rewrite");
                 MethodInfo requiredKey = requirements.GetMethod("RequiredKey", All);
                 Check((string)requiredKey.Invoke(null, new object[] { row }) == row.m_requiredGlobalKey, "EWD AND/OR numeric requirements accept enough keys");
                 zone.m_globalKeysValues["token"] = "0";

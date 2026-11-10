@@ -1,3 +1,12 @@
+## 1.4.10 — Spawn limit correction and clearer configuration guides
+
+- Fix normal SpawnSystem rules incorrectly counting creatures spawned by earlier rules for other prefabs against their own `maxSpawned` limit. Track new spawns by prefab within each list update and use the same count for remaining group capacity, including multiple rules for the same prefab.
+- Keep configured intervals, chances, placement conditions and timer storage unchanged. The correction applies only to DNS-managed normal world spawn lists; Event, AltBiome, unmanaged lists and SpawnSystem Overrides Off retain their native counting. This is not a new world-wide population cap. Unknown count/group IL leaves the incoming behavior intact with a warning instead of applying a partial correction.
+- Simplify the README while retaining its images. Add concise config feature summaries, defaults and examples, and linked guides for world spawns and feature-specific coexistence with MonsterDB, Drop That!, Spawn That!, Expand World Data and Custom Raids. Clarify that domain switches do not disable every separate global policy; these documentation changes do not add a Custom Raids handoff patch or change config keys/defaults.
+- Use Portable PDBs for Debug and Release to avoid the intermittent Windows native-PDB merge crash while preserving source/line information. DLL merging and package layout are unchanged.
+- Update the manifest's BepInExPack Valheim requirement to `5.4.2360`.
+- Add original-game-loop and transpiler regression coverage for per-prefab counts, remaining group capacity, bypassed lists, failures and composition with DNS timers/EWD requirements. YAML and synchronization formats are unchanged. Update the server and all clients to **1.4.10** together and restart; actual multiplayer spawning remains an in-game verification step.
+
 ## 1.4.9 — Biome-wide SpawnSystem intervals
 
 - Add server-owned, live-reloaded `DNS_spawnintervals.yml`: use a flat mapping such as `Meadows: 0.5` and `BlackForest: 2.0` to scale normal SpawnSystem intervals across all override files. The generated file defaults to `{}`; omitted biomes use 1.0. Multipliers must be finite and greater than zero, and decimal seconds are preserved with a 0.01-second minimum.
