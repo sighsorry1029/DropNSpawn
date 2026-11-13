@@ -20,7 +20,7 @@ This can prevent progression-unlocked creatures from appearing in earlier biomes
 
 ## Interval multipliers by biome
 
-Edit `DNS_spawnintervals.yml` beside your other DNS YAML files:
+Edit `DNS_spawnintervals.yml` beside your other DNS YAML files. In a newly generated file, remove the `{}` line and uncomment or add only the entries you want to change. For example:
 
 ```yaml
 Meadows: 0.5
@@ -35,7 +35,8 @@ A 60-second rule covering Meadows and BlackForest becomes a 30-second Meadows ru
 - Omitted biomes use `1.0`. An empty mapping (`{}`), empty file or missing file applies no scaling.
 - Multipliers must be finite and greater than zero. `0` is invalid; it does not disable spawning.
 - Decimal seconds are preserved: `36 × 0.1 = 3.6`. The minimum effective interval is 0.01 seconds.
-- Use individual biome names, including registered EWD custom biomes. Do not use `All`, `Land`, `None` or numeric masks.
+- Vanilla keys: `Meadows`, `BlackForest`, `Swamp`, `Ocean`, `Mountain`, `Plains`, `Mistlands`, `AshLands`, `DeepNorth`.
+- For an Expand World Data custom biome, replace `MyCustomBiome` with its registered name on the server. Use one biome name per key, not `All`, `Land`, `None` or numeric masks.
 - Use only one policy file: `DNS_spawnintervals.yml` or `DNS_spawnintervals.yaml`.
 - Duplicate aliases, unresolved names after biome registration, invalid values and overflowing intervals reject the reload.
 

@@ -35,11 +35,13 @@ internal static partial class SpawnSystemManager
         if (EnumerateSpawnIntervalsPaths().Any()) return;
         GeneratedArtifactWriter.WriteTextAlways(SpawnIntervalsPath,
             "# Normal DNS SpawnSystem intervals only; server-owned and live-reloaded.\n" +
-            "# One biome name per key, including EWD custom biome names after registration.\n" +
             "# Omitted biomes use 1.0. Values must be finite and greater than zero.\n" +
             "# 0.5 halves intervals; 2.0 doubles them. Decimal seconds are preserved (minimum 0.01).\n" +
             "# Different multipliers split multi-biome rules internally; equal multipliers stay grouped.\n" +
             "# No event/dungeon/spawner/AltBiome-list effects. Keep only ONE spawnintervals file.\n" +
+            $"# Vanilla biome keys: {string.Join(", ", BiomeOutputOrder)}\n" +
+            "# For an Expand World Data custom biome, use its registered biome name.\n" +
+            "# To set a multiplier, remove the {} line and uncomment an example or add your own entry.\n" +
             "# Meadows: 0.5\n# BlackForest: 2.0\n# MyCustomBiome: 0.75\n{}\n",
             $"Created spawn interval policy at {SpawnIntervalsPath}.");
     }

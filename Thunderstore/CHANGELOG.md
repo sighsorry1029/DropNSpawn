@@ -1,3 +1,8 @@
+## 1.4.11 — Clearer spawn interval examples
+
+- List all nine vanilla biome keys in newly generated `DNS_spawnintervals.yml` files and in the world spawn guide. For an Expand World Data custom biome, use its registered name on the server.
+- Clarify how to enable a multiplier: remove the `{}` line, then uncomment or add the desired entries. Existing files are not rewritten; spawn timing, defaults, and YAML syntax are unchanged.
+
 ## 1.4.10 — Spawn limit correction and clearer configuration guides
 
 - Fix normal SpawnSystem rules incorrectly counting creatures spawned by earlier rules for other prefabs against their own `maxSpawned` limit. Track new spawns by prefab within each list update and use the same count for remaining group capacity, including multiple rules for the same prefab.
