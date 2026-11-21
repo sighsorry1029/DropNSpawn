@@ -129,18 +129,19 @@ internal static partial class SpawnSystemManager
         Dictionary<Heightmap.Biome, float> policy)
     {
         // Local candidates only. Clients receive these detached, effective rows through the existing transport.
-        List<CanonicalSpawnSystemEntry> entries = NetworkPayloadSyncSupport.CloneEntries(Descriptor, source);
-        if (policy.Count == 0 || policy.Values.All(value => value == 1f)) return entries;
+        if (policy.Count == 0 || policy.Values.All(value => value == 1f))
+            return NetworkPayloadSyncSupport.CloneEntries(Descriptor, source);
+        var cloneEntry = NetworkPayloadSyncSupport.GetEntryCloner(Descriptor);
         SpawnSystem.SpawnData defaults = new();
-        List<CanonicalSpawnSystemEntry> result = new();
-        foreach (CanonicalSpawnSystemEntry entry in entries)
+        List<CanonicalSpawnSystemEntry> result = new(source.Count);
+        foreach (CanonicalSpawnSystemEntry entry in source)
         {
             SpawnSystemSpawnDefinition? spawn = entry.SpawnSystem;
             Heightmap.Biome mask = defaults.m_biome;
             if (spawn?.Biomes?.Count > 0 && !BiomeResolutionSupport.TryResolveBiomeMask(spawn.Biomes, out mask))
             {
                 // Preserve the existing per-entry diagnostic/skip policy for invalid spawn rows.
-                result.Add(entry);
+                result.Add(cloneEntry(entry));
                 continue;
             }
             Dictionary<float, Heightmap.Biome> groups = new();
@@ -156,12 +157,12 @@ internal static partial class SpawnSystemManager
             }
             if (groups.Count == 0 || (groups.Count == 1 && groups.ContainsKey(1f)))
             {
-                result.Add(entry);
+                result.Add(cloneEntry(entry));
                 continue;
             }
             foreach (KeyValuePair<float, Heightmap.Biome> group in groups.OrderBy(pair => pair.Key))
             {
-                CanonicalSpawnSystemEntry child = NetworkPayloadSyncSupport.CloneEntries(Descriptor, new List<CanonicalSpawnSystemEntry> { entry })[0];
+                CanonicalSpawnSystemEntry child = cloneEntry(entry);
                 child.SpawnSystem ??= new SpawnSystemSpawnDefinition();
                 float interval = (spawn?.SpawnInterval ?? defaults.m_spawnInterval) * group.Key;
                 if (float.IsNaN(interval) || float.IsInfinity(interval))

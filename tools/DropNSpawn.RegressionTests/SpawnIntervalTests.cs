@@ -55,6 +55,16 @@ internal static partial class Program
                 (string)Property(Spawn(child), "Faction")! == "ForestMonsters", "biome policy: source diagnostics and detached extension payloads survive");
             Check((bool)Property(child, "LowTierGlobalKeySource")!, "biome policy: original low-tier filter scope survives split");
         }
+        foreach (string names in new[] { "Swamp", "UnknownFixtureBiome" })
+        {
+            object unchanged = Entry(names);
+            object emitted = Expand(unchanged, "Meadows: 2")[0]!;
+            SetProperty(emitted, "RuleId", "new-id");
+            ((IList)Property(Spawn(emitted), "Objects")!).Clear();
+            Check(!Equals(Property(unchanged, "RuleId"), "new-id") && Interval(emitted) == 60 &&
+                  Names(emitted) == names && ((IList)Property(Spawn(unchanged), "Objects")!).Count == 1,
+                "unaffected and unresolvable rows remain detached during normalization: " + names);
+        }
         IList grouped = Expand(original, "Meadows: 2\nBlackForest: 2");
         Check(grouped.Count == 1 && Interval(grouped[0]!) == 120 && Names(grouped[0]!) == Names(original), "equal multipliers keep the original biome representation");
         IList withDefault = Expand(original, "Meadows: 0.5");
@@ -131,6 +141,10 @@ internal static partial class Program
         IList clientRows = (IList)Invoke(manager, null, "NormalizeOwnedConfigurationEntries", received, "ServerSync:fixture")!;
         Check(Interval(clientRows[0]!) == 30 && Interval(clientRows[1]!) == 120 && (bool)Property(clientRows[1]!, "LowTierGlobalKeySource")!,
             "client materialization uses server intervals once and retains split filter scope");
+        ((IDictionary)Property(Spawn(split[0]!), "Fields")!)["health"] = "99";
+        Check(Equals(((IDictionary)Property(Spawn(split[1]!), "Fields")!)["health"], "40") &&
+              Equals(((IDictionary)Property(Spawn(original), "Fields")!)["health"], "40"),
+            "changing one child's field does not change its sibling or the cached source");
 
         Type documentType = mod.Type("ConfigurationLoadSupport").GetNestedType("LocalYamlDocument", All)!;
         object ParseDocuments(params (string Path, string Yaml)[] files)

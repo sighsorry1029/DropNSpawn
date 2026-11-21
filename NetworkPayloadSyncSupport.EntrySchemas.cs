@@ -144,7 +144,7 @@ internal static partial class NetworkPayloadSyncSupport
             return clonedEntries;
         }
 
-        private TEntry CloneEntry(TEntry source)
+        public TEntry CloneEntry(TEntry source)
         {
             TEntry clone = CreateEntry();
             foreach (EntryFieldSpec<TEntry> field in _fields)

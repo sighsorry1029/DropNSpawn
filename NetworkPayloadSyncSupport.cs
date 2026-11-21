@@ -540,6 +540,9 @@ internal static partial class NetworkPayloadSyncSupport
         return GetTransport(domain).Codec.CloneEntries(entries);
     }
 
+    internal static Func<TEntry, TEntry> GetEntryCloner<TEntry>(DomainDescriptor<TEntry> domain) =>
+        GetTransport(domain).Codec.Schema.CloneEntry;
+
     internal static bool TryGetEntries<TEntry>(
         DomainDescriptor<TEntry> domain,
         string manifestRaw,
