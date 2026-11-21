@@ -25,11 +25,6 @@ internal static partial class NetworkPayloadSyncSupport
         public Action Action { get; set; } = null!;
     }
 
-    private static void QueueCriticalPayloadProcessingJobLocked(Action job)
-    {
-        QueueCriticalPayloadProcessingJobLocked(job, _networkRoleEpoch);
-    }
-
     private static void QueueCriticalPayloadProcessingJobLocked(Action job, int roleEpoch)
     {
         PendingCriticalPayloadProcessingJobs.Enqueue(new PendingPayloadProcessingJob
@@ -41,11 +36,6 @@ internal static partial class NetworkPayloadSyncSupport
         EnsurePayloadProcessingWorkersLocked();
     }
 
-    private static void QueueDeltaArtifactPrewarmJobLocked(Action job)
-    {
-        QueueDeltaArtifactPrewarmJobLocked(job, _networkRoleEpoch);
-    }
-
     private static void QueueDeltaArtifactPrewarmJobLocked(Action job, int roleEpoch)
     {
         PendingDeltaArtifactPrewarmJobs.Enqueue(new PendingPayloadProcessingJob
@@ -55,11 +45,6 @@ internal static partial class NetworkPayloadSyncSupport
         });
 
         EnsurePayloadProcessingWorkersLocked();
-    }
-
-    private static void QueueCachePersistenceJobLocked(Action job)
-    {
-        QueueCachePersistenceJobLocked(job, _networkRoleEpoch);
     }
 
     private static void QueueCachePersistenceJobLocked(Action job, int roleEpoch)
@@ -132,11 +117,6 @@ internal static partial class NetworkPayloadSyncSupport
         {
             return roleEpoch == _networkRoleEpoch;
         }
-    }
-
-    private static void QueueMainThreadPayloadCommitLocked(Action action)
-    {
-        QueueMainThreadPayloadCommitLocked(action, _networkRoleEpoch);
     }
 
     private static void QueueMainThreadPayloadCommitLocked(Action action, int roleEpoch)
