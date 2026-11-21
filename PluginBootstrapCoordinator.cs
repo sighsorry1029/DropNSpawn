@@ -133,11 +133,7 @@ internal sealed class PluginBootstrapCoordinator
     {
         _ = DropNSpawnPlugin.ConfigSync.AddLockingConfigEntry(PluginBoundSettings.ServerConfigLocked!);
         DropNSpawnPlugin.ConfigSync.SourceOfTruthChanged += _host.ReloadCoordinator!.HandleSourceOfTruthChanged;
-        PluginBoundSettings.EnableObjectOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
-        PluginBoundSettings.EnableCharacterOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
-        PluginBoundSettings.EnableSpawnerOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
-        PluginBoundSettings.EnableSpawnSystemOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
-        PluginBoundSettings.EnableEventOverrides!.SettingChanged += _host.ReloadCoordinator.HandleDomainToggleSettingChanged;
+        _host.ReloadCoordinator.AttachDomainToggleHandlers();
         PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes!.SettingChanged += HandleSpawnSystemGlobalFilterSettingChanged;
         PluginManifestCoordinator.AttachRuntimeDomainHandlers();
     }
@@ -147,11 +143,7 @@ internal sealed class PluginBootstrapCoordinator
         if (host.ReloadCoordinator is PluginReloadCoordinator reloadCoordinator)
         {
             DropNSpawnPlugin.ConfigSync.SourceOfTruthChanged -= reloadCoordinator.HandleSourceOfTruthChanged;
-            PluginBoundSettings.EnableObjectOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableCharacterOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableSpawnerOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableSpawnSystemOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
-            PluginBoundSettings.EnableEventOverrides?.SettingChanged -= reloadCoordinator.HandleDomainToggleSettingChanged;
+            reloadCoordinator.DetachDomainToggleHandlers();
             PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes?.SettingChanged -= HandleSpawnSystemGlobalFilterSettingChanged;
         }
 

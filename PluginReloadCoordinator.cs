@@ -62,7 +62,19 @@ internal sealed class PluginReloadCoordinator
         ReloadDomains(DropNSpawnPlugin.ReloadDomain.All);
     }
 
-    internal void HandleDomainToggleSettingChanged(object? sender, EventArgs e)
+    internal void AttachDomainToggleHandlers()
+    {
+        foreach (var toggle in _domainToggles)
+            toggle.Entry.SettingChanged += HandleDomainToggleSettingChanged;
+    }
+
+    internal void DetachDomainToggleHandlers()
+    {
+        foreach (var toggle in _domainToggles)
+            toggle.Entry.SettingChanged -= HandleDomainToggleSettingChanged;
+    }
+
+    private void HandleDomainToggleSettingChanged(object? sender, EventArgs e)
     {
         if (IsConfigEntryReloadSuppressed)
         {

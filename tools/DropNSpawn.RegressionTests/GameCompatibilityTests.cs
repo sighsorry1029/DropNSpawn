@@ -25,6 +25,17 @@ internal static partial class Program
             new[] { "test", name, Enum.ToObject(toggle, index % 2), "" })!).ToArray();
         object coordinator = Activator.CreateInstance(mod.Type("PluginReloadCoordinator"), All, null,
             new object?[] { null }.Concat(entries).ToArray(), null)!;
+        // Inspect real BepInEx subscriptions without triggering a world/config reload.
+        FieldInfo changedHandlers = entries[0].GetType().GetField("SettingChanged", All)!;
+        Delegate[] Subscribers(object entry) =>
+            ((Delegate?)changedHandlers.GetValue(entry))?.GetInvocationList() ?? Array.Empty<Delegate>();
+        var originalSubscribers = entries.Select(Subscribers).ToArray();
+        Call(coordinator, "AttachDomainToggleHandlers");
+        Check(entries.All(entry => Subscribers(entry).Count(d => ReferenceEquals(d.Target, coordinator)) == 1),
+            "every live domain toggle subscribes its reload coordinator exactly once");
+        Call(coordinator, "DetachDomainToggleHandlers");
+        Check(entries.Select((entry, i) => Subscribers(entry).SequenceEqual(originalSubscribers[i])).All(same => same),
+            "teardown restores every toggle's original subscribers");
         object initial = Call(coordinator, "CaptureDomainToggleState")!;
         Check(Changed(initial) == 0, "config reload with unchanged toggles selects no domains");
         for (int i = 0; i < entries.Length; i++)
