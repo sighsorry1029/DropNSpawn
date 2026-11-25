@@ -58,22 +58,43 @@ internal sealed class PluginBootstrapCoordinator
             synchronizedSetting: true,
             configManagerOrder: 700);
         SpawnerGlobalConfig.Bind(_host);
-        CharacterDropGlobalConfig.Bind(_host);
-        EventGlobalConfig.Bind(_host);
         PluginBoundSettings.DungeonSpawnDiagnostics = _host.BindConfigEntry(
-            "5 - Diagnostics",
+            "1 - General",
             "Dungeon spawn diagnostics",
             DropNSpawnPlugin.Toggle.Off,
             "Log bounded dungeon spawn diagnostics every 30 seconds. Local only: enable separately on the server and the clients reproducing the issue. Does not change spawn rules. Includes limited position/collider samples; turn off after testing.",
-            synchronizedSetting: false);
-
+            synchronizedSetting: false,
+            configManagerOrder: -100);
+        CharacterDropGlobalConfig.Bind(_host);
+        PluginBoundSettings.StackResourceDrops = _host.BindConfigEntry(
+            "3 - Object",
+            "Stack resource drops",
+            DropNSpawnPlugin.Toggle.Off,
+            "Stack matching items from one felled tree, split log, mined section or broken object (such as a barrel or stump). Does not change drop rolls or stack picked crops. Requires Enable Object Overrides.",
+            synchronizedSetting: true,
+            configManagerOrder: 200);
+        PluginBoundSettings.StackHarvestDrops = _host.BindConfigEntry(
+            "3 - Object",
+            "Stack harvest drops",
+            DropNSpawnPlugin.Toggle.Off,
+            "Stack matching items from one picked plant, including its extra drops. Does not change harvest rolls, combine different plants or collect nearby items. Requires Enable Object Overrides.",
+            synchronizedSetting: true,
+            configManagerOrder: 100);
+        PluginBoundSettings.ObjectStackItemBlacklist = _host.BindConfigEntry(
+            "3 - Object",
+            "Stack item blacklist",
+            "",
+            "Dropped item prefab names that keep their original drop quantities and are never grouped by Stack resource drops or Stack harvest drops. Use item names (e.g. Wood, Carrot), not tree, rock or plant names. Comma-separated, case-insensitive. Empty excludes nothing. Does not affect character loot.",
+            synchronizedSetting: true,
+            configManagerOrder: 90);
+        EventGlobalConfig.Bind(_host);
         BindDomainConfigurationEntries();
     }
 
     private void BindDomainConfigurationEntries()
     {
         PluginBoundSettings.EnableCharacterOverrides = _host.BindConfigEntry(
-            "4 - Domains",
+            "99 - Domains",
             "Enable Character Overrides",
             DropNSpawnPlugin.Toggle.On,
             "Apply DNS creature-drop YAML. Off removes DNS overrides and keeps your YAML files; DNS stacking and nearby OnePerPlayer adjustments also stop.\n" +
@@ -82,7 +103,7 @@ internal sealed class PluginBootstrapCoordinator
             synchronizedSetting: true,
             configManagerOrder: 700);
         PluginBoundSettings.EnableObjectOverrides = _host.BindConfigEntry(
-            "4 - Domains",
+            "99 - Domains",
             "Enable Object Overrides",
             DropNSpawnPlugin.Toggle.On,
             "Apply DNS YAML to chests, pickables, trees, rocks and other objects. Off removes DNS overrides and keeps your YAML files.\n" +
@@ -90,7 +111,7 @@ internal sealed class PluginBootstrapCoordinator
             synchronizedSetting: true,
             configManagerOrder: 600);
         PluginBoundSettings.EnableSpawnerOverrides = _host.BindConfigEntry(
-            "4 - Domains",
+            "99 - Domains",
             "Enable Spawner Overrides",
             DropNSpawnPlugin.Toggle.On,
             "Apply DNS SpawnArea and CreatureSpawner settings. Off removes DNS overrides and keeps your YAML files.\n" +
@@ -98,7 +119,7 @@ internal sealed class PluginBootstrapCoordinator
             synchronizedSetting: true,
             configManagerOrder: 500);
         PluginBoundSettings.EnableSpawnSystemOverrides = _host.BindConfigEntry(
-            "4 - Domains",
+            "99 - Domains",
             "Enable SpawnSystem Overrides",
             DropNSpawnPlugin.Toggle.On,
             "Use DNS YAML for normal world spawns. Off restores the captured spawn lists and disables DNS biome interval multipliers, extended global key checks and natural spawn limit correction. Your YAML files stay on disk.\n" +
@@ -106,12 +127,19 @@ internal sealed class PluginBootstrapCoordinator
             "Keep On if DNS manages world spawns alongside Expand World Data. Off does not turn EWD's overlapping spawn feature back on.",
             synchronizedSetting: true,
             configManagerOrder: 300);
+        PluginBoundSettings.AutoImportUnconfiguredSpawnPrefabs = _host.BindConfigEntry(
+            "99 - Domains",
+            "Auto-import missing SpawnSystem prefabs",
+            DropNSpawnPlugin.Toggle.On,
+            "On the host/server, import all original normal world spawn rules for each vanilla or modded prefab missing from every active SpawnSystem YAML, starting on the first load. Any row for that prefab, even enabled: false, prevents import. Deleting or commenting out its last row lets it return. Off keeps omissions intentional and does not remove previously imported rows. Requires Enable SpawnSystem Overrides.",
+            synchronizedSetting: true,
+            configManagerOrder: 290);
         PluginBoundSettings.EnableEventOverrides = _host.BindConfigEntry(
-            "4 - Domains",
+            "99 - Domains",
             "Enable Event Overrides",
             DropNSpawnPlugin.Toggle.On,
             "Apply DNS raid definitions from YAML. Off removes DNS YAML overrides and keeps your files. Use Off if Custom Raids manages raids.\n" +
-            "Settings under 3 - Events still apply: with Custom Raids, use Vanilla scheduling, Default event player base = Off, Event duration multiplier = 1, and matching chance/interval settings.\n" +
+            "Settings under 4 - Events still apply: with Custom Raids, use Vanilla scheduling, Default event player base = Off, Event duration multiplier = 1, and matching chance/interval settings.\n" +
             "Expand World Data users do not need to turn this off for DNS raids. Off does not re-enable EWD events.",
             synchronizedSetting: true,
             configManagerOrder: 200);
@@ -134,6 +162,7 @@ internal sealed class PluginBootstrapCoordinator
         _ = DropNSpawnPlugin.ConfigSync.AddLockingConfigEntry(PluginBoundSettings.ServerConfigLocked!);
         DropNSpawnPlugin.ConfigSync.SourceOfTruthChanged += _host.ReloadCoordinator!.HandleSourceOfTruthChanged;
         _host.ReloadCoordinator.AttachDomainToggleHandlers();
+        PluginBoundSettings.AutoImportUnconfiguredSpawnPrefabs!.SettingChanged += HandleSpawnImportSettingChanged;
         PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes!.SettingChanged += HandleSpawnSystemGlobalFilterSettingChanged;
         PluginManifestCoordinator.AttachRuntimeDomainHandlers();
     }
@@ -144,10 +173,18 @@ internal sealed class PluginBootstrapCoordinator
         {
             DropNSpawnPlugin.ConfigSync.SourceOfTruthChanged -= reloadCoordinator.HandleSourceOfTruthChanged;
             reloadCoordinator.DetachDomainToggleHandlers();
+            PluginBoundSettings.AutoImportUnconfiguredSpawnPrefabs?.SettingChanged -= HandleSpawnImportSettingChanged;
             PluginBoundSettings.DisableGlobalKeySpawnSystemEntriesInLowTierBiomes?.SettingChanged -= HandleSpawnSystemGlobalFilterSettingChanged;
         }
 
         PluginManifestCoordinator.DetachRuntimeDomainHandlers();
+    }
+
+    private static void HandleSpawnImportSettingChanged(object? sender, EventArgs e)
+    {
+        if (PluginBoundSettings.AutoImportUnconfiguredSpawnPrefabs?.Value == DropNSpawnPlugin.Toggle.On &&
+            DropNSpawnPlugin.IsRuntimeServer() && DropNSpawnPlugin.IsSourceOfTruth)
+            DropNSpawnPlugin.Instance?.ReloadCoordinator?.QueueRuleReload(DropNSpawnPlugin.ReloadDomain.SpawnSystem);
     }
 
     internal static void HandleSpawnSystemGlobalFilterSettingChanged(object? sender, EventArgs e)

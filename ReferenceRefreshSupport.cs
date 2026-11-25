@@ -89,7 +89,7 @@ internal static class ReferenceRefreshSupport
                 continue;
             }
 
-            string name = (prefab.Name ?? "").Trim();
+            string name = (prefab.name ?? "").Trim();
             if (name.Length == 0 || !seen.Add(name))
             {
                 continue;

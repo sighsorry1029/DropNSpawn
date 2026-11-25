@@ -54,6 +54,7 @@ internal sealed class CharacterRuntimeDropCacheState
 /// </summary>
 internal sealed class CharacterCompiledState
 {
+    internal readonly object CatalogRevision = new();
     public static CharacterCompiledState Empty { get; } = new();
 
     public Dictionary<string, List<CompiledCharacterDropRule>> RuntimeRulesByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);

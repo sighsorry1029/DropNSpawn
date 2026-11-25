@@ -65,7 +65,7 @@ The old EWP mining rule remains independent. Keeping it enabled adds mining-trig
 In `BepInEx/config/sighsorry.DropNSpawn.cfg`, temporarily enable:
 
 ```ini
-[5 - Diagnostics]
+[1 - General]
 Dungeon spawn diagnostics = On
 ```
 

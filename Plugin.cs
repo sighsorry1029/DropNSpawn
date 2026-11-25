@@ -38,7 +38,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
 
     internal const string ModName = "DropNSpawn";
     internal const string YamlFilePrefix = "DNS";
-    internal const string ModVersion = "1.4.11";
+    internal const string ModVersion = "1.4.12";
     internal const string Author = "sighsorry";
     private const string ModGUID = $"{Author}.{ModName}";
     private static string ConfigFileName = $"{ModGUID}.cfg";
@@ -180,7 +180,7 @@ public class DropNSpawnPlugin : BaseUnityPlugin
         ConfigDescription extendedDescription = new(
             description.Description + (synchronizedSetting ? " [Synced with Server]" : " [Not Synced with Server]"),
             description.AcceptableValues,
-            BuildConfigDescriptionTags(description.Tags, configManagerOrder));
+            BuildConfigDescriptionTags(group, description.Tags, configManagerOrder));
         ConfigEntry<T> configEntry = Config.Bind(group, name, value, extendedDescription);
         //var configEntry = Config.Bind(group, name, value, description);
 
@@ -197,15 +197,20 @@ public class DropNSpawnPlugin : BaseUnityPlugin
 
     private class ConfigurationManagerAttributes
     {
+        [UsedImplicitly] public int? CategoryOrder;
         [UsedImplicitly] public int? Order = null!;
         [UsedImplicitly] public bool? Browsable = null!;
         [UsedImplicitly] public string? Category = null!;
         [UsedImplicitly] public Action<ConfigEntryBase>? CustomDrawer = null!;
     }
 
-    private static object[] BuildConfigDescriptionTags(object[]? existingTags, int? configManagerOrder)
+    private static object[] BuildConfigDescriptionTags(string group, object[]? existingTags, int? configManagerOrder)
     {
-        if (!configManagerOrder.HasValue)
+        // ConfigManager sorts categories by descending priority, independently of entry Order.
+        int separator = group.IndexOf(" - ", StringComparison.Ordinal);
+        int? categoryOrder = separator > 0 && int.TryParse(group.Substring(0, separator), out int number) && number > 0
+            ? -number : null;
+        if (!categoryOrder.HasValue && !configManagerOrder.HasValue)
         {
             return existingTags ?? Array.Empty<object>();
         }
@@ -215,7 +220,8 @@ public class DropNSpawnPlugin : BaseUnityPlugin
             {
                 new ConfigurationManagerAttributes
                 {
-                    Order = configManagerOrder.Value
+                    CategoryOrder = categoryOrder,
+                    Order = configManagerOrder
                 }
             })
             .ToArray();

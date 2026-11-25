@@ -116,6 +116,12 @@ namespace DropNSpawn.Tests
                 spawnedA = spawnedB = 0;
                 update.Invoke(system, new object[] { active, time, isEvent, salt });
             }
+            void OverlappingRows()
+            {
+                b.m_prefab = prefabA;
+                b.m_maxSpawned = a.m_maxSpawned;
+                a.m_groupSizeMin = a.m_groupSizeMax = b.m_groupSizeMin = b.m_groupSizeMax = 2;
+            }
             try
             {
                 setting.SetValue(null, enabledEntry);
@@ -130,7 +136,11 @@ namespace DropNSpawn.Tests
                 production.CreateClassProcessor(mod.GetType("DropNSpawn.SpawnSystemTimerPatch", true)).Patch();
 
                 Reset(); Seed(); RunAt(now);
-                Check(spawnedA == 3 && spawnedB == 0, "unfixed native loop reproduces cross-prefab suppression with 60/95-second intervals");
+                Check(spawnedA == 3 && spawnedB == 1, "native per-row counter no longer suppresses unrelated prefabs");
+                Reset(); OverlappingRows(); Seed(); RunAt(now);
+                Check(spawnedA == 4, "native separate rows do not see each other's new instances");
+                Reset(); a.m_groupSizeMin = a.m_groupSizeMax = 2; b.m_enabled = false; RunAt(now);
+                Check(spawnedA == 4, "native catch-up group size uses the pre-list snapshot");
                 production.CreateClassProcessor(patch).Patch();
                 Reset(); Seed(); RunAt(now);
                 Check(spawnedA == 3 && spawnedB == 1, "corrected loop gives B its own slot after A spawns three");
@@ -139,8 +149,7 @@ namespace DropNSpawn.Tests
                 RunAt(now.AddSeconds(95));
                 Check(spawnedA == 3 && spawnedB == 1, "next invocation has fresh counts; 60/95-second timing stays native");
 
-                Reset(); b.m_prefab = prefabA; a.m_groupSizeMin = a.m_groupSizeMax = 2;
-                b.m_maxSpawned = 3; b.m_groupSizeMin = b.m_groupSizeMax = 2; Seed(); RunAt(now);
+                Reset(); OverlappingRows(); Seed(); RunAt(now);
                 Check(spawnedA == 3, "same prefab in separate rules shares remaining group capacity, not four spawns");
                 Reset(); existingA = 2; a.m_groupSizeMin = a.m_groupSizeMax = 4; Seed(); RunAt(now);
                 Check(spawnedA == 1 && spawnedB == 1, "existing same-prefab instances consume only their own remaining slot");
@@ -156,13 +165,13 @@ namespace DropNSpawn.Tests
                 foreach (int bypass in new[] { 0, 1, 2, 3 })
                 {
                     Reset(managed: bypass != 0, events: bypass == 1, group: bypass == 2 ? "m0" : "b_", owned: bypass != 3);
-                    Seed(); RunAt(now);
-                    Check(spawnedA == 3 && spawnedB == 0, "native calculation retained for Off/event/AltBiome/unmanaged list: " + bypass);
+                    OverlappingRows(); Seed(); RunAt(now);
+                    Check(spawnedA == 4, "native calculation retained for Off/event/AltBiome/unmanaged list: " + bypass);
                 }
-                Reset(); Seed(); Enabled(false); RunAt(now);
-                Check(spawnedA == 3 && spawnedB == 0, "live domain Off bypasses correction on an already attached list");
+                Reset(); OverlappingRows(); Seed(); Enabled(false); Seed(); RunAt(now);
+                Check(spawnedA == 4, "live domain Off bypasses correction on an already attached list");
                 Enabled(true); RunAt(now);
-                Check(spawnedA == 3 && spawnedB == 1, "live domain On restores correction without replacing the binding");
+                Check(spawnedA == 3, "live domain On restores correction without replacing the binding");
 
                 Reset(); Seed(); throwA = true;
                 bool threw = false;

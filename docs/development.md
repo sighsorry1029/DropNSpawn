@@ -28,6 +28,8 @@ Debug and Release use Portable PDBs, with ILRepack symbol generation kept enable
 
 ## Managed regression checks
 
+On Valheim 1.0.30, the original ZDO static initializer needs Unity to convert the identity rotation to Euler angles. The two headless test runners supply zero angles only for that input while the initializer runs, then remove the fixture. They do not skip ZDO initialization, replace storage methods or test Unity's rotation math.
+
 ```powershell
 dotnet run --project tools/DropNSpawn.RegressionTests -- --assembly .\bin\Debug\DropNSpawn.dll --game-dir 'C:\Program Files (x86)\Steam\steamapps\common\Valheim'
 ```
@@ -112,7 +114,7 @@ The first-check regression also executes original `UpdateSpawnList` timing under
 
 `SpawnSystemManager.Intervals.cs` owns the single flat `DNS_spawnintervals.yml` policy and local candidate expansion. It shares the existing SpawnSystem watcher, reload transaction and transport, rather than adding a domain or runtime interval lookup. The source payload includes the policy document so changing/removing only that file triggers reload. Old per-file headers are explicitly rejected; no migration is performed.
 
-Expansion clones base rows and groups single biome bits by multiplier. Child masks are written as explicit individual names, never `All`/`Land`, so a later resolve cannot widen a vanilla-only child into custom biomes. Equal factors retain the original mask representation. No-effect policies retain timer IDs. Row names and all non-interval conditions stay unchanged; native count/group/catch-up behavior remains unchanged, including its pre-existing non-strict cap semantics. Children share the same normal compiled list.
+Expansion clones base rows and groups single biome bits by multiplier. Child masks are written as explicit individual names, never `All`/`Land`, so a later resolve cannot widen a vanilla-only child into custom biomes. Equal factors retain the original mask representation. No-effect policies retain timer IDs. Row names and all non-interval conditions stay unchanged. Children share the same normal compiled list and its existing [per-prefab spawn limit](spawnsystem-guide.md#spawn-limits); interval scaling does not introduce a separate cap.
 
 The policy-only EWD name gate uses a candidate list marker to defer the existing strict-validation transaction before commit. EWD-ready notification forces source reparse, including `All` masks. Server materialization happens once; clients only normalize the received effective rows. SpawnSystem DTO 5 adds `LowTierGlobalKeySource` to preserve the original whole-row low-tier/global-key filter after splitting. It participates in transport/runtime signatures but not timer identity. Both server and clients require this DTO; no timer storage format change is needed.
 

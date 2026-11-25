@@ -117,7 +117,6 @@ internal static partial class Program
             .Replace("ExpandWorld.Spawn.", "ExpandWorldData.Spawn.")
             .Replace("ExpandWorld.Event.", "ExpandWorldData.Event.")
             .Replace("ExpandWorld.Drops.", "ExpandWorldData.Drop.")
-            .Replace("ExpandWorldData.BlueprintObject", "ExpandWorldData.Data.BlueprintObject")
             .Replace("ExpandWorldData.AltBiomeManager", "ExpandWorldData.AltBiomes.AltBiomeManager"));
         return type ?? (required ? throw new TypeLoadException(name) : null);
     }
@@ -132,8 +131,9 @@ internal static partial class Program
             Check(!module.GetMemberReferences().OfType<Mono.Cecil.MethodReference>().Any(method =>
                 method.DeclaringType.FullName == "Data.DataValue" && method.Name is "Simple" or "Constant"),
                 "EWD constant factories have no version-specific direct MemberRefs");
-            Check(!module.GetTypeReferences().Any(type => type.FullName is "ExpandWorldData.BlueprintObject" or "ExpandWorldData.Spawn"),
-                "final DLL has no stale BlueprintObject/Spawn type references");
+            Check(!module.GetTypeReferences().Any(type => type.Scope.Name == "ExpandWorldData" &&
+                (type.Name == "BlueprintObject" || type.FullName is "ExpandWorldData.Spawn" or "ExpandWorldData.Create")),
+                "final DLL binds EWD blueprint payloads and their spawner without direct type references");
         }
         var plan = (IList)Invoke(compat, null, "GetPatchPlan", ewd)!;
         CheckEwdCapabilitySelection(mod, ewd, plan.Count);
@@ -233,7 +233,7 @@ internal static partial class Program
         object? originalDrops = dtoType.GetField("drops")!.GetValue(exported);
         object customData = Activator.CreateInstance(ewd.GetType("Data.DataEntry", true)!)!;
         var customObjects = (IList)Activator.CreateInstance(objects.GetType().GetGenericArguments()[1])!;
-        customObjects.Add(RuntimeHelpers.GetUninitializedObject(EwdType(ewd, "ExpandWorldData.BlueprintObject", true)!));
+        customObjects.Add(RuntimeHelpers.GetUninitializedObject(customObjects.GetType().GetGenericArguments()[0]));
         data.Add(spawn, customData);
         objects.Add(spawn, customObjects);
         FieldInfo dataField = dtoType.GetField("data")!;
@@ -296,6 +296,10 @@ internal static partial class Program
 
     private static void CheckEwdCapabilitySelection(ModContract mod, Assembly ewd, int expectedPatches)
     {
+        static Mono.Cecil.MethodDefinition BlueprintSpawn(Mono.Cecil.ModuleDefinition module) =>
+            (module.GetType("ExpandWorldData.Spawn") ?? module.GetType("ExpandWorldData.Create")).Methods.Single(m =>
+                m.Name == "BPO" && m.Parameters.Count == 7 && m.Parameters[1].ParameterType.FullName == "UnityEngine.Vector3");
+
         string directory = Path.Combine(Path.GetTempPath(), "dns-ewd-contract-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         string path = "";
@@ -321,17 +325,35 @@ internal static partial class Program
                 Check(plan.Count == expectedPatches, "same EWD API accepted regardless of plugin/assembly version: " + version);
             }
             path = Path.Combine(directory, "ExpandWorldData.dll");
-            foreach (string defect in new[] { "constructor", "chance", "spawn" })
+            using (var module = Mono.Cecil.ModuleDefinition.ReadModule(ewd.Location))
+            {
+                BlueprintSpawn(module).Parameters[0].ParameterType.Resolve().Namespace = "Fixture.Relocated";
+                module.Write(path);
+            }
+            using (var moved = new ModContract(mod.Assembly.Location, Path.GetDirectoryName(Path.GetDirectoryName(mod.SearchPaths[1]))!,
+                Directory.GetCurrentDirectory(), mod.SearchPaths[0], path, ewdFromMemory: true))
+            {
+                object blueprint = Invoke(moved.Type("ExpandWorldDataCompatibility"), null, "CreateObject", "Wood",
+                    Activator.CreateInstance(moved.LoadGameAssembly("UnityEngine.CoreModule").GetType("UnityEngine.Vector3", true)!), null, 0.75f)!;
+                Check(blueprint.GetType().Namespace == "Fixture.Relocated" && Equals(blueprint.GetType().GetField("Chance")!.GetValue(blueprint), 0.75f),
+                    "BPO payload construction follows the installed spawn signature across namespace changes");
+            }
+            foreach (string defect in new[] { "constructor", "chance", "spawn", "ambiguous" })
             {
                 using (var module = Mono.Cecil.ModuleDefinition.ReadModule(ewd.Location))
                 {
-                    var bp = module.GetType("ExpandWorldData.BlueprintObject") ?? module.GetType("ExpandWorldData.Data.BlueprintObject");
+                    var bpo = BlueprintSpawn(module);
+                    var bp = bpo.Parameters[0].ParameterType.Resolve();
                     if (defect == "constructor") bp.Methods.Single(m => m.IsConstructor && m.Parameters.Count == 7).Parameters[0].ParameterType = module.TypeSystem.Int32;
                     else if (defect == "chance") bp.Fields.Single(f => f.Name == "Chance").FieldType = module.TypeSystem.Double;
+                    else if (defect == "spawn") bpo.Name = "MissingBpo";
                     else
                     {
-                        var create = module.GetType("ExpandWorldData.Spawn") ?? module.GetType("ExpandWorldData.Create");
-                        create.Methods.Single(m => m.Name == "BPO" && m.Parameters.Count == 7 && m.Parameters[1].ParameterType.FullName == "UnityEngine.Vector3").Name = "MissingBpo";
+                        var other = new Mono.Cecil.MethodDefinition("BPO", bpo.Attributes, module.TypeSystem.Void);
+                        foreach (var p in bpo.Parameters)
+                            other.Parameters.Add(new Mono.Cecil.ParameterDefinition(p.Index == 0 ? module.TypeSystem.Object : p.ParameterType));
+                        other.Body.GetILProcessor().Emit(Mono.Cecil.Cil.OpCodes.Ret);
+                        bpo.DeclaringType.Methods.Add(other);
                     }
                     module.Write(path);
                 }

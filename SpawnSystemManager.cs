@@ -627,6 +627,7 @@ internal static partial class SpawnSystemManager
     {
         if (DropNSpawnPlugin.IsSourceOfTruth)
         {
+            TryImportUnconfiguredSpawnPrefabs();
             ConfigurationRuntime.ReloadSourceOfTruth(
                 EnumerateOverrideConfigurationPaths().Concat(EnumerateSpawnIntervalsPaths()).ToList());
             return;
@@ -899,11 +900,13 @@ internal static partial class SpawnSystemManager
     private static ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnSystemConfigurationEntry> ParseConfiguration(
         string yaml,
         string? sourcePath)
+        => ParseSpawnDocument(yaml, sourcePath, requireSingleDocument: false);
+
+    private static YamlSequenceNode? ReadSpawnSequence(string yaml, bool requireSingleDocument)
     {
-        ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnSystemConfigurationEntry> result = new();
         if (string.IsNullOrWhiteSpace(yaml))
         {
-            return result;
+            return null;
         }
 
         using StringReader reader = new(yaml);
@@ -912,8 +915,11 @@ internal static partial class SpawnSystemManager
 
         if (stream.Documents.Count == 0)
         {
-            return result;
+            return null;
         }
+
+        if (requireSingleDocument && stream.Documents.Count != 1)
+            throw new YamlException("Automatic import requires one YAML document per active spawn file.");
 
         if (stream.Documents[0].RootNode is not YamlSequenceNode sequence)
         {
@@ -922,7 +928,15 @@ internal static partial class SpawnSystemManager
                 stream.Documents[0].RootNode.End,
                 "Spawnsystem authoritative YAML root must be a sequence.");
         }
+        return sequence;
+    }
 
+    private static ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnSystemConfigurationEntry> ParseSpawnDocument(
+        string yaml, string? sourcePath, bool requireSingleDocument)
+    {
+        var sequence = ReadSpawnSequence(yaml, requireSingleDocument);
+        ConfigurationLoadSupport.ParsedLocalConfiguration<SpawnSystemConfigurationEntry> result = new();
+        if (sequence == null) return result;
         for (int index = 0; index < sequence.Children.Count; index++)
         {
             YamlNode node = sequence.Children[index];

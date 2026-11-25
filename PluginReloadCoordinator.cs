@@ -195,7 +195,7 @@ internal sealed class PluginReloadCoordinator
         }
     }
 
-    private void QueueRuleReload(DropNSpawnPlugin.ReloadDomain domains)
+    internal void QueueRuleReload(DropNSpawnPlugin.ReloadDomain domains)
     {
         if (domains == DropNSpawnPlugin.ReloadDomain.None)
         {

@@ -969,7 +969,7 @@ internal static class PrefabOwnerCatalog
 
         foreach (ZoneSystem.ZoneLocation? location in ZoneSystem.instance.m_locations)
         {
-            string locationPrefabName = (location?.m_prefabName ?? location?.m_prefab.Name ?? "").Trim();
+            string locationPrefabName = (location?.m_prefabName ?? location?.m_prefab.name ?? "").Trim();
             if (string.Equals(locationPrefabName, prefabName, StringComparison.OrdinalIgnoreCase))
             {
                 return true;

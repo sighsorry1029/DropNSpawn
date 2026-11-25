@@ -199,7 +199,7 @@ internal static partial class Program
         SetProperty(config, "SaveOnConfigSet", false);
         MethodInfo bind = configType.GetMethods().Single(m => m.Name == "Bind" && m.IsGenericMethodDefinition &&
             m.GetParameters().Length == 4 && m.GetParameters()[0].ParameterType == typeof(string) && m.GetParameters()[3].ParameterType == typeof(string)).MakeGenericMethod(toggle);
-        object entry = bind.Invoke(config, new[] { "5 - Diagnostics", "Dungeon spawn diagnostics", Enum.ToObject(toggle, 0), "" })!;
+        object entry = bind.Invoke(config, new[] { "1 - General", "Dungeon spawn diagnostics", Enum.ToObject(toggle, 0), "" })!;
         IDictionary groups = (IDictionary)diagnostics.GetField("Groups", All)!.GetValue(null)!;
         void Record(string name, string rule = "crypt", long token = 1) => Invoke(diagnostics, null, "Record",
             Enum.Parse(reason, name), rule, token, "BlobElite", false, -1, -1, -1);

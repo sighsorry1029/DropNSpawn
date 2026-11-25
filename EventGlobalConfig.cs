@@ -37,7 +37,7 @@ internal static class EventGlobalConfig
         Dispose();
 
         _eventSchedulingMode = plugin.BindConfigEntry(
-            "3 - Events",
+            "4 - Events",
             "Event scheduling mode",
             EventSchedulingMode.Vanilla,
             "Vanilla allows one active random event and one server-wide check per interval. MultipleGlobal allows multiple active events with one server-wide check. MultiplePerPlayer allows multiple active events with an independent check for each player. Standalone events use the same global or per-player mode.\n" +
@@ -47,7 +47,7 @@ internal static class EventGlobalConfig
         _eventSchedulingMode.SettingChanged += HandleRuntimeSettingChanged;
 
         _defaultPlayerBase = plugin.BindConfigEntry(
-            "3 - Events",
+            "4 - Events",
             "Default event player base",
             EventPlayerBaseDefault.Off,
             "Global default player-base condition for events that do not specify conditions.playerBase in YAML. Off keeps each event's baseline value. Away acts like playerBase: [away], Near acts like [near], and AwayAndNear acts like [away, near]. YAML values always win. Forced boss events do not use this random-event start filter.",
@@ -56,7 +56,7 @@ internal static class EventGlobalConfig
         _defaultPlayerBase.SettingChanged += HandleDefinitionSettingChanged;
 
         _minimumDistanceBetweenEvents = plugin.BindConfigEntry(
-            "3 - Events",
+            "4 - Events",
             "Minimum distance between events",
             DefaultMinimumDistanceBetweenEvents,
             new ConfigDescription(
@@ -67,7 +67,7 @@ internal static class EventGlobalConfig
         _minimumDistanceBetweenEvents.SettingChanged += HandleRuntimeSettingChanged;
 
         _eventDurationMultiplier = plugin.BindConfigEntry(
-            "3 - Events",
+            "4 - Events",
             "Event duration multiplier",
             DefaultEventDurationMultiplier,
             new ConfigDescription(
@@ -78,7 +78,7 @@ internal static class EventGlobalConfig
         _eventDurationMultiplier.SettingChanged += HandleDefinitionSettingChanged;
 
         _randomEventChance = plugin.BindConfigEntry(
-            "3 - Events",
+            "4 - Events",
             "Random event chance",
             DefaultRandomEventChance,
             new ConfigDescription(
@@ -89,7 +89,7 @@ internal static class EventGlobalConfig
         _randomEventChance.SettingChanged += HandleRuntimeSettingChanged;
 
         _randomEventIntervalMinutes = plugin.BindConfigEntry(
-            "3 - Events",
+            "4 - Events",
             "Random event interval",
             DefaultRandomEventIntervalMinutes,
             new ConfigDescription(

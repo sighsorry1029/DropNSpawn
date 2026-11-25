@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using BepInEx.Bootstrap;
 using BepInEx.Configuration;
 using UnityEngine;
@@ -227,7 +226,7 @@ internal static class CharacterDropGlobalConfig
             string raw = _monsterInstantLootDropBlacklistEntry?.Value ?? DefaultMonsterInstantLootDropBlacklist;
             if (!string.Equals(_monsterInstantLootDropBlacklistRaw, raw, StringComparison.Ordinal))
             {
-                _monsterInstantLootDropBlacklist = ParseNameSet(raw);
+                _monsterInstantLootDropBlacklist = PluginBoundSettings.ParsePrefabNameSet(raw);
                 _monsterInstantLootDropBlacklistRaw = raw;
             }
 
@@ -261,6 +260,8 @@ internal static class CharacterDropGlobalConfig
             ? _additionalLootChancePerStarBoss?.Value ?? 50
             : _additionalLootChancePerStarCreature?.Value ?? 50, 0, 100);
     }
+
+    internal static string CatalogTrophyBlacklist => _trophyLevelMultiplierBlacklistEntry?.Value ?? "";
 
     internal static bool IsGlobalTrophyLevelMultiplierEnabled()
     {
@@ -321,7 +322,7 @@ internal static class CharacterDropGlobalConfig
         }
 
         _dropInStackBlacklistRaw = raw;
-        _dropInStackBlacklist = ParseNameSet(raw);
+        _dropInStackBlacklist = PluginBoundSettings.ParsePrefabNameSet(raw);
     }
 
     private static void EnsureTrophyLevelMultiplierBlacklistCache()
@@ -333,7 +334,7 @@ internal static class CharacterDropGlobalConfig
         }
 
         _trophyLevelMultiplierBlacklistRaw = raw;
-        _trophyLevelMultiplierBlacklist = ParseNameSet(raw);
+        _trophyLevelMultiplierBlacklist = PluginBoundSettings.ParsePrefabNameSet(raw);
     }
 
     private static void EnsurePlayerAlignedKillerBlacklistCache()
@@ -345,16 +346,7 @@ internal static class CharacterDropGlobalConfig
         }
 
         _playerAlignedKillerBlacklistRaw = raw;
-        _playerAlignedKillerBlacklist = ParseNameSet(raw);
-    }
-
-    private static HashSet<string> ParseNameSet(string raw)
-    {
-        return raw
-            .Split(new[] { ',', ';', '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
-            .Select(value => value.Trim())
-            .Where(value => value.Length > 0)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _playerAlignedKillerBlacklist = PluginBoundSettings.ParsePrefabNameSet(raw);
     }
 
     private static bool IsCreatureLevelControlLoaded()

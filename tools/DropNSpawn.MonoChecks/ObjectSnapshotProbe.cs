@@ -49,7 +49,7 @@ namespace DropNSpawn.Tests
             {
                 foreach (string name in new[] {
                     "CaptureSnapshot", "CreateHealthSnapshot", "CreateMinToolTierSnapshot", "CreateRestoreMask", "BuildConfigurationEntry", "NormalizeReferencePrefabName",
-                    "RestoreSnapshots", "RestoreConfiguredComponents", "RestoreResourceComponents", "RestoreInteractiveComponents",
+                    "RestoreSnapshots", "RestoreConfiguredComponents", "RestoreResourceComponents", "RestoreInteractiveComponents", "VisitCatalogDrops", "FixedCatalogDrop",
                     "IsGameDataReady", "ComputeGameDataSignature", "ComputeGameDataSignatureCore", "ComputeSnapshotSignature", "ComputeSnapshotSignatureCore",
                     "HashGameObjectCollection", "HashSnapshotGameObjectCollection", "HashPrefabNameCollection", "ProcessPendingSnapshotBuildStep" })
                 {
@@ -85,6 +85,7 @@ namespace DropNSpawn.Tests
                 Check(Native[live].Component.m_health == 80, "surviving instance can still use cached scalar baseline after source destruction");
                 Call("RestoreConfiguredComponents", dead, old, mask, false);
                 Check(Native[dead].Component.m_health == 80, "destroyed restore target is ignored");
+                CheckCatalogVisit(mod);
 
                 State("Clear");
                 Registry.Add(good);
@@ -190,6 +191,40 @@ namespace DropNSpawn.Tests
             }
         }
 
+        private static void CheckCatalogVisit(Assembly mod)
+        {
+            object state = manager.GetField("DropRuntimeState", All).GetValue(null);
+            object previous = Get(state, "Configuration");
+            object config = Activator.CreateInstance(previous.GetType(), true);
+            var plans = (IDictionary)Get(config, "PlansByPrefab");
+            var item = Make<GameObject>("Stone", 30);
+            object New(string name) => Activator.CreateInstance(manager.GetNestedType(name, All), true);
+            foreach (string prefab in new[] { "PT_BlueFissureRock", "Rock" })
+            {
+                object plan = New("CompiledObjectPrefabPlan"), rule = New("CompiledObjectDropRule");
+                object component = New("CompiledDestructibleComponentDefinition");
+                Put(component, "HasSpawnWhenDestroyedOverride", true);
+                Put(component, "SpawnWhenDestroyed", item);
+                Put(rule, "Destructible", component);
+                ((IList)Get(plan, "Rules")).Add(rule);
+                plans.Add(prefab, plan);
+            }
+            int visits = 0;
+            Action<string, string, string, bool?, DropTable> visit = (prefab, component, condition, built, table) =>
+            {
+                Check(prefab == "Rock" && component == "destructible" &&
+                    ReferenceEquals(table.m_drops.Single().m_item, item), "catalog delivers the living prefab's configured drop");
+                visits++;
+            };
+            Put(state, "Configuration", config);
+            try
+            {
+                mod.GetType("DropNSpawn.ObjectDropCatalog", true).GetMethod("VisitDrops").Invoke(null, new object[] { visit });
+                Check(visits == 1, "one destroyed prefab does not abort the visit or emit a catalog row");
+            }
+            finally { Put(state, "Configuration", previous); }
+        }
+
         private static object Call(string name, params object[] args) => manager.GetMethod(name, All).Invoke(null, args);
         private static object State(string name, params object[] args) => snapshots.GetType().GetMethod(name, All).Invoke(snapshots, args);
         private static object Get(object value, string name)
@@ -252,6 +287,7 @@ namespace DropNSpawn.Tests
         }
         private static ZNetScene Scene() => scene;
         private static ObjectDB Database() => database;
+        private static object ReadyCatalog() => snapshots; // The fixture supplies an already-published plan, not a config/sync session.
         private static int Frame() => frame;
         private static double TimeNow() => 0;
         private static bool ReadRegistry(ref IEnumerable<GameObject> __result) { __result = Registry; return false; }
@@ -276,6 +312,7 @@ namespace DropNSpawn.Tests
                             method.Name == "get_name" ? nameof(Name) : method.Name == "GetInstanceID" ? nameof(Id) : null;
                     if (method.DeclaringType == typeof(ZNetScene) && method.Name == "get_instance") target = nameof(Scene);
                     if (method.DeclaringType == typeof(ObjectDB) && method.Name == "get_instance") target = nameof(Database);
+                    if (method.DeclaringType == manager && method.Name == "GetCatalogRevision") target = nameof(ReadyCatalog);
                     if (method.DeclaringType == typeof(Time)) target = method.Name == "get_frameCount" ? nameof(Frame) : nameof(TimeNow);
                     if (target != null) replacement = typeof(ObjectSnapshotProbe).GetMethod(target, All);
                     if (method.DeclaringType == typeof(GameObject) && method.IsGenericMethod &&

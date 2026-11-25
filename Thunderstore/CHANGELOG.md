@@ -1,3 +1,13 @@
+## 1.4.12 — Valheim 1.0.30, object loot stacks and world spawn imports
+
+- **Config sections have moved; old values are not migrated.** Reapply custom raid settings under `4 - Events`, disabled domain switches under `99 - Domains`, and local dungeon diagnostics under `1 - General`. Update the server and all clients together.
+- **World spawn import is on by default.** Starting with the first scan, the host/server copies original normal SpawnSystem rules for prefabs absent from all active spawn YAML into `DNS_spawnsystem_imported.yml`. If DNS cannot represent every rule for a prefab, it skips that prefab. A row with `enabled: false` prevents import; deleting or commenting out the last row for a prefab makes it eligible again. For a strict allowlist, turn off `Auto-import missing SpawnSystem prefabs` before loading the world. Turning it off later does not remove entries already imported.
+- New `3 - Object` settings independently stack matching loot from one logging, mining or destruction action, or from one harvested plant. Both default to Off. The shared `Stack item blacklist` uses dropped item prefab names and defaults to empty. Drop rolls and yields are unchanged; creature loot has its own settings.
+- Item browsers can now use the read-only `CharacterDropCatalog` and `ObjectDropCatalog` APIs to preview synchronized loot tables without rolling drops. They expose conditions, creature level scaling and amount caps, and distinguish player-built pieces from world objects.
+- Use Valheim 1.0.30's location asset-name API for reference generation and location matching. Keep the DNS normal-spawn cap for overlapping rules and catch-up groups of the same prefab.
+- Recognize Expand World Data 1.81's relocated object data from its object-creation API signature instead of depending on a specific type name or version. This does not fix obsolete game API calls inside EWD itself.
+- Discard queued synchronization work from a previous network role or session. Avoid unnecessary spawn-rule cloning when applying biome interval multipliers.
+
 ## 1.4.11 — Clearer spawn interval examples
 
 - List all nine vanilla biome keys in newly generated `DNS_spawnintervals.yml` files and in the world spawn guide. For an Expand World Data custom biome, use its registered name on the server.

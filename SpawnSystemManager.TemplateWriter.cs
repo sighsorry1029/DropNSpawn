@@ -86,7 +86,7 @@ internal static partial class SpawnSystemManager
         AppendTemplateComment(builder, "Loaded files are concatenated in filename order after the primary file.");
         AppendTemplateComment(builder, "This auto-created override is seeded from the current live SpawnSystem snapshot only and does not merge external CreatureManager/Jotunn reference projections.");
         AppendTemplateComment(builder, $"Use dns:reference spawnsystem when you want to export {PluginSettingsFacade.GetYamlDomainFilePrefix("spawnsystem")}.reference.yml for a compact reference snapshot, or {PluginSettingsFacade.GetYamlDomainFilePrefix("spawnsystem")}.full.yml for exhaustive field examples.");
-        AppendTemplateComment(builder, "Applying this file still strictly replaces the live SpawnSystem table with the rows defined here.");
+        AppendTemplateComment(builder, "Active SpawnSystem files together replace the normal world spawn table. With auto-import On, missing prefabs regain their original rules; keep an enabled: false row to exclude one.");
         AppendTemplateComment(builder, "requiredGlobalKey also supports 'key 10' to require at least that numeric value and consume it after each successful spawn.");
         foreach (string line in GetSpawnSystemShorthandFieldExampleLines())
         {

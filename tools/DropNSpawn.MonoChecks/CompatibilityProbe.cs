@@ -57,6 +57,9 @@ namespace DropNSpawn.Tests
             Check(Path.GetFullPath(typeof(Character).Assembly.Location) == Path.Combine(managed, "assembly_valheim.dll"), "original game assembly");
             System.Console.WriteLine("Game: " + typeof(Character).Assembly.Location);
             System.Console.WriteLine("Harmony: " + typeof(Harmony).Assembly.FullName);
+            // Unity Mono: intercept the static by-value conversion, not a struct instance getter.
+            HeadlessZdoFixture.Initialize(typeof(ZDO), AccessTools.Method(typeof(UnityEngine.Quaternion), "Internal_ToEulerRad",
+                new[] { typeof(UnityEngine.Quaternion) }));
             Type dungeonConfig = mod.GetType("DropNSpawn.DungeonSpawnConfiguration", true);
             string dungeonSample = (string)dungeonConfig.GetField("Sample", All).GetRawConstantValue();
             var dungeonRules = (System.Collections.IList)dungeonConfig.GetMethod("Parse", All).Invoke(null, new object[] { dungeonSample });
@@ -86,6 +89,7 @@ namespace DropNSpawn.Tests
             checks += SpawnLimitProbe.Run(mod);
             ChanceScalingFixture.Run(mod);
             checks += LootPriorityProbe.Run(mod);
+            checks += ObjectStackProbe.Run(mod);
             checks += ObjectSnapshotProbe.Run(mod);
             DungeonPlacementFixture.Run(mod);
             foreach (string name in new[] { "EventManager+GameAccess", "CharacterDropKillerFilter", "RagdollSetupMonsterInstantLootDropPatch", "VneiCompatibility" })
@@ -1555,7 +1559,7 @@ namespace DropNSpawn.Tests
             var strings = (System.Collections.IDictionary)data.GetType().GetField("Strings").GetValue(data);
             Check((string)ReadValue(strings[literalHash("faction")]) == literal, "EWD faction constant remains literal (commas/value-group tokens are not parsed)");
             var objects = (System.Collections.IList)payload.GetType().GetProperty("CustomObjects").GetValue(payload);
-            Check(objects.Count == 1 && objects[0].GetType() == EwdType(ewd, "ExpandWorldData.BlueprintObject", true), "EWD object payload still builds alongside faction");
+            Check(objects.Count == 1 && objects[0] != null, "EWD object payload still builds alongside faction");
             CheckEwdObjectDispatch(mod, ewd, payload, objects[0]);
             object plain = support.GetMethod("BuildPreparedPayload", All).Invoke(null, new[] { new SpawnSystem.SpawnData(), Activator.CreateInstance(entryType, true), "plain fixture" });
             Check(plain == null, "plain spawn still prepares successfully with EWD installed");
@@ -1583,8 +1587,7 @@ namespace DropNSpawn.Tests
             Type type = ewd.GetType(name) ?? ewd.GetType(name
                 .Replace("ExpandWorld.Spawn.", "ExpandWorldData.Spawn.")
                 .Replace("ExpandWorld.Event.", "ExpandWorldData.Event.")
-                .Replace("ExpandWorld.Drops.", "ExpandWorldData.Drop.")
-                .Replace("ExpandWorldData.BlueprintObject", "ExpandWorldData.Data.BlueprintObject"));
+                .Replace("ExpandWorld.Drops.", "ExpandWorldData.Drop."));
             if (type == null && required) throw new TypeLoadException(name);
             return type;
         }

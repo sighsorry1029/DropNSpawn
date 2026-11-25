@@ -4,7 +4,7 @@
 
 Choose which mod manages each feature. A mod being installed is not, by itself, a reason to turn DNS features off. DNS does not automatically select these switches for you.
 
-Edit the existing values under `4 - Domains` in `BepInEx/config/sighsorry.DropNSpawn.cfg`. In multiplayer, use the server's config. Change `On` to `Off`; lines starting with `#` are comments, not active settings. BepInEx regenerates comments when saving, so personal notes in the cfg are not preserved.
+Edit the existing values under `99 - Domains` in `BepInEx/config/sighsorry.DropNSpawn.cfg`. In multiplayer, use the server's config. Change `On` to `Off`; lines starting with `#` are comments, not active settings. BepInEx regenerates comments when saving, so personal notes in the cfg are not preserved.
 
 ## Feature-by-feature settings
 
@@ -45,12 +45,12 @@ DNS's Event switch controls YAML overrides, not the separate global event polici
 
 | DNS setting | Value |
 | --- | --- |
-| `4 - Domains / Enable Event Overrides` | `Off` |
-| `3 - Events / Event scheduling mode` | `Vanilla` |
-| `3 - Events / Default event player base` | `Off` |
-| `3 - Events / Event duration multiplier` | `1` |
-| `3 - Events / Random event chance` | Match Custom Raids `EventTriggerChance` |
-| `3 - Events / Random event interval` | Match Custom Raids `EventCheckInterval`; both are in minutes |
+| `99 - Domains / Enable Event Overrides` | `Off` |
+| `4 - Events / Event scheduling mode` | `Vanilla` |
+| `4 - Events / Default event player base` | `Off` |
+| `4 - Events / Event duration multiplier` | `1` |
+| `4 - Events / Random event chance` | Match Custom Raids `EventTriggerChance` |
+| `4 - Events / Random event interval` | Match Custom Raids `EventCheckInterval`; both are in minutes |
 
 Do not set DNS's duration multiplier or event chance to zero as a way to hand control over: those values can disable events. Custom Raids individual raid checks use its own per-raid chances.
 

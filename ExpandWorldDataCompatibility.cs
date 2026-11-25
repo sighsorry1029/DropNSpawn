@@ -46,7 +46,6 @@ internal static class ExpandWorldDataCompatibility
         // Known semantic moves, not fuzzy simple-name matching or VERSION gates.
         string? moved = name switch
         {
-            "ExpandWorldData.BlueprintObject" => "ExpandWorldData.Data.BlueprintObject",
             "ExpandWorldData.Spawn" => "ExpandWorldData.Create",
             "ExpandWorldData.BiomeManager" => "ExpandWorldData.Biome.BiomeManager",
             "ExpandWorldData.DataManager" => "ExpandWorldData.Data.DataManager",
@@ -117,17 +116,25 @@ internal static class ExpandWorldDataCompatibility
     private static (Func<string, Vector3, object?, float, object>, Func<object, float>, Action<object, Vector3>)
         BuildObjectAccessors(Assembly assembly, Type data)
     {
-        Type blueprint = RequireType(assembly, "ExpandWorldData.BlueprintObject");
+        // Bind the payload used by EWD's unseeded object-spawn API. Its namespace
+        // has changed independently of both this call and the payload contract.
+        Type spawner = RequireType(assembly, "ExpandWorldData.Spawn");
+        Type dataTransform = typeof(Func<,,>).MakeGenericType(data, typeof(string), data);
+        Type[] tail = { typeof(Vector3), typeof(Quaternion), typeof(Vector3), dataTransform, typeof(Func<string, string>), typeof(List<GameObject>) };
+        var candidates = spawner.GetMethods(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+            .Where(m => m.Name == "BPO" && m.ReturnType == typeof(void) && !m.ContainsGenericParameters &&
+                m.GetParameters().Skip(1).Select(p => p.ParameterType).SequenceEqual(tail)).ToArray();
+        if (candidates.Length != 1)
+            throw new MissingMethodException($"EWD requires one public static unseeded {spawner.FullName}.BPO with the supported transforms and result list; found {candidates.Length}.");
+        MethodInfo spawn = candidates[0];
+        Type blueprint = spawn.GetParameters()[0].ParameterType;
+        if (!blueprint.IsClass || blueprint.IsAbstract || !blueprint.IsVisible)
+            throw new TypeLoadException($"EWD {spawner.FullName}.BPO requires a public concrete EWD object payload, got {blueprint}.");
         ConstructorInfo constructor = blueprint.GetConstructor(new[] { typeof(string), typeof(Vector3), typeof(Quaternion),
             typeof(Vector3), data, typeof(float), typeof(bool) }) ?? throw new MissingMethodException(blueprint.FullName, ".ctor");
         FieldInfo chance = RequireField(blueprint, "Chance");
         if (!chance.IsPublic || chance.IsStatic || chance.FieldType != typeof(float))
             throw new MissingFieldException(blueprint.FullName, "public float Chance");
-        Type dataTransform = typeof(Func<,,>).MakeGenericType(data, typeof(string), data);
-        MethodInfo spawn = RequireMethod(RequireType(assembly, "ExpandWorldData.Spawn"), "BPO", typeof(void),
-            blueprint, typeof(Vector3), typeof(Quaternion), typeof(Vector3), dataTransform,
-            typeof(Func<string, string>), typeof(List<GameObject>));
-        if (!spawn.IsPublic) throw new MissingMethodException(spawn.DeclaringType!.FullName, "public BPO");
 
         var prefab = Expression.Parameter(typeof(string), "prefab");
         var position = Expression.Parameter(typeof(Vector3), "position");

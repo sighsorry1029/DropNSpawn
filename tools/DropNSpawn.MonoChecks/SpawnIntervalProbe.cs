@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
+using System.Runtime.Serialization;
 using HarmonyLib;
 
 namespace DropNSpawn.Tests
@@ -35,6 +37,23 @@ namespace DropNSpawn.Tests
         { __result = __args[0].GetType().Name != "WaitingForIntervalBiomes"; return false; }
         private static bool ValidationKey(ref string __result) { __result = "interval-fixture:" + ready; return false; }
         private static bool Compile(ref bool __result) { __result = true; return false; }
+        private static UnityEngine.GameObject importPrefab;
+        private static bool ImportLookup(ref UnityEngine.GameObject __result) { __result = importPrefab; return false; }
+        private static string ImportName(UnityEngine.Object obj) => "ImportFixture";
+        private static bool ImportEqual(UnityEngine.Object a, UnityEngine.Object b) => ReferenceEquals(a, b);
+        private static IEnumerable<CodeInstruction> IsolateImportScene(IEnumerable<CodeInstruction> code)
+        {
+            foreach (var il in code)
+            {
+                if (il.operand is MethodInfo method && method.DeclaringType == typeof(UnityEngine.Object) &&
+                    (method.Name == "get_name" || method.Name == "op_Equality"))
+                {
+                    il.opcode = OpCodes.Call;
+                    il.operand = typeof(SpawnIntervalProbe).GetMethod(method.Name == "get_name" ? nameof(ImportName) : nameof(ImportEqual), All);
+                }
+                yield return il;
+            }
+        }
         private static object Read(object target, string property) => target.GetType().GetProperty(property, All).GetValue(target);
 
         internal static int Run(Assembly mod)
@@ -65,6 +84,22 @@ namespace DropNSpawn.Tests
             {
                 void Patch(Type type, string method, string prefix) => fixture.Patch(type.GetMethod(method, All),
                     prefix: new HarmonyMethod(typeof(SpawnIntervalProbe), prefix));
+                // Exercise the production writer, reader, normalizer and native field comparison.
+                // Only the prefab lookup and Unity object identity/name need a scene substitute.
+                importPrefab = (UnityEngine.GameObject)FormatterServices.GetUninitializedObject(typeof(UnityEngine.GameObject));
+                Patch(manager, "ResolvePrefab", nameof(ImportLookup));
+                foreach (string method in new[] { "ApplyEntry", "NormalizeReferencePrefabName", "MatchesImportField" })
+                    fixture.Patch(manager.GetMethod(method, All), transpiler: new HarmonyMethod(typeof(SpawnIntervalProbe), nameof(IsolateImportScene)));
+                var day = new SpawnSystem.SpawnData { m_prefab = importPrefab, m_biome = Heightmap.Biome.Meadows, m_spawnAtNight = false, m_spawnInterval = 60 };
+                var night = new SpawnSystem.SpawnData { m_prefab = importPrefab, m_biome = Heightmap.Biome.Meadows, m_spawnAtDay = false, m_spawnInterval = 30, m_enabled = false };
+                string Import(params SpawnSystem.SpawnData[] group) => (string)manager.GetMethod("RenderImportGroup", All)
+                    .Invoke(null, new object[] { "ImportFixture", group });
+                string generated = Import(day, night, day);
+                Check(generated != null && generated.Split(new[] { "- prefab:" }, StringSplitOptions.None).Length == 4 &&
+                    generated.Contains("enabled: false"), "real source import preserves duplicate, day/night and disabled native rows");
+                night.m_inForest = night.m_outsideForest = false;
+                Check(Import(day, night) == null, "unsupported native forest flag pair rejects the whole prefab, not just its night row");
+                importPrefab = null;
                 Patch(biomes, "IsExpandWorldDataPresent", nameof(Yes));
                 Patch(biomes, "IsExpandWorldDataReadyOrUnavailable", nameof(Ready));
                 Patch(biomes, "TryResolveExpandWorldDataBiome", nameof(Resolve));

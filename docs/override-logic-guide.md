@@ -19,7 +19,7 @@ Generated `.reference.yml` files show available names and source values. `.full.
 
 Events use their reference file instead of a full scaffold. Large location mods can make manual full exports expensive; read the [MWL precautions](compatibility.md#more-world-locations-and-reference-exports) before using them on a low-memory client.
 
-For SpawnSystem, keep the complete desired spawn table rather than copying only a few edits. See the [world spawn guide](spawnsystem-guide.md). [Spawner selectors and cumulative limits](spawner-domain-guide.md), [dungeon rules and diagnostics](dungeon-spawns.md), and [omitted/null/empty values](yaml-null-empty-guide.md) have their own guides.
+For SpawnSystem, keep all desired rules for each prefab you list. By default, a prefab omitted from every active file gets its original normal world rules back. See the [world spawn guide](spawnsystem-guide.md) for exclusions. [Spawner selectors and cumulative limits](spawner-domain-guide.md), [dungeon rules and diagnostics](dungeon-spawns.md), and [omitted/null/empty values](yaml-null-empty-guide.md) have their own guides.
 
 ## How to read the rules
 
@@ -193,6 +193,19 @@ Reason:
 
 ## Object
 
+Under `3 - Object`, two independent server-synced settings control stacking. Both default to **Off** and require **Enable Object Overrides**. No YAML is needed.
+
+- `Stack resource drops`: group matching drops from **one** felled tree, split log, mined section or broken object (`TreeBase`, `TreeLog`, `MineRock`, `MineRock5`, `DropOnDestroyed`). This includes stumps and breakable barrels.
+- `Stack harvest drops`: group matching drops from **one** `Pickable`, such as a harvested crop or mushroom. Its primary and extra yields can share a stack.
+
+Both settings apply to original and configured drops, up to the item's stack limit. Rolls, yields and tool-based conversions still run; fewer physical drops means their scattering and subsequent Unity random draws need not be identical.
+
+`Stack item blacklist` (server-synced, empty by default) excludes dropped **item prefab names** from both settings. For example, `Wood, Carrot` keeps those items in their original drop quantities; other items from the same tree or plant can still stack. Names are case-insensitive. Use the item name, not the source tree or plant. Editing the list affects subsequent drops, not items already on the ground.
+
+This does not collect ground items, combine separate plants or mine sections, change chest inventories or fish rewards, or change the Character stack setting or its blacklist. Non-stackable items, items with custom metadata and items opted out of auto-stacking retain their original delivery.
+
+Leave the relevant setting off if another mod needs a separate creation callback per unit (for example, to roll a random property for each physical drop).
+
 Agreed user-facing rule for object components:
 
 1. `conditions` are only allowed at the top level of the entry.
@@ -302,7 +315,7 @@ If the order is reversed, the last matching block wins instead.
 
 ### Event config options
 
-Settings under `3 - Events` work independently of Event YAML overrides. Defaults below are DNS defaults, not a claim that every vanilla or modded event uses them unchanged.
+Settings under `4 - Events` work independently of Event YAML overrides. Defaults below are DNS defaults, not a claim that every vanilla or modded event uses them unchanged.
 
 | Option | Default | Purpose |
 | --- | --- | --- |

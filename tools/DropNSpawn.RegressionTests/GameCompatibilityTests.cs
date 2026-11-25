@@ -71,6 +71,23 @@ internal static partial class Program
         Type support = mod.Type("ReferenceRefreshSupport");
         Type scanType = support.GetNestedType("LocationReferenceScan", All)!;
         Type assetType = mod.LoadGameAssembly("SoftReferenceableAssets").GetType("SoftReferenceableAssets.AssetID", true)!;
+        // No Unity scene: supply a SoftReference with its asset name already resolved.
+        var zoneLocation = mod.LoadGameAssembly("assembly_valheim").GetType("ZoneSystem+ZoneLocation", true)!;
+        object location = Activator.CreateInstance(zoneLocation)!;
+        var prefab = zoneLocation.GetField("m_prefab")!;
+        object reference = prefab.GetValue(location)!;
+        prefab.FieldType.GetField("m_name", All)!.SetValue(reference, "  Crypt  ");
+        prefab.SetValue(location, reference);
+        foreach (string owner in new[] { "DropConditionEvaluator", "SpawnerManager" })
+        {
+            string Name(object? value) => (string)Invoke(mod.Type(owner), null, "GetZoneLocationPrefabName", value)!;
+            foreach (var (registered, expected) in new (string?, string)[] { (" Crypt:Ice ", "Crypt:Ice"), (null, "Crypt"), ("", "") })
+            {
+                zoneLocation.GetField("m_prefabName")!.SetValue(location, registered);
+                Check(Name(location) == expected, owner + ": registered location name takes precedence over asset name");
+            }
+            Check(Name(null) == "", owner + ": missing location remains unnamed");
+        }
         object firstId = Activator.CreateInstance(assetType, new object[] { 1u, 2u, 3u, 4u })!;
         object otherId = Activator.CreateInstance(assetType, new object[] { 5u, 6u, 7u, 8u })!;
         object ids = Activator.CreateInstance(typeof(HashSet<>).MakeGenericType(assetType))!;
@@ -132,6 +149,8 @@ internal static partial class Program
         MethodDefinition moveNext = iterator.Methods.Single(method => method.Name == "MoveNext");
         var calls = moveNext.Body.Instructions.Where(i => i.Operand is MethodReference).Select(i => ((MethodReference)i.Operand).Name).ToList();
         Check(calls.IndexOf("ShouldSkip") >= 0 && calls.IndexOf("ShouldSkip") < calls.IndexOf("Load"), "MWL exclusion occurs before asset loading");
+        Check(calls.IndexOf("get_name") > calls.IndexOf("ShouldSkip") && calls.IndexOf("get_name") < calls.IndexOf("Load"),
+            "reference export can identify and deduplicate a location before borrowing its asset");
         MethodDefinition releaseFinally = iterator.Methods.Single(method => method.HasBody && method.Body.Instructions.Any(i =>
             i.Operand is MethodReference m && m.Name == "Release" && m.DeclaringType.Name.StartsWith("SoftReference")));
         Check(releaseFinally.Name.Contains("Finally") && iterator.Methods.Any(method => method.Name.EndsWith("Dispose") &&
@@ -250,6 +269,27 @@ internal static partial class Program
                         object[] arguments = patch.GetParameters().Select(p => p.ParameterType == typeof(ILGenerator) ? (object)generator
                             : p.ParameterType == typeof(MethodBase) ? original : input).ToArray();
                         var output = ((IEnumerable<CodeInstruction>)patch.Invoke(null, arguments)!).ToList();
+                        if (output.Any(i => i.operand is MethodInfo m && m.DeclaringType?.Name == "ObjectDropStacking") ||
+                            type.Name is "DropOnDestroyedPatch" or "MineRockHitPatch" or "MineRock5SectionStackPatch" or "TreeBaseDamagePatch" or "TreeLogDestroyPatch" or "PickableHarvestDropPatch")
+                        {
+                            string[] hooks = type.Name == "PickableHarvestDropPatch" ? new[] { "TryAbsorbHarvest", "RememberHarvest" }
+                                : new[] { "get_ResourceEnabled", type.Name == "TreeBaseDamagePatch" ? "EmitRaw" : "EmitInitialized" };
+                            Check(hooks.All(h => output.Count(i => i.operand is MethodInfo m && m.DeclaringType?.Name == "ObjectDropStacking" && m.Name == h) == 1),
+                                type.Name + " installs the complete delivery hook");
+                            // The unchanged Off branch must still contain every original call in order
+                            // (including separate log/stump creation and damage-type conversion).
+                            IEnumerable<MethodBase> Calls(List<CodeInstruction> il) => il.Select(i => i.operand).OfType<MethodBase>()
+                                .Where(m => m.DeclaringType?.Name != "ObjectDropStacking");
+                            Check(Calls(output).SequenceEqual(Calls(input)), type.Name + " keeps original roll, owner, placement and cleanup calls");
+                            var damaged = input.Select(i => new CodeInstruction(i)).ToList();
+                            string anchor = type.Name == "PickableHarvestDropPatch" ? "SetStack" : "GetDropList";
+                            int at = damaged.FindIndex(i => i.operand is MethodInfo m && m.Name == anchor);
+                            damaged[at] = new CodeInstruction(OpCodes.Nop);
+                            var fallback = (IEnumerable<CodeInstruction>)patch.Invoke(null, new object[] { damaged, original, generator })!;
+                            Check(fallback.SequenceEqual(damaged), type.Name + " leaves unknown IL intact");
+                            transpilers++;
+                            continue;
+                        }
                         if (type.Name == "SpawnSystemSpawnLimitPatch")
                         {
                             bool HasHooks(List<CodeInstruction> code) => new[] { "IsManagedList", "CountForLimit", "RecordSpawn" }

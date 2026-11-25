@@ -319,6 +319,7 @@ internal static partial class ObjectDropManager
 
     private sealed class ObjectRuntimeDropConfigurationState
     {
+        public readonly object CatalogRevision = new();
         public static ObjectRuntimeDropConfigurationState Empty { get; } = new();
 
         public Dictionary<string, CompiledObjectPrefabPlan> PlansByPrefab { get; } = new(StringComparer.OrdinalIgnoreCase);

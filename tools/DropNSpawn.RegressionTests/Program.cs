@@ -56,6 +56,9 @@ internal static partial class Program
             options.TryGetValue("--ewd-dll", out string? ewdPath);
             using var current = new ModContract(assemblyPath, gamePath, projectPath, managedPath, ewdPath);
             CheckGameContracts(current);
+            // CoreCLR cannot JIT the internal-call wrapper itself; use its managed caller.
+            HeadlessZdoFixture.Initialize(current.LoadGameAssembly("assembly_valheim").GetType("ZDO", true)!,
+                current.LoadGameAssembly("UnityEngine.CoreModule").GetType("UnityEngine.Quaternion", true)!.GetProperty("eulerAngles")!.GetMethod!);
             Dictionary<string, string> actual = CheckTransportContracts(current);
             if (options.TryGetValue("--baseline", out string? baselinePath))
             {
@@ -83,6 +86,7 @@ internal static partial class Program
             CheckDungeonSpawnContracts(current);
             CheckSpawnSystemTimers(current);
             CheckSpawnIntervalPolicies(current);
+            CheckSpawnPrefabImports(current);
             Console.WriteLine($"PASS: {_checks} managed contract checks. Unity gameplay and network execution are not covered.");
             return 0;
         }

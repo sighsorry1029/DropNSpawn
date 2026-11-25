@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Reflection;
+using System.Reflection.Emit;
 using HarmonyLib;
 using UnityEngine;
 
@@ -177,6 +180,31 @@ internal static class PickableAwakePatch
     }
 }
 
+[HarmonyPatch(typeof(MineRock5), "DamageArea")]
+internal static class MineRock5SectionStackPatch
+{
+    [HarmonyPriority(Priority.Last)]
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod, ILGenerator generator) =>
+        ObjectDropStacking.PatchResource(instructions, __originalMethod, generator);
+}
+
+[HarmonyPatch(typeof(Pickable), "RPC_Pick")]
+internal static class PickableHarvestStackScopePatch
+{
+    private static void Prefix(Pickable __instance, out ObjectDropStacking.Harvest? __state) =>
+        __state = ObjectDropStacking.BeginHarvest(__instance);
+
+    private static void Finalizer(ObjectDropStacking.Harvest? __state) => ObjectDropStacking.EndHarvest(__state);
+}
+
+[HarmonyPatch(typeof(Pickable), "Drop")]
+internal static class PickableHarvestDropPatch
+{
+    [HarmonyPriority(Priority.Last)]
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod, ILGenerator generator) =>
+        ObjectDropStacking.PatchHarvest(instructions, __originalMethod, generator);
+}
+
 [HarmonyPatch(typeof(PickableItem), "Awake")]
 internal static class PickableItemAwakePatch
 {
@@ -247,6 +275,10 @@ internal static class ContainerAddDefaultItemsPatch
 [HarmonyPatch(typeof(DropOnDestroyed), "OnDestroyed")]
 internal static class DropOnDestroyedPatch
 {
+    [HarmonyPriority(Priority.Last)]
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod, ILGenerator generator) =>
+        ObjectDropStacking.PatchResource(instructions, __originalMethod, generator);
+
     private static void Prefix(
         DropOnDestroyed __instance,
         out TemporaryFieldOverrideState<DropTable> __state)
@@ -292,6 +324,10 @@ internal static class DropOnDestroyedPatch
 [HarmonyPatch(typeof(MineRock), "RPC_Hit")]
 internal static class MineRockHitPatch
 {
+    [HarmonyPriority(Priority.Last)]
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod, ILGenerator generator) =>
+        ObjectDropStacking.PatchResource(instructions, __originalMethod, generator);
+
     private static void Prefix(
         MineRock __instance,
         out TemporaryFieldOverrideState<DropTable> __state)
@@ -402,6 +438,10 @@ internal static class MineRock5AwakePatch
 [HarmonyPatch(typeof(TreeBase), "RPC_Damage")]
 internal static class TreeBaseDamagePatch
 {
+    [HarmonyPriority(Priority.Last)]
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod, ILGenerator generator) =>
+        ObjectDropStacking.PatchResource(instructions, __originalMethod, generator);
+
     private static void Prefix(
         TreeBase __instance,
         out TemporaryFieldOverrideState<DropTable> __state)
@@ -457,6 +497,10 @@ internal static class TreeBaseAwakePatch
 [HarmonyPatch(typeof(TreeLog), "Destroy")]
 internal static class TreeLogDestroyPatch
 {
+    [HarmonyPriority(Priority.Last)]
+    private static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase __originalMethod, ILGenerator generator) =>
+        ObjectDropStacking.PatchResource(instructions, __originalMethod, generator);
+
     private static void Prefix(
         TreeLog __instance,
         out TemporaryFieldOverrideState<DropTable> __state)
